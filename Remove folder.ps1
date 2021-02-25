@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-#Requires -Modules ImportExcel, SqlServer
+#Requires -Modules ImportExcel
 
 <#
 .SYNOPSIS
