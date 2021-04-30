@@ -50,10 +50,10 @@ Begin {
                     Continue
                 }
 
-                if (-not (Test-Path -LiteralPath $path -PathType Container)) {
-                    $result.Error = 'Path not a folder'
-                    Continue
-                }
+                # if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+                #     $result.Error = 'Path not a folder'
+                #     Continue
+                # }
 
                 $result.Action = 'Remove'
                 Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
@@ -149,14 +149,14 @@ Process {
         #endregion
 
         #region Send mail to user
-        $removedFolders = $jobResults | Where-Object {
-            ($_.Action -eq 'Remove') -and
-            ($_.Exist -eq $false)
-        }
-        $folderRemovalErrors = $jobResults | Where-Object { $_.Error }
-        $notExistingFolders = $jobResults | Where-Object { $_.Exist -eq $false }
+        $removedFolders = $jobResults.Where( {
+                ($_.Action -eq 'Remove') -and
+                ($_.Exist -eq $false)
+            })
+        $folderRemovalErrors = $jobResults.Where( { $_.Error })
+        $notExistingFolders = $jobResults.Where( { $_.Exist -eq $false })
            
-        $mailParams.Subject = "Removed $($removedFolders.Count)/$($importExcelFile.count) folders"
+        $mailParams.Subject = "Removed $($removedFolders.Count)/$($importExcelFile.count) items"
 
         $ErrorTable = $null
    
@@ -174,11 +174,11 @@ Process {
         $table = "
            <table>
                <tr>
-                   <th>Successfully removed folders</th>
+                   <th>Successfully removed items</th>
                    <td>$($removedFolders.Count)</td>
                </tr>
                <tr>
-                   <th>Errors while removing folders</th>
+                   <th>Errors while removing items</th>
                    <td>$($folderRemovalErrors.Count)</td>
                </tr>
                <tr>
@@ -186,7 +186,7 @@ Process {
                    <td>$($importExcelFile.Count)</td>
                </tr>
                <tr>
-                   <th>Not existing folders</th>
+                   <th>Not existing items after running the script</th>
                    <td>$($notExistingFolders.Count)</td>
                </tr>
            </table>
@@ -195,7 +195,7 @@ Process {
         $mailParams += @{
             To        = $MailTo
             Bcc       = $ScriptAdmin
-            Message   = "<p>Folder removal summary:</p>
+            Message   = "<p>Summary of removed items (files or folders):</p>
                 $table
                 $ErrorTable
                 <p><i>* Check the attachment for details</i></p>"

@@ -94,12 +94,14 @@ Describe 'when rows are imported from Excel' {
             }
         }
     } 
-    Context 'folders on the computer are' {
+    Context 'the script' {
         BeforeAll {
             $testFolder = 0..2 | ForEach-Object {
                 (New-Item "TestDrive:/folder$_" -ItemType Directory).FullName
             }
-            $testFile = (New-Item 'TestDrive:/file1' -ItemType File).FullName
+            $testFile = 0..2 | ForEach-Object {
+                (New-Item "TestDrive:/file$_" -ItemType File).FullName
+            }
 
             Mock Import-Excel {
                 @(
@@ -113,68 +115,75 @@ Describe 'when rows are imported from Excel' {
                     }
                     [PSCustomObject]@{
                         PSComputerName = $env:COMPUTERNAME
-                        FullName       = 'notExistingFolder'
+                        FullName       = $testFile[0]
                     }
                     [PSCustomObject]@{
                         PSComputerName = $env:COMPUTERNAME
-                        FullName       = $testFile
+                        FullName       = $testFile[1]
+                    }
+                    [PSCustomObject]@{
+                        PSComputerName = $env:COMPUTERNAME
+                        FullName       = 'notExistingFileOrFolder'
                     }
                 )
             }
     
             . $testScript @testParams
         }
-        It 'removed when requested' {
-            $testFolder[0] | Should -Not -Exist
-            $testFolder[1] | Should -Not -Exist
-        } 
-        It 'not removed when not requested' {
-            $testFolder[2] | Should -Exist
+        Context 'starts a job on the remote computer to' {
+            Describe 'remove the requested' {
+                It 'folders' {
+                    $testFolder[0] | Should -Not -Exist
+                    $testFolder[1] | Should -Not -Exist
+                }
+                It 'files' {
+                    $testFile[0] | Should -Not -Exist
+                    $testFile[1] | Should -Not -Exist
+                }
+            }
+            Describe 'not remove other' {
+                It 'folders' {
+                    $testFolder[2] | Should -Exist
+                }
+                It 'files' {
+                    $testFile[2] | Should -Exist
+                }
+            }
         }
-        It 'a file name instead of a folder does not remove the file' {
-            $testFile | Should -Exist
-        }
-        Context 'the exported Excel file' {
+        Context 'exports an Excel file' {
             BeforeAll {
                 $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
 
                 $actual = & $commandImportExcel -Path $testExcelLogFile.FullName -WorksheetName 'Overview'
             }
-            It 'is saved in the log folder' {
+            It 'to the log folder' {
                 $testExcelLogFile | Should -Not -BeNullOrEmpty
             }
-            It 'contains the same quantity of rows as the request' {
-                $actual | Should -HaveCount 4
+            It 'with the same quantity of rows as the imported Excel worksheet' {
+                $actual | Should -HaveCount 5
             }
-            It 'contains the results for successful removals' {
-                $actual[0].ComputerName | Should -Be $env:COMPUTERNAME
-                $actual[0].Path | Should -Be $testFolder[0]
-                $actual[0].Date | Should -Not -BeNullOrEmpty
-                $actual[0].Exist | Should -BeFalse
-                $actual[0].Action | Should -Be 'Remove'
-                $actual[0].Error | Should -BeNullOrEmpty
-
-                $actual[1].ComputerName | Should -Be $env:COMPUTERNAME
-                $actual[1].Path | Should -Be $testFolder[1]
-                $actual[1].Date | Should -Not -BeNullOrEmpty
-                $actual[1].Exist | Should -BeFalse
-                $actual[1].Action | Should -Be 'Remove'
-                $actual[1].Error | Should -BeNullOrEmpty
+            It 'with the successful removals' {
+                @{
+                    0 = $testFolder[0]
+                    1 = $testFolder[1]
+                    2 = $testFile[0]
+                    3 = $testFile[1]
+                }.GetEnumerator() | ForEach-Object {
+                    $actual[$_.Key].ComputerName | Should -Be $env:COMPUTERNAME
+                    $actual[$_.Key].Path | Should -Be $_.Value
+                    $actual[$_.Key].Date | Should -Not -BeNullOrEmpty
+                    $actual[$_.Key].Exist | Should -BeFalse
+                    $actual[$_.Key].Action | Should -Be 'Remove'
+                    $actual[$_.Key].Error | Should -BeNullOrEmpty    
+                }
             }
-            It 'contains the results for failed removals' {
-                $actual[2].ComputerName | Should -Be $env:COMPUTERNAME
-                $actual[2].Path | Should -Be 'notExistingFolder'
-                $actual[2].Date | Should -Not -BeNullOrEmpty
-                $actual[2].Exist | Should -BeFalse
-                $actual[2].Action | Should -BeNullOrEmpty
-                $actual[2].Error | Should -Be 'Path not found'
-
-                $actual[3].ComputerName | Should -Be $env:COMPUTERNAME
-                $actual[3].Path | Should -Be $testFile
-                $actual[3].Date | Should -Not -BeNullOrEmpty
-                $actual[3].Exist | Should -BeTrue
-                $actual[3].Action | Should -BeNullOrEmpty
-                $actual[3].Error | Should -Be 'Path not a folder'
+            It 'with the failed removals' {
+                $actual[4].ComputerName | Should -Be $env:COMPUTERNAME
+                $actual[4].Path | Should -Be 'notExistingFileOrFolder'
+                $actual[4].Date | Should -Not -BeNullOrEmpty
+                $actual[4].Exist | Should -BeFalse
+                $actual[4].Action | Should -BeNullOrEmpty
+                $actual[4].Error | Should -Be 'Path not found'
             }
         }
         It 'a summary mail is sent to the user' {
@@ -182,14 +191,14 @@ Describe 'when rows are imported from Excel' {
                 ($To -eq 'bob@contoso.com') -and
                 ($Bcc -eq $ScriptAdmin) -and
                 ($Priority -eq 'High') -and
-                ($Subject -eq 'Removed 2/4 folders, 2 removal errors') -and
+                ($Subject -eq 'Removed 4/5 items, 1 removal errors') -and
                 ($Attachments -like '*log.xlsx') -and
                 ($Message -like '*
-                *Successfully removed folders*2*
-                *Errors while removing folders*2*
-                *Imported Excel file rows*4*
-                *Not existing folders*3*')
+                *Successfully removed items*4*
+                *Errors while removing items*1*
+                *Imported Excel file rows*5*
+                *Not existing items after running the script*5*')
             }
-        } -Tag test
+        }
     }
 }
