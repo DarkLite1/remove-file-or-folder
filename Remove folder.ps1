@@ -3,16 +3,16 @@
 
 <#
 .SYNOPSIS
-    Remove folders on remote machine.
+    Remove files or folders on remote machine.
 
 .DESCRIPTION
     The script reads an Excel file containing a computer name and a local folder
-    path in each row. It then tries to remove the folders defined on the 
-    requested computers.
+    or file path in each row. It then tries to remove the files or folders 
+    defined on the requested computers.
 
 .PARAMETER Path
     Path to the Excel file containing the rows with the computer names and local
-    folder paths.
+    folder/file paths.
 #>
 
 Param (
