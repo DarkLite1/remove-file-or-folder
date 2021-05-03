@@ -134,7 +134,7 @@ Process {
                 asJob        = $true
             }
 
-            $M = "Start job on '$($invokeParams.ComputerName)' for $($invokeParams.ArgumentList.Count) paths"
+            $M = "Start job on '$($invokeParams.ComputerName)' for $($invokeParams.ArgumentList[0].Count) paths"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
             Invoke-Command @invokeParams
