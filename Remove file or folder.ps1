@@ -107,12 +107,12 @@ Process {
             $computer in 
             ($importExcelFile | Group-Object ComputerName)
         ) {
-            if (-not $computer.Group.FullName) { Continue }
+            if (-not $computer.Group.Path) { Continue }
 
             $invokeParams = @{
                 ComputerName = $computer.Name 
                 ScriptBlock  = $scriptBlock
-                ArgumentList = , $computer.Group.FullName
+                ArgumentList = , $computer.Group.Path
                 asJob        = $true
             }
             Invoke-Command @invokeParams

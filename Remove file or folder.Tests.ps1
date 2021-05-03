@@ -57,19 +57,19 @@ Describe 'when rows are imported from Excel' {
                 @(
                     [PSCustomObject]@{
                         ComputerName = 'PC1'
-                        FullName       = 'K:\folder1'
+                        Path       = 'K:\folder1'
                     }
                     [PSCustomObject]@{
                         ComputerName = 'PC1'
-                        FullName       = 'K:\folder2'
+                        Path       = 'K:\folder2'
                     }
                     [PSCustomObject]@{
                         ComputerName = 'PC2'
-                        FullName       = 'K:\folder3'
+                        Path       = 'K:\folder3'
                     }
                     [PSCustomObject]@{
                         ComputerName = 'PC3'
-                        FullName       = $null
+                        Path       = $null
                     }
                 )
             }
@@ -107,23 +107,23 @@ Describe 'when rows are imported from Excel' {
                 @(
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        FullName       = $testFolder[0]
+                        Path       = $testFolder[0]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        FullName       = $testFolder[1]
+                        Path       = $testFolder[1]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        FullName       = $testFile[0]
+                        Path       = $testFile[0]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        FullName       = $testFile[1]
+                        Path       = $testFile[1]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        FullName       = 'notExistingFileOrFolder'
+                        Path       = 'notExistingFileOrFolder'
                     }
                 )
             }
