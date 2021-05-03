@@ -102,7 +102,7 @@ Process {
     Try {
         $importExcelFile = Import-Excel -Path $Path
         
-        #region Test column headers
+        #region Test Excel column headers ComputerName and Path
         $properties = $importExcelFile | Get-Member -MemberType NoteProperty
 
         if (
