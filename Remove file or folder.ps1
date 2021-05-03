@@ -100,7 +100,7 @@ Begin {
 
 Process {
     Try {
-        #region Remove folders on remote machines
+        #region Remove files/folders on remote machines
         $importExcelFile = Import-Excel -Path $Path
         
         $jobs = foreach (
