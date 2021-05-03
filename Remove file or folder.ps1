@@ -15,6 +15,7 @@
     folder/file paths.
 #>
 
+[CmdLetBinding()]
 Param (
     [Parameter(Mandatory)]
     [String]$ScriptName,
@@ -100,9 +101,15 @@ Begin {
 
 Process {
     Try {
+        $M = "Import Excel file '$Path'"
+        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+
         $importExcelFile = Import-Excel -Path $Path
         
         #region Test Excel column headers ComputerName and Path
+        $M = "Test Excel column headers 'ComputerName' and 'Path'"
+        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+
         $properties = $importExcelFile | Get-Member -MemberType NoteProperty
 
         if (
@@ -126,8 +133,15 @@ Process {
                 ArgumentList = , $computer.Group.Path
                 asJob        = $true
             }
+
+            $M = "Start job on '$($invokeParams.ComputerName)' for $($invokeParams.ArgumentList.Count) paths"
+            Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+
             Invoke-Command @invokeParams
         }
+
+        $M = "Wait for all $($jobs.count) jobs to be finished"
+        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
         $jobResults = if ($jobs) { $jobs | Wait-Job | Receive-Job }
         #endregion
