@@ -56,19 +56,19 @@ Describe 'when rows are imported from Excel' {
             Mock Import-Excel {
                 @(
                     [PSCustomObject]@{
-                        PSComputerName = 'PC1'
+                        ComputerName = 'PC1'
                         FullName       = 'K:\folder1'
                     }
                     [PSCustomObject]@{
-                        PSComputerName = 'PC1'
+                        ComputerName = 'PC1'
                         FullName       = 'K:\folder2'
                     }
                     [PSCustomObject]@{
-                        PSComputerName = 'PC2'
+                        ComputerName = 'PC2'
                         FullName       = 'K:\folder3'
                     }
                     [PSCustomObject]@{
-                        PSComputerName = 'PC3'
+                        ComputerName = 'PC3'
                         FullName       = $null
                     }
                 )
@@ -106,23 +106,23 @@ Describe 'when rows are imported from Excel' {
             Mock Import-Excel {
                 @(
                     [PSCustomObject]@{
-                        PSComputerName = $env:COMPUTERNAME
+                        ComputerName = $env:COMPUTERNAME
                         FullName       = $testFolder[0]
                     }
                     [PSCustomObject]@{
-                        PSComputerName = $env:COMPUTERNAME
+                        ComputerName = $env:COMPUTERNAME
                         FullName       = $testFolder[1]
                     }
                     [PSCustomObject]@{
-                        PSComputerName = $env:COMPUTERNAME
+                        ComputerName = $env:COMPUTERNAME
                         FullName       = $testFile[0]
                     }
                     [PSCustomObject]@{
-                        PSComputerName = $env:COMPUTERNAME
+                        ComputerName = $env:COMPUTERNAME
                         FullName       = $testFile[1]
                     }
                     [PSCustomObject]@{
-                        PSComputerName = $env:COMPUTERNAME
+                        ComputerName = $env:COMPUTERNAME
                         FullName       = 'notExistingFileOrFolder'
                     }
                 )

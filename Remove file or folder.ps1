@@ -50,11 +50,6 @@ Begin {
                     Continue
                 }
 
-                # if (-not (Test-Path -LiteralPath $path -PathType Container)) {
-                #     $result.Error = 'Path not a folder'
-                #     Continue
-                # }
-
                 $result.Action = 'Remove'
                 Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
 
@@ -110,7 +105,7 @@ Process {
         
         $jobs = foreach (
             $computer in 
-            ($importExcelFile | Group-Object PSComputerName)
+            ($importExcelFile | Group-Object ComputerName)
         ) {
             if (-not $computer.Group.FullName) { Continue }
 
