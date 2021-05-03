@@ -49,6 +49,44 @@ Describe 'send an e-mail to the admin when' {
             ($Message -like "*'notFound.xlsx'*file not found*")
         }
     }
+    Context 'The column header is not found in the Excel sheet' {
+        It 'ComputerName' {
+            Mock Import-Excel {
+                @(
+                    [PSCustomObject]@{
+                        NoComputerName = 'PC1'
+                        Path           = 'K:\folder1'
+                    }
+                )
+            }
+            Mock Invoke-Command
+
+            . $testScript @testParams
+
+            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and 
+                ($Message -like "*Column headers 'ComputerName' and 'Path' are not found*")
+            }
+        }
+        It 'Path' {
+            Mock Import-Excel {
+                @(
+                    [PSCustomObject]@{
+                        ComputerName = 'PC1'
+                        FullName     = 'K:\folder1'
+                    }
+                )
+            }
+            Mock Invoke-Command
+
+            . $testScript @testParams
+
+            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and 
+                ($Message -like "*Column headers 'ComputerName' and 'Path' are not found*")
+            }
+        }
+    }
 }
 Describe 'when rows are imported from Excel' {
     Context 'Invoke-Command' {
@@ -57,19 +95,19 @@ Describe 'when rows are imported from Excel' {
                 @(
                     [PSCustomObject]@{
                         ComputerName = 'PC1'
-                        Path       = 'K:\folder1'
+                        Path         = 'K:\folder1'
                     }
                     [PSCustomObject]@{
                         ComputerName = 'PC1'
-                        Path       = 'K:\folder2'
+                        Path         = 'K:\folder2'
                     }
                     [PSCustomObject]@{
                         ComputerName = 'PC2'
-                        Path       = 'K:\folder3'
+                        Path         = 'K:\folder3'
                     }
                     [PSCustomObject]@{
                         ComputerName = 'PC3'
-                        Path       = $null
+                        Path         = $null
                     }
                 )
             }
@@ -107,23 +145,23 @@ Describe 'when rows are imported from Excel' {
                 @(
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        Path       = $testFolder[0]
+                        Path         = $testFolder[0]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        Path       = $testFolder[1]
+                        Path         = $testFolder[1]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        Path       = $testFile[0]
+                        Path         = $testFile[0]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        Path       = $testFile[1]
+                        Path         = $testFile[1]
                     }
                     [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
-                        Path       = 'notExistingFileOrFolder'
+                        Path         = 'notExistingFileOrFolder'
                     }
                 )
             }

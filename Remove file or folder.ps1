@@ -100,9 +100,20 @@ Begin {
 
 Process {
     Try {
-        #region Remove files/folders on remote machines
         $importExcelFile = Import-Excel -Path $Path
         
+        #region Test column headers
+        $properties = $importExcelFile | Get-Member -MemberType NoteProperty
+
+        if (
+            ($properties.Name -notContains 'ComputerName') -or 
+            ($properties.Name -notContains 'Path')
+        ) {
+            throw "Column headers 'ComputerName' and 'Path' are not found in the Excel sheet."
+        }
+        #endregion
+        
+        #region Remove files/folders on remote machines
         $jobs = foreach (
             $computer in 
             ($importExcelFile | Group-Object ComputerName)
