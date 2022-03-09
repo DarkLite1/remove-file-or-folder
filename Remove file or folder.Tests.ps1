@@ -4,14 +4,9 @@
 BeforeAll {
     $commandImportExcel = Get-Command Import-Excel
 
-    $testFileOutParams = @{
-        FilePath = (New-Item "TestDrive:/Test.json" -ItemType File).FullName
-        Encoding = 'utf8'
-    }
-
     $testImportFile = @{
-        MailTo = @('bob@contoso.com')
-        Jobs   = @(
+        MailTo       = @('bob@contoso.com')
+        Destinations = @(
             @{
                 Path               = '\\contoso\share'
                 ComputerName       = $null
@@ -20,6 +15,11 @@ BeforeAll {
             }
         )
     }
+    $testOutParams = @{
+        FilePath = (New-Item "TestDrive:/Test.json" -ItemType File).FullName
+        Encoding = 'utf8'
+    }
+    $testImportFile | ConvertTo-Json | Out-File @testOutParams
 
     $MailAdminParams = {
         ($To -eq $ScriptAdmin) -and ($Priority -eq 'High') -and 
@@ -29,11 +29,12 @@ BeforeAll {
     $testScript = $PSCommandPath.Replace('.Tests.ps1', '.ps1')
     $testParams = @{
         ScriptName = 'Test (Brecht)'
-        ImportFile = $testFileOutParams.FilePath
+        ImportFile = $testOutParams.FilePath
         MailTo     = @('bob@contoso.com')
         Path       = New-Item 'TestDrive:/folders.xlsx' -ItemType File
         LogFolder  = New-Item 'TestDrive:/log' -ItemType Directory
     }
+    
 
     Mock Send-MailHC
     Mock Write-EventLog

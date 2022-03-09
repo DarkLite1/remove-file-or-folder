@@ -74,7 +74,6 @@ Begin {
         Import-EventLogParamsHC -Source $ScriptName
         Write-EventLog @EventStartParams
         Get-ScriptRuntimeHC -Start
-        $Error.Clear()
 
         #region Logging
         try {
@@ -88,6 +87,24 @@ Begin {
         }
         Catch {
             throw "Failed creating the log folder '$LogFolder': $_"
+        }
+        #endregion
+
+        #region Import input file
+        $file = Get-Content $ImportFile -Raw -EA Stop | ConvertFrom-Json
+
+        if (-not ($MailTo = $file.MailTo)) {
+            throw "Input file '$ImportFile': No 'MailTo' addresses found."
+        }
+        if (-not ($Destinations = $file.Destinations)) {
+            throw "Input file '$ImportFile': No 'Destinations' found."
+        }
+        foreach ($destination in $Destinations) {
+            if (-not (
+                    [Int]$destination.OlderThanDays = $destination.OlderThanDays)
+            ) {
+                throw "Input file '$ImportFile': No 'OlderThanDays' number found. Number '0' removes all."
+            }
         }
         #endregion
 
