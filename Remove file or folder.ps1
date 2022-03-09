@@ -99,11 +99,21 @@ Begin {
         if (-not ($Destinations = $file.Destinations)) {
             throw "Input file '$ImportFile': No 'Destinations' found."
         }
-        foreach ($destination in $Destinations) {
-            if (-not (
-                    [Int]$destination.OlderThanDays = $destination.OlderThanDays)
-            ) {
+        foreach ($d in $Destinations) {
+            if (-not $d.Path) {
+                throw "Input file '$ImportFile': No 'Path' found in one of the 'Destinations'."
+            }
+            if (($d.Path -notMatch '^\\\\') -and (-not $d.ComputerName)) {
+                throw "Input file '$ImportFile': No 'ComputerName' found for path '$($d.Path)' in 'Destinations'."
+            }
+            if (-not $d.OlderThanDays) {
                 throw "Input file '$ImportFile': No 'OlderThanDays' number found. Number '0' removes all."
+            }
+            try {
+                [Int]$d.OlderThanDays = $d.OlderThanDays
+            }
+            catch {
+                throw "Input file '$ImportFile': 'OlderThanDays' needs to be a number, the value '$($d.OlderThanDays)' is not supported. Use number '0' to remove all."
             }
         }
         #endregion

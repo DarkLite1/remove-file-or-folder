@@ -4,7 +4,7 @@
 BeforeAll {
     $commandImportExcel = Get-Command Import-Excel
 
-    $testImportFile = @{
+    $testInputFile = @{
         MailTo       = @('bob@contoso.com')
         Destinations = @(
             @{
@@ -19,7 +19,7 @@ BeforeAll {
         FilePath = (New-Item "TestDrive:/Test.json" -ItemType File).FullName
         Encoding = 'utf8'
     }
-    $testImportFile | ConvertTo-Json | Out-File @testOutParams
+    $testInputFile | ConvertTo-Json | Out-File @testOutParams
 
     $MailAdminParams = {
         ($To -eq $ScriptAdmin) -and ($Priority -eq 'High') -and 
@@ -35,14 +35,101 @@ BeforeAll {
         LogFolder  = New-Item 'TestDrive:/log' -ItemType Directory
     }
     
-
     Mock Send-MailHC
     Mock Write-EventLog
 }
-Describe 'the mandatory parameters are' {
-    It '<_>' -ForEach @('Path', 'ImportFile' , 'MailTo', 'ScriptName') {
-        (Get-Command $testScript).Parameters[$_].Attributes.Mandatory | 
-        Should -BeTrue
+Describe 'Prerequisites' {
+    Context 'the mandatory parameters are' {
+        It '<_>' -ForEach @('Path', 'ImportFile' , 'MailTo', 'ScriptName') {
+            (Get-Command $testScript).Parameters[$_].Attributes.Mandatory | 
+            Should -BeTrue
+        }
+    }
+    Context 'ImportFile' {
+        It 'not found' {
+            $testNewParams = $testParams.clone()
+            $testNewParams.ImportFile = 'nonExisting.json'
+
+            .$testScript @testNewParams
+
+            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "Cannot find path*nonExisting.json*")
+            }
+            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                $EntryType -eq 'Error'
+            }
+        }
+        Context 'property' {
+            BeforeEach {
+                $testNewFile = Copy-ObjectHC $testInputFile
+            }
+            It 'OlderThanDays is missing' {
+                $testNewFile.Destinations[0].OlderThanDays = $null
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+            
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'OlderThanDays' number found*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
+            It 'OlderThanDays is not a number' {
+                $testNewFile.Destinations[0].OlderThanDays = 'a'
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+            
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*'OlderThanDays' needs to be a number, the value 'a' is not supported*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
+            It 'Destinations is missing' {
+                $testNewFile.Destinations = $null
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+            
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Destinations' found*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
+            It 'Path is missing' {
+                $testNewFile.Destinations[0].Path = $null
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+            
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Path' found*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
+            It 'Path is a local path but no ComputerName is given' {
+                $testNewFile.Destinations[0].Path = 'd:\bla'
+                $testNewFile.Destinations[0].ComputerName = ''
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+            
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'ComputerName' found for path 'd:\bla'*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
+        } -Tag test
     }
 }
 Describe 'send an e-mail to the admin when' {
@@ -257,6 +344,6 @@ Describe 'when rows are imported from Excel' {
                 *Imported Excel file rows*5*
                 *Not existing items after running the script*5*')
             }
-        } -Tag test
+        }
     }
 }
