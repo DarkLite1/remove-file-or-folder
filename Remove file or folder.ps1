@@ -21,11 +21,7 @@ Param (
     [String]$ScriptName,
     [Parameter(Mandatory)]
     [String]$ImportFile,
-    [Parameter(Mandatory)]
-    [String]$Path,
-    [Parameter(Mandatory)]
-    [String[]]$MailTo,
-    [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\Home drives removal\$ScriptName",
+    [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\Remove file or folder\$ScriptName",
     [String]$ScriptAdmin = $env:POWERSHELL_SCRIPT_ADMIN
 )
 
@@ -33,40 +29,42 @@ Begin {
     $scriptBlock = {
         Param (
             [Parameter(Mandatory)]
-            [String[]]$Paths
+            [String]$Path,
+            [Parameter(Mandatory)]
+            [Int]$OlderThanDays,
+            [Parameter(Mandatory)]
+            [Boolean]$RemoveEmptyFolders
         )
 
-        foreach ($path in $Paths) {
-            Try {
-                $result = [PSCustomObject]@{
-                    ComputerName = $env:COMPUTERNAME
-                    Path         = $path
-                    Date         = Get-Date
-                    Exist        = $true
-                    Action       = $null
-                    Error        = $null
-                }
-
-                if (-not (Test-Path -LiteralPath $path)) {
-                    $result.Exist = $false
-                    $result.Error = 'Path not found'
-                    Continue
-                }
-
-                $result.Action = 'Remove'
-                Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
-
-                if (-not (Test-Path -LiteralPath $path)) {
-                    $result.Exist = $false
-                }
+        Try {
+            $result = [PSCustomObject]@{
+                ComputerName = $env:COMPUTERNAME
+                Path         = $Path
+                Date         = Get-Date
+                Exist        = $true
+                Action       = $null
+                Error        = $null
             }
-            Catch {
-                $result.Error = $_
-                $Error.RemoveAt(0)
+
+            if (-not (Test-Path -LiteralPath $path)) {
+                $result.Exist = $false
+                $result.Error = 'Path not found'
+                Continue
             }
-            finally {
-                $result
+
+            $result.Action = 'Remove'
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+
+            if (-not (Test-Path -LiteralPath $path)) {
+                $result.Exist = $false
             }
+        }
+        Catch {
+            $result.Error = $_
+            $Error.RemoveAt(0)
+        }
+        finally {
+            $result
         }
     }
 
@@ -90,7 +88,10 @@ Begin {
         }
         #endregion
 
-        #region Import input file
+        #region Import .json file
+        $M = "Import .json file '$ImportFile'"
+        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+
         $file = Get-Content $ImportFile -Raw -EA Stop | ConvertFrom-Json
 
         if (-not ($MailTo = $file.MailTo)) {
@@ -136,40 +137,22 @@ Begin {
 
 Process {
     Try {
-        $M = "Import Excel file '$Path'"
-        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
-
-        $importExcelFile = Import-Excel -Path $Path
-        
-        #region Test Excel column headers ComputerName and Path
-        $M = "Test Excel column headers 'ComputerName' and 'Path'"
-        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
-
-        $properties = $importExcelFile | Get-Member -MemberType NoteProperty
-
-        if (
-            ($properties.Name -notContains 'ComputerName') -or 
-            ($properties.Name -notContains 'Path')
-        ) {
-            throw "Column headers 'ComputerName' and 'Path' are not found in the Excel sheet."
-        }
-        #endregion
-        
         #region Remove files/folders on remote machines
-        $jobs = foreach (
-            $computer in 
-            ($importExcelFile | Group-Object ComputerName)
-        ) {
-            if (-not $computer.Group.Path) { Continue }
-
+        $jobs = foreach ($d in $Destinations) {
             $invokeParams = @{
-                ComputerName = $computer.Name 
+                ComputerName = $d.ComputerName
                 ScriptBlock  = $scriptBlock
-                ArgumentList = , $computer.Group.Path
-                asJob        = $true
+                ArgumentList = $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders
+                AsJob        = $true
+            }
+            
+            if (-not $d.ComputerName) { 
+                $invokeParams.ComputerName = $env:COMPUTERNAME
             }
 
-            $M = "Start job on '$($invokeParams.ComputerName)' for $($invokeParams.ArgumentList[0].Count) paths"
+            $M = "Start job on '{0}' for path '{1}' OlderThanDays '{2}' RemoveEmptyFolders '{3}'" -f $invokeParams.ComputerName,
+            $invokeParams.ArgumentList[0], $invokeParams.ArgumentList[1],
+            $invokeParams.ArgumentList[2]
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
             Invoke-Command @invokeParams
