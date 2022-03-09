@@ -20,6 +20,8 @@ Param (
     [Parameter(Mandatory)]
     [String]$ScriptName,
     [Parameter(Mandatory)]
+    [String]$ImportFile,
+    [Parameter(Mandatory)]
     [String]$Path,
     [Parameter(Mandatory)]
     [String[]]$MailTo,

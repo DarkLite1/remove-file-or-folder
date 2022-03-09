@@ -4,6 +4,23 @@
 BeforeAll {
     $commandImportExcel = Get-Command Import-Excel
 
+    $testFileOutParams = @{
+        FilePath = (New-Item "TestDrive:/Test.json" -ItemType File).FullName
+        Encoding = 'utf8'
+    }
+
+    $testImportFile = @{
+        MailTo = @('bob@contoso.com')
+        Jobs   = @(
+            @{
+                Path               = '\\contoso\share'
+                ComputerName       = $null
+                OlderThanDays      = 20
+                RemoveEmptyFolders = $false
+            }
+        )
+    }
+
     $MailAdminParams = {
         ($To -eq $ScriptAdmin) -and ($Priority -eq 'High') -and 
         ($Subject -eq 'FAILURE')
@@ -12,6 +29,7 @@ BeforeAll {
     $testScript = $PSCommandPath.Replace('.Tests.ps1', '.ps1')
     $testParams = @{
         ScriptName = 'Test (Brecht)'
+        ImportFile = $testFileOutParams.FilePath
         MailTo     = @('bob@contoso.com')
         Path       = New-Item 'TestDrive:/folders.xlsx' -ItemType File
         LogFolder  = New-Item 'TestDrive:/log' -ItemType Directory
@@ -21,7 +39,7 @@ BeforeAll {
     Mock Write-EventLog
 }
 Describe 'the mandatory parameters are' {
-    It '<_>' -ForEach @('Path', 'MailTo', 'ScriptName') {
+    It '<_>' -ForEach @('Path', 'ImportFile' , 'MailTo', 'ScriptName') {
         (Get-Command $testScript).Parameters[$_].Attributes.Mandatory | 
         Should -BeTrue
     }
@@ -166,6 +184,7 @@ Describe 'when rows are imported from Excel' {
                 )
             }
     
+            $Error.Clear()
             . $testScript @testParams
         }
         Context 'starts a job on the remote computer to' {
@@ -224,7 +243,7 @@ Describe 'when rows are imported from Excel' {
                 $actual[4].Error | Should -Be 'Path not found'
             }
         }
-        It 'a summary mail is sent to the user' {
+        It 'sends a summary mail to the user' {
             Should -Invoke Send-MailHC -Exactly 1 -Scope Context -ParameterFilter {
                 ($To -eq 'bob@contoso.com') -and
                 ($Bcc -eq $ScriptAdmin) -and
@@ -237,6 +256,6 @@ Describe 'when rows are imported from Excel' {
                 *Imported Excel file rows*5*
                 *Not existing items after running the script*5*')
             }
-        }
+        } -Tag test
     }
 }
