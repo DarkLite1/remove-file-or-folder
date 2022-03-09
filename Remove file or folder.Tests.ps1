@@ -63,12 +63,38 @@ Describe 'Prerequisites' {
             BeforeEach {
                 $testNewFile = Copy-ObjectHC $testInputFile
             }
+            It 'RemoveEmptyFolders is missing' {
+                $testNewFile.Destinations[0].RemoveEmptyFolders = $null
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+                            
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'RemoveEmptyFolders' found*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
+            It 'RemoveEmptyFolders is not a boolean' {
+                $testNewFile.Destinations[0].RemoveEmptyFolders = 'yes'
+                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+            
+                .$testScript @testParams
+
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "*$ImportFile*The value 'yes' in 'RemoveEmptyFolders' is not a true false value*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
             It 'OlderThanDays is missing' {
                 $testNewFile.Destinations[0].OlderThanDays = $null
                 $testNewFile | ConvertTo-Json | Out-File @testOutParams
             
                 .$testScript @testParams
-            
+                            
                 Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
                 (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'OlderThanDays' number found*")
                 }

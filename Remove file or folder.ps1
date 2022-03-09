@@ -115,6 +115,12 @@ Begin {
             catch {
                 throw "Input file '$ImportFile': 'OlderThanDays' needs to be a number, the value '$($d.OlderThanDays)' is not supported. Use number '0' to remove all."
             }
+            if (-not $d.RemoveEmptyFolders) {
+                throw "Input file '$ImportFile': No 'RemoveEmptyFolders' found."
+            }
+            if (-not ($d.RemoveEmptyFolders -is [boolean])) {
+                throw "Input file '$ImportFile': The value '$($d.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
+            }
         }
         #endregion
 
