@@ -116,7 +116,10 @@ Begin {
             catch {
                 throw "Input file '$ImportFile': 'OlderThanDays' needs to be a number, the value '$($d.OlderThanDays)' is not supported. Use number '0' to remove all."
             }
-            if (-not $d.RemoveEmptyFolders) {
+            if (
+                ($d.Remove -eq 'content') -and
+                ($d.PSObject.Properties.Name -notContains 'RemoveEmptyFolders')
+            ) {
                 throw "Input file '$ImportFile': No 'RemoveEmptyFolders' found."
             }
             if (-not ($d.RemoveEmptyFolders -is [boolean])) {

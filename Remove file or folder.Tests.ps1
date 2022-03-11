@@ -6,6 +6,7 @@ BeforeAll {
         MailTo       = @('bob@contoso.com')
         Destinations = @(
             @{
+                Remove             = 'content'
                 Path               = '\\contoso\share'
                 ComputerName       = $null
                 OlderThanDays      = 20
@@ -67,67 +68,13 @@ Describe 'send an e-mail to the admin when' {
             }
         }
         Context 'property' {
-            BeforeEach {
-                $testNewFile = Copy-ObjectHC $testInputFile
-            }
             AfterAll {
                 $testInputFile | ConvertTo-Json | Out-File @testOutParams
             }
-            It 'RemoveEmptyFolders is missing' {
-                $testNewFile.Destinations[0].RemoveEmptyFolders = $null
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
-                
-                .$testScript @testParams
-                                
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'RemoveEmptyFolders' found*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
-                }
-            }
-            It 'RemoveEmptyFolders is not a boolean' {
-                $testNewFile.Destinations[0].RemoveEmptyFolders = 'yes'
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
-                
-                .$testScript @testParams
-    
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*The value 'yes' in 'RemoveEmptyFolders' is not a true false value*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
-                }
-            }
-            It 'OlderThanDays is missing' {
-                $testNewFile.Destinations[0].OlderThanDays = $null
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
-                
-                .$testScript @testParams
-                                
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'OlderThanDays' number found*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
-                }
-            }
-            It 'OlderThanDays is not a number' {
-                $testNewFile.Destinations[0].OlderThanDays = 'a'
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
-                
-                .$testScript @testParams
-                
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*'OlderThanDays' needs to be a number, the value 'a' is not supported*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
-                }
-            }
             It 'Destinations is missing' {
-                $testNewFile.Destinations = $null
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+                @{
+                    MailTo = @('bob@contoso.com')
+                } | ConvertTo-Json | Out-File @testOutParams
                 
                 .$testScript @testParams
                 
@@ -139,8 +86,16 @@ Describe 'send an e-mail to the admin when' {
                 }
             }
             It 'Path is missing' {
-                $testNewFile.Destinations[0].Path = $null
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+                @{
+                    MailTo       = @('bob@contoso.com')
+                    Destinations = @(
+                        @{
+                            ComputerName       = $null
+                            OlderThanDays      = 'a'
+                            RemoveEmptyFolders = $false
+                        }
+                    )
+                } | ConvertTo-Json | Out-File @testOutParams
                 
                 .$testScript @testParams
                 
@@ -152,9 +107,17 @@ Describe 'send an e-mail to the admin when' {
                 }
             }
             It 'Path is a local path but no ComputerName is given' {
-                $testNewFile.Destinations[0].Path = 'd:\bla'
-                $testNewFile.Destinations[0].ComputerName = ''
-                $testNewFile | ConvertTo-Json | Out-File @testOutParams
+                @{
+                    MailTo       = @('bob@contoso.com')
+                    Destinations = @(
+                        @{
+                            Path               = 'd:\bla'
+                            ComputerName       = $null
+                            OlderThanDays      = 'a'
+                            RemoveEmptyFolders = $false
+                        }
+                    )
+                } | ConvertTo-Json | Out-File @testOutParams
                 
                 .$testScript @testParams
                 
@@ -165,7 +128,125 @@ Describe 'send an e-mail to the admin when' {
                     $EntryType -eq 'Error'
                 }
             }
-        } -Tag test
+            Context "Remove is 'content'" {
+                It 'RemoveEmptyFolders is missing' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'content'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                OlderThanDays      = 20
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
+                
+                    .$testScript @testParams
+                                
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'RemoveEmptyFolders' found*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+                It 'RemoveEmptyFolders is not a boolean' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'content'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                OlderThanDays      = 20
+                                RemoveEmptyFolders = 'yes'
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
+                
+                    .$testScript @testParams
+    
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*The value 'yes' in 'RemoveEmptyFolders' is not a true false value*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+                It 'RemoveEmptyFolders is a boolean all is correct' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'content'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                OlderThanDays      = 20
+                                RemoveEmptyFolders = $false
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
+                
+                    .$testScript @testParams
+    
+                    Should -Not -Invoke Send-MailHC -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*'RemoveEmptyFolders'*")
+                    }
+                }
+            }
+            Context "Remove is 'file'" {
+                It 'OlderThanDays is missing' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'content'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                RemoveEmptyFolders = $false
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
+                
+                    .$testScript @testParams
+                                
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'OlderThanDays' number found*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+                It 'OlderThanDays is not a number' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'content'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                OlderThanDays      = 'a'
+                                RemoveEmptyFolders = $false
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
+
+                    .$testScript @testParams
+                
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*'OlderThanDays' needs to be a number, the value 'a' is not supported*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+            }
+            Context "Remove is 'folder'" {
+
+                
+            }
+        } #-Tag test
     }
 }
 Describe 'when rows are imported from Excel' {
@@ -320,4 +401,4 @@ Describe 'when rows are imported from Excel' {
             }
         }
     }
-}
+} -Skip
