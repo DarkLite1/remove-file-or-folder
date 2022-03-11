@@ -128,16 +128,61 @@ Describe 'send an e-mail to the admin when' {
                     $EntryType -eq 'Error'
                 }
             }
+            It 'Remove is missing' {
+                @{
+                    MailTo       = @('bob@contoso.com')
+                    Destinations = @(
+                        @{
+                            Path               = '\\contoso\share'
+                            ComputerName       = $null
+                            OlderThanDays      = 0
+                            RemoveEmptyFolders = $false
+                        }
+                    )
+                } | ConvertTo-Json | Out-File @testOutParams
+                
+                .$testScript @testParams
+                
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'Remove' not found*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            } -Tag test
+            It 'Remove value is incorrect' {
+                @{
+                    MailTo       = @('bob@contoso.com')
+                    Destinations = @(
+                        @{
+                            Remove             = 'wrong'
+                            Path               = '\\contoso\share'
+                            ComputerName       = $null
+                            OlderThanDays      = 0
+                            RemoveEmptyFolders = $false
+                        }
+                    )
+                } | ConvertTo-Json | Out-File @testOutParams
+                
+                .$testScript @testParams
+                
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Value 'wrong' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            } -Tag test
             Context "Remove is 'content'" {
                 It 'RemoveEmptyFolders is missing' {
                     @{
                         MailTo       = @('bob@contoso.com')
                         Destinations = @(
                             @{
-                                Remove             = 'content'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                OlderThanDays      = 20
+                                Remove        = 'content'
+                                Path          = '\\contoso\share'
+                                ComputerName  = $null
+                                OlderThanDays = 20
                             }
                         )
                     } | ConvertTo-Json | Out-File @testOutParams
