@@ -308,13 +308,34 @@ Describe 'send an e-mail to the admin when' {
                     Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                         $EntryType -eq 'Error'
                     }
-                } -tag test
+                }
             }
             Context "Remove is 'folder'" {
+                It 'RemoveEmptyFolders is not null' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'folder'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                OlderThanDays      = 0
+                                RemoveEmptyFolders = $true
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
 
+                    .$testScript @testParams
                 
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile* 'RemoveEmptyFolders' cannot be used with 'Remove' value 'folder'*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
             }
-        } #-Tag test
+        }
     }
 }
 Describe 'when rows are imported from Excel' {
