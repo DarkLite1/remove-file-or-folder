@@ -93,7 +93,9 @@ Begin {
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
         $file = Get-Content $ImportFile -Raw -EA Stop | ConvertFrom-Json
+        #endregion
 
+        #region Test .json file properties
         if (-not ($MailTo = $file.MailTo)) {
             throw "Input file '$ImportFile': No 'MailTo' addresses found."
         }

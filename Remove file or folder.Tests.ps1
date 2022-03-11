@@ -149,7 +149,7 @@ Describe 'send an e-mail to the admin when' {
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
-            } -Tag test
+            }
             It 'Remove value is incorrect' {
                 @{
                     MailTo       = @('bob@contoso.com')
@@ -172,7 +172,7 @@ Describe 'send an e-mail to the admin when' {
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
-            } -Tag test
+            }
             Context "Remove is 'content'" {
                 It 'RemoveEmptyFolders is missing' {
                     @{
