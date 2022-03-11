@@ -174,7 +174,7 @@ Describe 'send an e-mail to the admin when' {
                         $EntryType -eq 'Error'
                     }
                 }
-                It 'RemoveEmptyFolders is a boolean all is correct' {
+                It 'RemoveEmptyFolders is correct' {
                     @{
                         MailTo       = @('bob@contoso.com')
                         Destinations = @(
