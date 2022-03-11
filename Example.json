@@ -1,0 +1,35 @@
+{
+  "Destinations": [
+    {
+      "Remove": "file",
+      "Path": "\\\\contoso\\file.txt",
+      "ComputerName": null,
+      "OlderThanDays": 0,
+      "Message": {
+        "ToDisplay": "Log file CL",
+        "Private": "Remove file"
+      }
+    },
+    {
+      "Remove": "folder",
+      "Path": "\\\\contoso\\folder",
+      "ComputerName": null,
+      "OlderThanDays": 0,
+      "Message": {
+        "ToDisplay": null,
+        "Private": "Remove folder"
+      }
+    },
+    {
+      "Remove": "content",
+      "Path": "c:\\data\\folder",
+      "ComputerName": "PC1",
+      "RemoveEmptyFolders": false,
+      "OlderThanDays": 20,
+      "Message": {
+        "ToDisplay": "Log folder CL",
+        "Private": "Remove files in folder older than 20 days"
+      }
+    }
+  ]
+}
