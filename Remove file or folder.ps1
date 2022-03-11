@@ -109,7 +109,7 @@ Begin {
                 throw "Input file '$ImportFile': No 'ComputerName' found for path '$($d.Path)' in 'Destinations'."
             }
             #endregion
-            
+
             #region OlderThanDays
             if ($d.PSObject.Properties.Name -notContains 'OlderThanDays') {
                 throw "Input file '$ImportFile': No 'OlderThanDays' number found. Number '0' removes all."
@@ -118,12 +118,17 @@ Begin {
                 throw "Input file '$ImportFile': 'OlderThanDays' needs to be a number, the value '$($d.OlderThanDays)' is not supported. Use number '0' to remove all."
             }
             #endregion
+
+            #region Remove
             if ($d.PSObject.Properties.Name -notContains 'Remove') {
                 throw "Input file '$ImportFile': Property 'Remove' not found. Valid values are 'folder', 'file' or 'content'."
             }
             if ($d.Remove -notMatch 'folder|file|content') {
                 throw "Input file '$ImportFile': Value '$($d.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
             }
+            #endregion
+
+            #region RemoveEmptyFolders
             if (
                 ($d.Remove -eq 'content') -and
                 ($d.PSObject.Properties.Name -notContains 'RemoveEmptyFolders')
@@ -133,6 +138,13 @@ Begin {
             if (-not ($d.RemoveEmptyFolders -is [boolean])) {
                 throw "Input file '$ImportFile': The value '$($d.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
             }
+            if (
+                ($d.Remove -ne 'content') -and
+                ($d.RemoveEmptyFolders)
+            ) {
+                throw "Input file '$ImportFile': 'RemoveEmptyFolders' cannot be used with 'Remove' value '$($d.Remove)'."
+            }
+            #endregion
         }
         #endregion
 

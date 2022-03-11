@@ -246,7 +246,7 @@ Describe 'send an e-mail to the admin when' {
                         MailTo       = @('bob@contoso.com')
                         Destinations = @(
                             @{
-                                Remove             = 'content'
+                                Remove             = 'file'
                                 Path               = '\\contoso\share'
                                 ComputerName       = $null
                                 RemoveEmptyFolders = $false
@@ -268,7 +268,7 @@ Describe 'send an e-mail to the admin when' {
                         MailTo       = @('bob@contoso.com')
                         Destinations = @(
                             @{
-                                Remove             = 'content'
+                                Remove             = 'file'
                                 Path               = '\\contoso\share'
                                 ComputerName       = $null
                                 OlderThanDays      = 'a'
@@ -286,6 +286,29 @@ Describe 'send an e-mail to the admin when' {
                         $EntryType -eq 'Error'
                     }
                 }
+                It 'RemoveEmptyFolders is not null' {
+                    @{
+                        MailTo       = @('bob@contoso.com')
+                        Destinations = @(
+                            @{
+                                Remove             = 'file'
+                                Path               = '\\contoso\share'
+                                ComputerName       = $null
+                                OlderThanDays      = 0
+                                RemoveEmptyFolders = $true
+                            }
+                        )
+                    } | ConvertTo-Json | Out-File @testOutParams
+
+                    .$testScript @testParams
+                
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile* 'RemoveEmptyFolders' cannot be used with 'Remove' value 'file'*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                } -tag test
             }
             Context "Remove is 'folder'" {
 
