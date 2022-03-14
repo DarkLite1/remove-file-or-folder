@@ -297,32 +297,37 @@ Process {
         #endregion
 
         #region Export results to Excel log file
-        if ($jobResults) {
-            $M = "Export $($jobResults.Count) rows to Excel"
+        $exportToExcel = foreach (
+            $job in 
+            $jobResults | Where-Object { $_.Items }
+        ) {
+            $job.Items | Select-Object -Property @{
+                Name       = 'ComputerName'; 
+                Expression = { $job.ComputerName } 
+            },
+            'Type', 'FullName', 'CreationTime', 'Action', 'Error'
+        }
+
+        if ($exportToExcel) {
+            $M = "Export $($exportToExcel.Count) rows to Excel"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
             
             $excelParams = @{
                 Path               = $LogFile + '- Log.xlsx'
-                AutoSize           = $true
                 WorksheetName      = 'Overview'
                 TableName          = 'Overview'
-                FreezeTopRow       = $true
                 NoNumberConversion = '*'
+                AutoSize           = $true
+                FreezeTopRow       = $true
             }
-            $jobResults | 
-            Select-Object -Property 'ComputerName', 'Path', 'Date', 
-            'Error' | 
-            Export-Excel @excelParams
+            $exportToExcel | Export-Excel @excelParams
 
             $mailParams.Attachments = $excelParams.Path
         }
         #endregion
 
         #region Send mail to user
-        $removedItems = $jobResults.Where( {
-                ($_.Action -eq 'Remove') -and
-                ($_.Exist -eq $false)
-            })
+        $removedItems = $jobResults.Where( { ($_.Action -eq 'Remove') })
         $removalErrors = $jobResults.Where( { $_.Error })
            
         $mailParams.Subject = "Removed $($removedItems.Count)/$($importExcelFile.count) items"
