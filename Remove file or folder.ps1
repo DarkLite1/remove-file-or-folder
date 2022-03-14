@@ -29,35 +29,140 @@ Begin {
     $scriptBlock = {
         Param (
             [Parameter(Mandatory)]
+            [ValidateSet('file', 'folder', 'content')]
+            [String]$Type,
+            [Parameter(Mandatory)]
             [String]$Path,
             [Parameter(Mandatory)]
             [Int]$OlderThanDays,
-            [Parameter(Mandatory)]
             [Boolean]$RemoveEmptyFolders
         )
 
         Try {
+            $compareDate = (Get-Date).AddDays(-$OlderThanDays)
+    
             $result = [PSCustomObject]@{
-                ComputerName = $env:COMPUTERNAME
-                Path         = $Path
-                Date         = Get-Date
-                Exist        = $true
-                Action       = $null
-                Error        = $null
+                Type               = $Type
+                Path               = $Path
+                OlderThanDays      = $OlderThanDays
+                OlderThanDate      = $compareDate
+                ComputerName       = $env:COMPUTERNAME
+                RemoveEmptyFolders = $RemoveEmptyFolders
+                Items              = @()
+                Error              = $null
             }
 
-            if (-not (Test-Path -LiteralPath $path)) {
-                $result.Exist = $false
-                $result.Error = 'Path not found'
-                Continue
+            #region Test file folder content
+            if (
+                ($Type -eq 'content') -and
+                (-not (Test-Path -LiteralPath $Path -PathType Container))
+            ) {
+                throw 'Folder not found'
             }
-
-            $result.Action = 'Remove'
-            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
-
-            if (-not (Test-Path -LiteralPath $path)) {
-                $result.Exist = $false
+            elseif (
+                ($Type -eq 'folder') -and
+                (-not (Test-Path -LiteralPath $Path -PathType Container))
+            ) {
+                $result.Items += [PSCustomObject]@{
+                    Type         = 'Folder'
+                    FullName     = $Path
+                    CreationTime = $null
+                    Action       = $null
+                    Error        = 'Path not found'
+                }
+                Exit
             }
+            elseif (
+                ($Type -eq 'file') -and
+                (-not (Test-Path -LiteralPath $Path -PathType Leaf))
+            ) {
+                $result.Items += [PSCustomObject]@{
+                    Type         = 'File'
+                    FullName     = $Path
+                    CreationTime = $null
+                    Action       = $null
+                    Error        = 'Path not found'
+                }
+                Exit
+            }
+            #endregion
+
+            #region Remove files
+            $removeParams = @{
+                Recurse     = $true
+                Force       = $true
+                ErrorAction = 'Stop'
+            }
+            $getParams = @{
+                LiteralPath = $Path 
+                Recurse     = $true
+            }
+            
+            $result.Items = Get-ChildItem @getParams -File | 
+            Where-Object { $_.CreationTime -lt $compareDate } | ForEach-Object {
+                try {
+                    Remove-Item @removeParams -LiteralPath $_.FullName
+                    [PSCustomObject]@{
+                        Type         = 'File' 
+                        FullName     = $_.FullName 
+                        CreationTime = $_.CreationTime
+                        Action       = 'Removed'
+                        Error        = $null
+                    }
+                }
+                catch {
+                    [PSCustomObject]@{
+                        Type         = 'File' 
+                        FullName     = $_.FullName 
+                        CreationTime = $_.CreationTime
+                        Action       = $null
+                        Error        = $_
+                    }
+                    $Error.RemoveAt(0)
+                }
+            }
+            #endregion
+
+            #region Remove empty folders
+            if (
+                ($Type -eq 'content') -and
+                ($RemoveEmptyFolders)
+            ) {
+                $failedFolderRemoval = @()
+
+                while (
+                    $emptyFolders = Get-ChildItem @getParams -Directory | 
+                    Where-Object { 
+                        ($_.GetFileSystemInfos().Count -eq 0) -and 
+                        ($failedFolderRemoval -notContains $_.FullName) 
+                    }
+                ) {
+                    $emptyFolders | ForEach-Object {
+                        try {
+                            Remove-Item @removeParams -LiteralPath $_.FullName
+                            [PSCustomObject]@{
+                                Type         = 'Folder' 
+                                FullName     = $_.FullName 
+                                CreationTime = $_.CreationTime
+                                Action       = 'Removed'
+                                Error        = $null
+                            }
+                        }
+                        catch {
+                            [PSCustomObject]@{
+                                Type         = 'Folder' 
+                                FullName     = $_.FullName 
+                                CreationTime = $_.CreationTime
+                                Action       = $null
+                                Error        = $_
+                            }
+                            $Error.RemoveAt(0)
+                            $failedFolderRemoval += $_.FullName
+                        }
+                    }   
+                }
+            }
+            #endregion
         }
         Catch {
             $result.Error = $_
@@ -131,20 +236,20 @@ Begin {
             #endregion
 
             #region RemoveEmptyFolders
-            if (
-                ($d.Remove -eq 'content') -and
-                ($d.PSObject.Properties.Name -notContains 'RemoveEmptyFolders')
-            ) {
-                throw "Input file '$ImportFile': No 'RemoveEmptyFolders' found."
+            if ($d.Remove -eq 'content') {
+                if (
+                    $d.PSObject.Properties.Name -notContains 'RemoveEmptyFolders'
+                ) {
+                    throw "Input file '$ImportFile': No 'RemoveEmptyFolders' found."
+                }
+                if (-not ($d.RemoveEmptyFolders -is [boolean])) {
+                    throw "Input file '$ImportFile': The value '$($d.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
+                }
             }
-            if (-not ($d.RemoveEmptyFolders -is [boolean])) {
-                throw "Input file '$ImportFile': The value '$($d.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
-            }
-            if (
-                ($d.Remove -ne 'content') -and
-                ($d.RemoveEmptyFolders)
-            ) {
-                throw "Input file '$ImportFile': 'RemoveEmptyFolders' cannot be used with 'Remove' value '$($d.Remove)'."
+            else {
+                if ($d.RemoveEmptyFolders) {
+                    throw "Input file '$ImportFile': 'RemoveEmptyFolders' cannot be used with 'Remove' value '$($d.Remove)'."
+                }
             }
             #endregion
         }
@@ -167,12 +272,14 @@ Process {
             $invokeParams = @{
                 ComputerName = $d.ComputerName
                 ScriptBlock  = $scriptBlock
-                ArgumentList = $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders
+                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays
                 AsJob        = $true
             }
-            
             if (-not $d.ComputerName) { 
                 $invokeParams.ComputerName = $env:COMPUTERNAME
+            }
+            if ($d.RemoveEmptyFolders) {
+                $invokeParams.ArgumentList += $d.RemoveEmptyFolders
             }
 
             $M = "Start job on '{0}' for path '{1}' OlderThanDays '{2}' RemoveEmptyFolders '{3}'" -f $invokeParams.ComputerName,
@@ -204,7 +311,7 @@ Process {
             }
             $jobResults | 
             Select-Object -Property 'ComputerName', 'Path', 'Date', 
-            'Exist', 'Action', 'Error' | 
+            'Error' | 
             Export-Excel @excelParams
 
             $mailParams.Attachments = $excelParams.Path
@@ -212,45 +319,41 @@ Process {
         #endregion
 
         #region Send mail to user
-        $removedFolders = $jobResults.Where( {
+        $removedItems = $jobResults.Where( {
                 ($_.Action -eq 'Remove') -and
                 ($_.Exist -eq $false)
             })
-        $folderRemovalErrors = $jobResults.Where( { $_.Error })
-        $notExistingFolders = $jobResults.Where( { $_.Exist -eq $false })
+        $removalErrors = $jobResults.Where( { $_.Error })
            
-        $mailParams.Subject = "Removed $($removedFolders.Count)/$($importExcelFile.count) items"
+        $mailParams.Subject = "Removed $($removedItems.Count)/$($importExcelFile.count) items"
 
         $ErrorTable = $null
    
-        if ($Error) {
+        # $error is polluted by VsCode
+        if ($errorMessages = $Error.Exception.Message | Where-Object { $_ }) {
             $mailParams.Priority = 'High'
-            $mailParams.Subject = "$($Error.Count) errors, $($mailParams.Subject)"
-            $ErrorTable = "<p>During removal <b>$($Error.Count) non terminating errors</b> were detected:$($Error.Exception | Select-Object -ExpandProperty Message | ConvertTo-HtmlListHC)</p>"
+            $mailParams.Subject = "$($errorMessages.Count) errors, $($mailParams.Subject)"
+            $ErrorTable = "<p>During removal <b>$($Error.Count) non terminating errors</b> were detected:$($errorMessages | ConvertTo-HtmlListHC)</p>"
         }
 
-        if ($folderRemovalErrors) {
+        if ($removalErrors) {
             $mailParams.Priority = 'High'
-            $mailParams.Subject += ", $($folderRemovalErrors.Count) removal errors"
+            $mailParams.Subject += ", $($removalErrors.Count) removal errors"
         }
    
         $table = "
            <table>
                <tr>
                    <th>Successfully removed items</th>
-                   <td>$($removedFolders.Count)</td>
+                   <td>$($removedItems.Count)</td>
                </tr>
                <tr>
                    <th>Errors while removing items</th>
-                   <td>$($folderRemovalErrors.Count)</td>
-               </tr>
-               <tr>
-                   <th>Imported Excel file rows</th>
-                   <td>$($importExcelFile.Count)</td>
+                   <td>$($removalErrors.Count)</td>
                </tr>
                <tr>
                    <th>Not existing items after running the script</th>
-                   <td>$($notExistingFolders.Count)</td>
+                   <td>$($notExistingItems.Count)</td>
                </tr>
            </table>
            "
