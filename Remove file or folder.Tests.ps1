@@ -378,6 +378,9 @@ Describe "when 'Remove' is 'file'" {
         It 'to the log folder' {
             $testExcelLogFile | Should -Not -BeNullOrEmpty
         }
+        It 'with the correct total rows' {
+            $actual | Should -HaveCount 2
+        }
         It 'with the successful removals' {
             $actual[0].ComputerName | Should -Be $env:COMPUTERNAME
             $actual[0].Type | Should -Be 'File'
