@@ -308,7 +308,10 @@ Process {
                 Name       = 'ComputerName'; 
                 Expression = { $job.ComputerName } 
             },
-            'Type', 'FullName', 'CreationTime', 'Action', 'Error'
+            'Type', @{
+                Name       = 'Path'; 
+                Expression = { $_.FullName } 
+            }, 'CreationTime', 'Action', 'Error'
         }
 
         if ($exportToExcel) {

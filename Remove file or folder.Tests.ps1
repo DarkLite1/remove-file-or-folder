@@ -379,20 +379,18 @@ Describe "when 'Remove' is 'file'" {
             $testExcelLogFile | Should -Not -BeNullOrEmpty
         }
         It 'with the successful removals' {
-            @{
-                0 = $testFile[0]
-            }.GetEnumerator() | ForEach-Object {
-                $actual[$_.Key].ComputerName | Should -Be $env:COMPUTERNAME
-                $actual[$_.Key].Path | Should -Be $_.Value
-                $actual[$_.Key].Date | Should -Not -BeNullOrEmpty
-                $actual[$_.Key].Error | Should -BeNullOrEmpty    
-            }
-        }
+            $actual[0].ComputerName | Should -Be $env:COMPUTERNAME
+            $actual[0].Type | Should -Be 'File'
+            $actual[0].Path | Should -Be $testFile[0]
+            $actual[0].Error | Should -BeNullOrEmpty
+            $actual[0].Action | Should -Be 'Removed'
+        } -Tag test
         It 'with the failed removals' {
             $actual[1].ComputerName | Should -Be $env:COMPUTERNAME
+            $actual[1].Type | Should -Be 'File'
             $actual[1].Path | Should -Be 'c:\notExistingFileOrFolder'
-            $actual[1].Date | Should -Not -BeNullOrEmpty
-            $actual[1].Error | Should -Be 'File not found'
+            $actual[1].Error | Should -Be 'Path not found'
+            $actual[1].Action | Should -BeNullOrEmpty
         }
     }
     It 'sends a summary mail to the user' {
@@ -408,4 +406,4 @@ Describe "when 'Remove' is 'file'" {
             *Not existing items after running the script*2*')
         }
     }
-} -tag test
+} 
