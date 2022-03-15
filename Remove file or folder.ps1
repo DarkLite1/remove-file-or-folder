@@ -99,7 +99,10 @@ Begin {
             }
             
             $result.Items = Get-ChildItem @getParams -File | 
-            Where-Object { $_.CreationTime -lt $compareDate } | ForEach-Object {
+            Where-Object { 
+                ($_.CreationTime -lt $compareDate) -or
+                ($OlderThanDays -eq 0)
+            } | ForEach-Object {
                 try {
                     Remove-Item @removeParams -LiteralPath $_.FullName
                     [PSCustomObject]@{
