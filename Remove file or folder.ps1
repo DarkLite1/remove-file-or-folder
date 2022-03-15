@@ -236,6 +236,7 @@ Begin {
             if ($d.Remove -notMatch '^folder$|^file$|^content$') {
                 throw "Input file '$ImportFile': Value '$($d.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
             }
+            $d.Remove = $d.Remove.ToLower()
             #endregion
 
             #region RemoveEmptyFolders
