@@ -233,7 +233,7 @@ Begin {
             if ($d.PSObject.Properties.Name -notContains 'Remove') {
                 throw "Input file '$ImportFile': Property 'Remove' not found. Valid values are 'folder', 'file' or 'content'."
             }
-            if ($d.Remove -notMatch 'folder|file|content') {
+            if ($d.Remove -notMatch '^folder$|^file$|^content$') {
                 throw "Input file '$ImportFile': Value '$($d.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
             }
             #endregion
