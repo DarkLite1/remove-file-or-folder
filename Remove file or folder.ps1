@@ -341,7 +341,20 @@ Process {
             $mailParams.Attachments = $excelParams.Path
         }
         #endregion
+    }
+    Catch {
+        Write-Warning $_
+        Send-MailHC -To $ScriptAdmin -Subject 'FAILURE' -Priority 'High' -Message $_ -Header $ScriptName
+        Write-EventLog @EventErrorParams -Message "FAILURE:`n`n- $_"
+        Write-EventLog @EventEndParams; Exit 1
+    }
+    Finally {
+        Get-Job | Remove-Job
+    }
+}
 
+End {
+    try {
         #region Send mail to user
         $removedItems = $jobResults.Where( { ($_.Action -eq 'Remove') })
         $removalErrors = $jobResults.Where( { $_.Error })
@@ -395,14 +408,13 @@ Process {
         Send-MailHC @mailParams
         #endregion
     }
-    Catch {
+    catch {
         Write-Warning $_
         Send-MailHC -To $ScriptAdmin -Subject 'FAILURE' -Priority 'High' -Message $_ -Header $ScriptName
         Write-EventLog @EventErrorParams -Message "FAILURE:`n`n- $_"
         Exit 1
     }
     Finally {
-        Get-Job | Remove-Job
         Write-EventLog @EventEndParams
     }
 }
