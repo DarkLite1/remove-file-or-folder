@@ -349,6 +349,23 @@ Describe "when 'Remove' is 'file'" {
                 }
             )
         } | ConvertTo-Json | Out-File @testOutParams
+
+        $testExportedExcelRows = @(
+            @{
+                ComputerName = $env:COMPUTERNAME
+                Type         = 'File'
+                Path         = $testFile[0]
+                Error        = $null
+                Action       = 'Removed'
+            }
+            @{
+                ComputerName = $env:COMPUTERNAME
+                Type         = 'File'
+                Path         = 'c:\notExistingFileOrFolder'
+                Error        = 'Path not found'
+                Action       = $null
+            }
+        )
         
         $Error.Clear()
         . $testScript @testParams
@@ -379,21 +396,19 @@ Describe "when 'Remove' is 'file'" {
             $testExcelLogFile | Should -Not -BeNullOrEmpty
         }
         It 'with the correct total rows' {
-            $actual | Should -HaveCount 2
+            $actual | Should -HaveCount $testExportedExcelRows.Count
         }
-        It 'with the successful removals' {
-            $actual[0].ComputerName | Should -Be $env:COMPUTERNAME
-            $actual[0].Type | Should -Be 'File'
-            $actual[0].Path | Should -Be $testFile[0]
-            $actual[0].Error | Should -BeNullOrEmpty
-            $actual[0].Action | Should -Be 'Removed'
-        } -Tag test
-        It 'with the failed removals' {
-            $actual[1].ComputerName | Should -Be $env:COMPUTERNAME
-            $actual[1].Type | Should -Be 'File'
-            $actual[1].Path | Should -Be 'c:\notExistingFileOrFolder'
-            $actual[1].Error | Should -Be 'Path not found'
-            $actual[1].Action | Should -BeNullOrEmpty
+        It 'with the correct data in the rows' {
+            foreach ($testResult in $testExportedExcelRows) {
+                $actualRow = $actual | Where-Object {
+                    $_.Path -eq $testResult.Path
+                }
+                $actualRow.ComputerName | Should -Be $testResult.ComputerName
+                $actualRow.Type | Should -Be $testResult.Type
+                $actualRow.Path | Should -Be $testResult.Path
+                $actualRow.Error | Should -Be $testResult.Error
+                $actualRow.Action | Should -Be $testResult.Action
+            }
         }
     }
     It 'sends a summary mail to the user' {
@@ -408,5 +423,5 @@ Describe "when 'Remove' is 'file'" {
             *Errors while removing items*1*
             *Not existing items after running the script*2*')
         }
-    }
+    } -Tag test
 } 
