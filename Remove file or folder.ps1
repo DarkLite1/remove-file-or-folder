@@ -236,7 +236,6 @@ Begin {
             if ($d.Remove -notMatch '^folder$|^file$|^content$') {
                 throw "Input file '$ImportFile': Value '$($d.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
             }
-            $d.Remove = $d.Remove.ToLower()
             #endregion
 
             #region RemoveEmptyFolders
@@ -256,6 +255,16 @@ Begin {
                 }
             }
             #endregion
+        }
+        #endregion
+
+        #region Convert .json properties
+        foreach ($d in $Destinations) {
+            $d.Remove = $d.Remove.ToLower()
+            $d.Path = $d.Path.ToLower()
+            if ($d.ComputerName) {
+                $d.ComputerName = $d.ComputerName.ToUpper()
+            }
         }
         #endregion
 
