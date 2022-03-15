@@ -366,26 +366,42 @@ Describe "when 'Remove' is 'file'" {
                 Action       = $null
             }
         )
+        $testRemoved = @{
+            files   = @($testFile[0])
+            folders = $null
+        }
+        $testNotRemoved = @{
+            files   = @($testFile[1], $testFile[2])
+            folders = @($testFolder[0], $testFolder[1], $testFolder[2])
+        }
         
         $Error.Clear()
         . $testScript @testParams
     }
     Context 'remove the requested' {
-        It 'file' {
-            $testFile[0] | Should -Not -Exist
+        It 'files' {
+            $testRemoved.files | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Not -Exist
+            }
+        }
+        It 'folders' {
+            $testRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Not -Exist
+            }
         }
     }
     Context 'not remove other' {
-        It 'folders' {
-            $testFolder[0] | Should -Exist
-            $testFolder[1] | Should -Exist
-            $testFolder[2] | Should -Exist
-        }
         It 'files' {
-            $testFile[1] | Should -Exist
-            $testFile[2] | Should -Exist
+            $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Exist
+            }
         }
-    } 
+        It 'folders' {
+            $testNotRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Exist
+            }
+        }
+    }
     Context 'exports an Excel file' {
         BeforeAll {
             $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
@@ -399,15 +415,15 @@ Describe "when 'Remove' is 'file'" {
             $actual | Should -HaveCount $testExportedExcelRows.Count
         }
         It 'with the correct data in the rows' {
-            foreach ($testResult in $testExportedExcelRows) {
+            foreach ($testRow in $testExportedExcelRows) {
                 $actualRow = $actual | Where-Object {
-                    $_.Path -eq $testResult.Path
+                    $_.Path -eq $testRow.Path
                 }
-                $actualRow.ComputerName | Should -Be $testResult.ComputerName
-                $actualRow.Type | Should -Be $testResult.Type
-                $actualRow.Path | Should -Be $testResult.Path
-                $actualRow.Error | Should -Be $testResult.Error
-                $actualRow.Action | Should -Be $testResult.Action
+                $actualRow.ComputerName | Should -Be $testRow.ComputerName
+                $actualRow.Type | Should -Be $testRow.Type
+                $actualRow.Path | Should -Be $testRow.Path
+                $actualRow.Error | Should -Be $testRow.Error
+                $actualRow.Action | Should -Be $testRow.Action
             }
         }
     }
