@@ -408,7 +408,7 @@ Describe "when 'Remove' is 'file'" {
             }
         }
     }
-    Context 'exports an Excel file' {
+    Context 'export an Excel file' {
         BeforeAll {
             $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
 
@@ -433,7 +433,7 @@ Describe "when 'Remove' is 'file'" {
             }
         }
     }
-    It 'sends a summary mail to the user' {
+    It 'send a summary mail to the user' {
         Should -Invoke Send-MailHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($To -eq 'bob@contoso.com') -and
             ($Bcc -eq $ScriptAdmin) -and
@@ -442,5 +442,126 @@ Describe "when 'Remove' is 'file'" {
             ($Attachments -like '*log.xlsx') -and
             ($Message -like $testMail.Message)
         }
-    } -Tag test
-} 
+    }
+}
+Describe "when 'Remove' is 'folder'" {
+    BeforeAll {
+        $testFolder = 0..2 | ForEach-Object {
+            (New-Item "TestDrive:/folder$_" -ItemType Directory).FullName
+        }
+        $testFile = 0..2 | ForEach-Object {
+            (New-Item "TestDrive:/file$_.txt" -ItemType File).FullName
+        }
+
+        @{
+            MailTo       = @('bob@contoso.com')
+            Destinations = @(
+                @{
+                    Remove        = 'folder'
+                    Path          = $testFolder[0]
+                    ComputerName  = $env:COMPUTERNAME
+                    OlderThanDays = 0
+                }
+                @{
+                    Remove        = 'folder'
+                    Path          = 'c:\Not Existing Folder'
+                    ComputerName  = $env:COMPUTERNAME
+                    OlderThanDays = 0
+                }
+            )
+        } | ConvertTo-Json | Out-File @testOutParams
+
+        $testExportedExcelRows = @(
+            @{
+                ComputerName = $env:COMPUTERNAME
+                Type         = 'Folder'
+                Path         = $testFolder[0]
+                Error        = $null
+                Action       = 'Removed'
+            }
+            @{
+                ComputerName = $env:COMPUTERNAME
+                Type         = 'Folder'
+                Path         = 'c:\not existing folder'
+                Error        = 'Path not found'
+                Action       = $null
+            }
+        )
+        $testRemoved = @{
+            files   = $null
+            folders = @($testFolder[0])
+        }
+        $testNotRemoved = @{
+            files   = @($testFile[0], $testFile[1], $testFile[2])
+            folders = @($testFolder[1], $testFolder[2])
+        }
+        $testMail = @{
+            Priority = 'High'
+            Subject  = '1 removed, 1 error'
+            Message  = "*<ul><li><a href=`"c:\not existing file`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0])*Remove folder<br>Removed: 1</li></ul>*
+            *<p><i>* Check the attachment for details</i></p>*"
+        }
+
+        $Error.Clear()
+        . $testScript @testParams
+    }
+    Context 'remove the requested' {
+        It 'files' {
+            $testRemoved.files | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Not -Exist
+            }
+        }
+        It 'folders' {
+            $testRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Not -Exist
+            }
+        }
+    }
+    Context 'not remove other' {
+        It 'files' {
+            $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Exist
+            }
+        }
+        It 'folders' {
+            $testNotRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                $_ | Should -Exist
+            }
+        }
+    }
+    Context 'export an Excel file' {
+        BeforeAll {
+            $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
+
+            $actual = Import-Excel -Path $testExcelLogFile.FullName -WorksheetName 'Overview'
+        }
+        It 'to the log folder' {
+            $testExcelLogFile | Should -Not -BeNullOrEmpty
+        }
+        It 'with the correct total rows' {
+            $actual | Should -HaveCount $testExportedExcelRows.Count
+        }
+        It 'with the correct data in the rows' {
+            foreach ($testRow in $testExportedExcelRows) {
+                $actualRow = $actual | Where-Object {
+                    $_.Path -eq $testRow.Path
+                }
+                $actualRow.ComputerName | Should -Be $testRow.ComputerName
+                $actualRow.Type | Should -Be $testRow.Type
+                $actualRow.Path | Should -Be $testRow.Path
+                $actualRow.Error | Should -Be $testRow.Error
+                $actualRow.Action | Should -Be $testRow.Action
+            }
+        }
+    }
+    It 'send a summary mail to the user' {
+        Should -Invoke Send-MailHC -Exactly 1 -Scope Describe -ParameterFilter {
+            ($To -eq 'bob@contoso.com') -and
+            ($Bcc -eq $ScriptAdmin) -and
+            ($Priority -eq $testMail.Priority) -and
+            ($Subject -eq $testMail.Subject) -and
+            ($Attachments -like '*log.xlsx') -and
+            ($Message -like $testMail.Message)
+        }
+    }
+} -Tag test

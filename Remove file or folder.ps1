@@ -394,6 +394,7 @@ End {
         }
         #endregion
 
+        #region Create html lists
         $errorsHtmlList = if ($unknownErrorCount) {
             "<p>During removal <b>$unknownErrorCount non terminating errors</b> were detected:$($Error.Exception.Message | Where-Object { $_ } | ConvertTo-HtmlListHC)</p>"
         }
@@ -475,6 +476,7 @@ End {
    
         $jobResultsHtmlList = $jobResultsHtmlListItems | 
         ConvertTo-HtmlListHC -Spacing Wide
+        #endregion
         
         $mailParams += @{
             To        = $MailTo
