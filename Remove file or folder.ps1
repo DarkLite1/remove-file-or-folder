@@ -456,7 +456,7 @@ End {
                     }
                 }
                 if ($job.RemoveEmptyFolders) {
-                    $description = + ' and remove empty folders'
+                    $description += ' and remove empty folders'
                 }
                 $description
             ), $(
