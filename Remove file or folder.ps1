@@ -135,13 +135,18 @@ Begin {
 
             #region Remove empty folders
             if (
-                ($Type -eq 'Content') -and
+                ($Type -eq 'content') -and
                 ($RemoveEmptyFolders)
             ) {
                 $failedFolderRemoval = @()
 
+                $getParams = @{
+                    LiteralPath = $Path
+                    Directory   = $true
+                }
+
                 while (
-                    $emptyFolders = Get-ChildItem @getParams -Directory | 
+                    $emptyFolders = Get-ChildItem @getParams | 
                     Where-Object { 
                         ($_.GetFileSystemInfos().Count -eq 0) -and 
                         ($failedFolderRemoval -notContains $_.FullName) 
@@ -308,7 +313,7 @@ Process {
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
             Invoke-Command @invokeParams
-            # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays #-RemoveEmptyFolders $d.RemoveEmptyFolders
+            # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays -RemoveEmptyFolders $d.RemoveEmptyFolders
         }
 
         $M = "Wait for all $($jobs.count) jobs to be finished"
