@@ -356,29 +356,53 @@ Process {
 End {
     try {
         #region Send mail to user
-        $removedItems = $jobResults.Where( { ($_.Action -eq 'Remove') })
-        $removalErrors = $jobResults.Where( { $_.Error })
+
+        #region Error counters
+        $removalErrorCount = (
+            $jobResults.Items | Where-Object { $_.Error } |
+            Measure-Object
+        ).Count
+
+        $jobErrorCount = (
+            $jobResults | Where-Object { $_.Error } |
+            Measure-Object
+        ).Count
+
+        $unknownErrorCount = (
+            $Error.Exception.Message | Where-Object { $_ } |
+            Measure-Object
+        ).Count
            
-        $mailParams.Subject = "Removed $($removedItems.Count)/$($importExcelFile.count) items"
+        $totalErrorCount = $removalErrorCount + $jobErrorCount + 
+        $unknownErrorCount
+        #endregion
 
-        $ErrorTable = $null
-   
-        #region Errors
-        if ($errorMessages = $Error.Exception.Message | Where-Object { $_ }) {
-            # $error is polluted by VsCode
-            $mailParams.Priority = 'High'
-            $mailParams.Subject = "$($errorMessages.Count) errors, $($mailParams.Subject)"
-            $ErrorTable = "<p>During removal <b>$($Error.Count) non terminating errors</b> were detected:$($errorMessages | ConvertTo-HtmlListHC)</p>"
-        }
+        #region Mail subject and priority
+        $removedItemsCount = (
+            $jobResults.Items | Where-Object { ($_.Action -eq 'Removed') } | Measure-Object
+        ).Count
 
-        if ($removalErrors) {
+        $mailParams.Subject = "$removedItemsCount removed"
+
+        if ($totalErrorCount) {
             $mailParams.Priority = 'High'
-            $mailParams.Subject += ", $($removalErrors.Count) removal errors"
+            $mailParams.Subject += ", $totalErrorCount error{0}" -f $(
+                if ($totalErrorCount -lt 1) {
+                    's'
+                }
+            )
         }
         #endregion
 
-        $HtmlList = foreach ($job in $jobResults) {
-            "{0}{1}<br>{2}{3}" -f 
+        $errorsHtmlList = if ($unknownErrorCount) {
+            "<p>During removal <b>$unknownErrorCount non terminating errors</b> were detected:$($Error.Exception.Message | Where-Object { $_ } | ConvertTo-HtmlListHC)</p>"
+        }
+
+        $jobResultsHtmlListItems = foreach (
+            $job in 
+            $jobResults | Sort-Object -Property 'Path', 'ComputerName'
+        ) {
+            "{0}{1}<br>{2}<br>{3}{4}" -f 
             $(
                 if ($job.Path -match '^\\\\') {
                     '<a href="{0}">{0}</a>' -f $job.Path 
@@ -423,39 +447,41 @@ End {
                     }
                 }
                 if ($job.RemoveEmptyFolders) {
-                    $description =+ ' and remove empty folders'
+                    $description = + ' and remove empty folders'
                 }
                 $description
             ), $(
+                $counters = 'Removed: {0}' -f 
+                $(
+                    (
+                        $job.Items | Where-Object { $_.Action -eq 'Removed' } | 
+                        Measure-Object
+                    ).Count
+                )
+                if (
+                    $errorCount = (
+                        $job.Items | Where-Object { $_.Error } | Measure-Object
+                    ).Count
+                ) {
+                    $counters += ', <b style="color:red;">errors: {0}</b>' -f $errorCount
+                }
+                $counters
+            ), $(
                 if ($job.Error) {
-                    '<br><p style="color:red;"><b>{0}</b></p>' -f $job.Error
+                    '<br><b style="color:red;">{0}</b>' -f $job.Error
                 }
             )
         }
    
-        $table = "
-           <table>
-               <tr>
-                   <th>Successfully removed items</th>
-                   <td>$($removedItems.Count)</td>
-               </tr>
-               <tr>
-                   <th>Errors while removing items</th>
-                   <td>$($removalErrors.Count)</td>
-               </tr>
-               <tr>
-                   <th>Not existing items after running the script</th>
-                   <td>$($notExistingItems.Count)</td>
-               </tr>
-           </table>
-           "
-   
+        $jobResultsHtmlList = $jobResultsHtmlListItems | 
+        ConvertTo-HtmlListHC -Spacing Wide
+        
         $mailParams += @{
             To        = $MailTo
             Bcc       = $ScriptAdmin
-            Message   = "<p>Summary of removed items (files or folders):</p>
-                $table
-                $ErrorTable
+            Message   = "<p>Summary:</p>
+                $jobResultsHtmlList
+                $errorsHtmlList
                 <p><i>* Check the attachment for details</i></p>"
             LogFolder = $LogParams.LogFolder
             Header    = $ScriptName

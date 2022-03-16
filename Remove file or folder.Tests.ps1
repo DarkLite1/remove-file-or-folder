@@ -343,7 +343,7 @@ Describe "when 'Remove' is 'file'" {
                 }
                 @{
                     Remove        = 'file'
-                    Path          = 'c:\notExistingFileOrFolder'
+                    Path          = 'c:\Not Existing File'
                     ComputerName  = $env:COMPUTERNAME
                     OlderThanDays = 0
                 }
@@ -361,7 +361,7 @@ Describe "when 'Remove' is 'file'" {
             @{
                 ComputerName = $env:COMPUTERNAME
                 Type         = 'File'
-                Path         = 'c:\notExistingFileOrFolder'
+                Path         = 'c:\not existing file'
                 Error        = 'Path not found'
                 Action       = $null
             }
@@ -374,7 +374,13 @@ Describe "when 'Remove' is 'file'" {
             files   = @($testFile[1], $testFile[2])
             folders = @($testFolder[0], $testFolder[1], $testFolder[2])
         }
-        
+        $testMail = @{
+            Priority = 'High'
+            Subject  = '1 removed, 1 error'
+            Message  = "*<ul><li><a href=`"c:\not existing file`">\\$env:COMPUTERNAME\c$\not existing file</a><br>Remove file<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFile[0])*Remove file<br>Removed: 1</li></ul>*
+            *<p><i>* Check the attachment for details</i></p>*"
+        }
+
         $Error.Clear()
         . $testScript @testParams
     }
@@ -431,13 +437,10 @@ Describe "when 'Remove' is 'file'" {
         Should -Invoke Send-MailHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($To -eq 'bob@contoso.com') -and
             ($Bcc -eq $ScriptAdmin) -and
-            ($Priority -eq 'High') -and
-            # ($Subject -eq 'Removed 4/5 items, 1 removal errors') -and
+            ($Priority -eq $testMail.Priority) -and
+            ($Subject -eq $testMail.Subject) -and
             ($Attachments -like '*log.xlsx') -and
-            ($Message -like '*
-            *Successfully removed items*1*
-            *Errors while removing items*1*
-            *Not existing items after running the script*2*')
+            ($Message -like $testMail.Message)
         }
     } -Tag test
 } 
