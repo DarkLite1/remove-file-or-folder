@@ -516,7 +516,7 @@ Describe "when 'Remove' is 'folder'" {
                 $_ | Should -Not -Exist
             }
         }
-    }
+    } -Tag test
     Context 'not remove other' {
         It 'files' {
             $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
@@ -564,4 +564,4 @@ Describe "when 'Remove' is 'folder'" {
             ($Message -like $testMail.Message)
         }
     }
-} -Tag test
+}

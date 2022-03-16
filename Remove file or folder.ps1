@@ -52,61 +52,68 @@ Begin {
                 Error              = $null
             }
 
-            #region Test file folder content
-            if (
-                ($Type -eq 'content') -and
-                (-not (Test-Path -LiteralPath $Path -PathType Container))
-            ) {
-                throw 'Folder not found'
-            }
-            elseif (
-                ($Type -eq 'folder') -and
-                (-not (Test-Path -LiteralPath $Path -PathType Container))
-            ) {
-                $result.Items += [PSCustomObject]@{
-                    Type         = 'Folder'
-                    FullName     = $Path
-                    CreationTime = $null
-                    Action       = $null
-                    Error        = 'Path not found'
+            #region Create get params and test file folder
+            $commandToRun = "Get-Item -LiteralPath '$Path'"
+            $removalType = 'File'
+
+            switch ($Type) {
+                'file' {
+                    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+                        $result.Items += [PSCustomObject]@{
+                            Type         = 'File'
+                            FullName     = $Path
+                            CreationTime = $null
+                            Action       = $null
+                            Error        = 'Path not found'
+                        }
+                        Exit
+                    }
                 }
-                Exit
-            }
-            elseif (
-                ($Type -eq 'file') -and
-                (-not (Test-Path -LiteralPath $Path -PathType Leaf))
-            ) {
-                $result.Items += [PSCustomObject]@{
-                    Type         = 'File'
-                    FullName     = $Path
-                    CreationTime = $null
-                    Action       = $null
-                    Error        = 'Path not found'
+                'folder' {
+                    if (-not (Test-Path -LiteralPath $Path -PathType Container)
+                    ) {
+                        $result.Items += [PSCustomObject]@{
+                            Type         = 'Folder'
+                            FullName     = $Path
+                            CreationTime = $null
+                            Action       = $null
+                            Error        = 'Path not found'
+                        }
+                        Exit
+                    }
+                    $removalType = 'Folder'
+                    break
                 }
-                Exit
+                'content' {
+                    if (-not (Test-Path -LiteralPath $Path -PathType Container)
+                    ) {
+                        throw 'Folder not found'
+                    }
+                    $commandToRun = "Get-ChildItem -LiteralPath '$Path' -Recurse -File"
+                    break
+                }
+                Default {
+                    throw "Type '$_' not supported"
+                }
             }
             #endregion
 
-            #region Remove files
+            #region Remove items
             $removeParams = @{
                 Recurse     = $true
                 Force       = $true
                 ErrorAction = 'Stop'
             }
-            $getParams = @{
-                LiteralPath = $Path 
-                Recurse     = $true
-            }
-            
-            $result.Items = Get-ChildItem @getParams -File | 
+
+            $result.Items = Invoke-Expression $commandToRun | 
             Where-Object { 
-                ($_.CreationTime -lt $compareDate) -or
-                ($OlderThanDays -eq 0)
+                    ($_.CreationTime -lt $compareDate) -or
+                    ($OlderThanDays -eq 0)
             } | ForEach-Object {
                 try {
                     Remove-Item @removeParams -LiteralPath $_.FullName
                     [PSCustomObject]@{
-                        Type         = 'File' 
+                        Type         = $removalType
                         FullName     = $_.FullName 
                         CreationTime = $_.CreationTime
                         Action       = 'Removed'
@@ -115,7 +122,7 @@ Begin {
                 }
                 catch {
                     [PSCustomObject]@{
-                        Type         = 'File' 
+                        Type         = $removalType
                         FullName     = $_.FullName 
                         CreationTime = $_.CreationTime
                         Action       = $null
@@ -128,7 +135,7 @@ Begin {
 
             #region Remove empty folders
             if (
-                ($Type -eq 'content') -and
+                ($Type -eq 'Content') -and
                 ($RemoveEmptyFolders)
             ) {
                 $failedFolderRemoval = @()
@@ -140,7 +147,7 @@ Begin {
                         ($failedFolderRemoval -notContains $_.FullName) 
                     }
                 ) {
-                    $emptyFolders | ForEach-Object {
+                    $result.Items += $emptyFolders | ForEach-Object {
                         try {
                             Remove-Item @removeParams -LiteralPath $_.FullName
                             [PSCustomObject]@{
@@ -301,6 +308,7 @@ Process {
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
             Invoke-Command @invokeParams
+            # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays #-RemoveEmptyFolders $d.RemoveEmptyFolders
         }
 
         $M = "Wait for all $($jobs.count) jobs to be finished"
