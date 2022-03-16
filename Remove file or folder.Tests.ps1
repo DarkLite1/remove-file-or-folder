@@ -498,7 +498,7 @@ Describe "when 'Remove' is 'folder'" {
         $testMail = @{
             Priority = 'High'
             Subject  = '1 removed, 1 error'
-            Message  = "*<ul><li><a href=`"c:\not existing file`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0])*Remove folder<br>Removed: 1</li></ul>*
+            Message  = "*<ul><li><a href=`"c:\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0])*Remove folder<br>Removed: 1</li></ul>*
             *<p><i>* Check the attachment for details</i></p>*"
         }
 
@@ -516,7 +516,7 @@ Describe "when 'Remove' is 'folder'" {
                 $_ | Should -Not -Exist
             }
         }
-    } -Tag test
+    }
     Context 'not remove other' {
         It 'files' {
             $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
@@ -563,5 +563,5 @@ Describe "when 'Remove' is 'folder'" {
             ($Attachments -like '*log.xlsx') -and
             ($Message -like $testMail.Message)
         }
-    }
+    } -tag test
 }
