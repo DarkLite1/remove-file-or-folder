@@ -626,8 +626,8 @@ Describe "when 'Remove' is 'content'" {
         }
         $testMail = @{
             Priority = 'High'
-            Subject  = '1 removed, 1 error'
-            Message  = "*<ul><li><a href=`"c:\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0])*Remove folder<br>Removed: 1</li></ul>*
+            Subject  = '2 removed, 1 error'
+            Message  = "*<ul><li><a href=`"c:\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0<br><b style=`"color:red;`">Folder not found</b><br><br></li>*$($testFolder[0])*Remove folder content and remove empty folders<br>Removed: 2</li></ul>*
             *<p><i>* Check the attachment for details</i></p>*"
         }
 

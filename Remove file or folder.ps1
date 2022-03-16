@@ -105,7 +105,7 @@ Begin {
                 ErrorAction = 'Stop'
             }
 
-            $result.Items = Invoke-Expression $commandToRun | 
+            [Array]$result.Items = Invoke-Expression $commandToRun | 
             Where-Object { 
                     ($_.CreationTime -lt $compareDate) -or
                     ($OlderThanDays -eq 0)
@@ -143,6 +143,7 @@ Begin {
                 $getParams = @{
                     LiteralPath = $Path
                     Directory   = $true
+                    Recurse     = $true
                 }
 
                 while (
