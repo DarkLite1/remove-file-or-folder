@@ -363,8 +363,9 @@ End {
 
         $ErrorTable = $null
    
-        # $error is polluted by VsCode
+        #region Errors
         if ($errorMessages = $Error.Exception.Message | Where-Object { $_ }) {
+            # $error is polluted by VsCode
             $mailParams.Priority = 'High'
             $mailParams.Subject = "$($errorMessages.Count) errors, $($mailParams.Subject)"
             $ErrorTable = "<p>During removal <b>$($Error.Count) non terminating errors</b> were detected:$($errorMessages | ConvertTo-HtmlListHC)</p>"
@@ -373,6 +374,63 @@ End {
         if ($removalErrors) {
             $mailParams.Priority = 'High'
             $mailParams.Subject += ", $($removalErrors.Count) removal errors"
+        }
+        #endregion
+
+        $HtmlList = foreach ($job in $jobResults) {
+            "{0}{1}<br>{2}{3}" -f 
+            $(
+                if ($job.Path -match '^\\\\') {
+                    '<a href="{0}">{0}</a>' -f $job.Path 
+                }
+                else {
+                    '<a href="{0}">{1}</a>' -f $job.Path, (
+                        $job.Path -Replace '^.{2}', (
+                            '\\{0}\{1}$' -f $job.ComputerName, $job.Path[0]
+                        )
+                    )
+                }
+            ), $(
+                if ($job.ComputerName -ne $env:COMPUTERNAME) {
+                    ', ' + $job.ComputerName
+                }
+            ), $(
+                $description = if ($job.Type -eq 'File') {
+                    if ($job.OlderThanDays -eq 0) {
+                        'Remove file'
+                    }
+                    else {
+                        "Remove file when it's older than {0} days" -f 
+                        $job.OlderThanDays
+                    }
+                }
+                elseif ($job.Type -eq 'Folder') {
+                    if ($job.OlderThanDays -eq 0) {
+                        'Remove folder'
+                    }
+                    else {
+                        "Remove folder when it's older than {0} days" -f 
+                        $job.OlderThanDays
+                    }
+                }
+                elseif ($job.Type -eq 'Content') {
+                    if ($job.OlderThanDays -eq 0) {
+                        'Remove folder content'
+                    }
+                    else {
+                        'Remove folder content that is older than {0} days' -f 
+                        $job.OlderThanDays
+                    }
+                }
+                if ($job.RemoveEmptyFolders) {
+                    $description =+ ' and remove empty folders'
+                }
+                $description
+            ), $(
+                if ($job.Error) {
+                    '<br><p style="color:red;"><b>{0}</b></p>' -f $job.Error
+                }
+            )
         }
    
         $table = "
