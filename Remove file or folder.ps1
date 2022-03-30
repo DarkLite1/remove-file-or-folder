@@ -496,8 +496,8 @@ End {
             To        = $MailTo
             Bcc       = $ScriptAdmin
             Message   = "<p>Summary:</p>
-                $jobResultsHtmlList
                 $errorsHtmlList
+                $jobResultsHtmlList
                 <p><i>* Check the attachment for details</i></p>"
             LogFolder = $LogParams.LogFolder
             Header    = $ScriptName
