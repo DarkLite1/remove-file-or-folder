@@ -966,5 +966,187 @@ Describe "when 'OlderThanDays' is not '0'" {
                 }
             }
         }
-    } -Tag test
+    }
+    Context "and Remove is 'content' and do not remove empty folders" {
+        BeforeAll {
+            $testFolder = @(
+                'TestDrive:/folderA' ,
+                'TestDrive:/folderB' ,
+                'TestDrive:/folderA/subA',
+                'TestDrive:/folderB/subB'
+            ) | ForEach-Object {
+                (New-Item $_ -ItemType Directory).FullName
+            }
+            $testFile = @(
+                'TestDrive:/fileX.txt',
+                'TestDrive:/fileZ.txt'
+                'TestDrive:/folderA/fileA.txt',
+                'TestDrive:/folderA/subA/fileSubA.txt',
+                'TestDrive:/folderB/fileB.txt' ,
+                'TestDrive:/folderB/subB/fileSubB.txt'
+            ) | ForEach-Object {
+                (New-Item $_ -ItemType File).FullName
+            }
+
+            @(
+                $testFolder[0], 
+                $testFolder[2], 
+                $testFile[0], 
+                $testFile[1],
+                $testFile[2],
+                $testFile[4], 
+                $testFile[5]
+            ) | ForEach-Object {
+                $testItem = Get-Item -LiteralPath $_
+                $testItem.CreationTime = (Get-Date).AddDays(-5)
+            }
+
+            @{
+                MailTo       = @('bob@contoso.com')
+                Destinations = @(
+                    @{
+                        Remove             = 'content'
+                        Path               = $testFolder[0]
+                        ComputerName       = $env:COMPUTERNAME
+                        OlderThanDays      = 3
+                        RemoveEmptyFolders = $false
+                    }
+                    @{
+                        Remove             = 'content'
+                        Path               = $testFolder[1]
+                        ComputerName       = $env:COMPUTERNAME
+                        OlderThanDays      = 3
+                        RemoveEmptyFolders = $false
+                    }
+                )
+            } | ConvertTo-Json | Out-File @testOutParams
+
+            $testRemoved = @{
+                files   = @($testFile[2], $testFile[4], $testFile[5])
+                folders = $null
+            }
+            $testNotRemoved = @{
+                files   = @($testFile[3], $testFile[0], $testFile[1])
+                folders = @($testFolder[0], $testFolder[2])
+            }
+
+            . $testScript @testParams
+        }
+        Context 'remove the requested' {
+            It 'files' {
+                $testRemoved.files | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Not -Exist
+                }
+            }
+            It 'folders' {
+                $testRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Not -Exist
+                }
+            }
+        }
+        Context 'not remove other' {
+            It 'files' {
+                $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Exist
+                }
+            }
+            It 'folders' {
+                $testNotRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Exist
+                }
+            }
+        }
+    }
+    Context "and Remove is 'content' and remove empty folders" {
+        BeforeAll {
+            $testFolder = @(
+                'TestDrive:/folderA' ,
+                'TestDrive:/folderB' ,
+                'TestDrive:/folderA/subA',
+                'TestDrive:/folderA/subAA',
+                'TestDrive:/folderB/subB',
+                'TestDrive:/folderB/subBB'
+            ) | ForEach-Object {
+                (New-Item $_ -ItemType Directory).FullName
+            }
+            $testFile = @(
+                'TestDrive:/fileX.txt',
+                'TestDrive:/fileZ.txt'
+                'TestDrive:/folderA/fileA.txt',
+                'TestDrive:/folderA/subA/fileSubA.txt',
+                'TestDrive:/folderB/fileB.txt' ,
+                'TestDrive:/folderB/subB/fileSubB.txt'
+            ) | ForEach-Object {
+                (New-Item $_ -ItemType File).FullName
+            }
+
+            @(
+                $testFolder[0], 
+                $testFolder[2], 
+                $testFile[0], 
+                $testFile[1],
+                $testFile[2],
+                $testFile[4], 
+                $testFile[5]
+            ) | ForEach-Object {
+                $testItem = Get-Item -LiteralPath $_
+                $testItem.CreationTime = (Get-Date).AddDays(-5)
+            }
+
+            @{
+                MailTo       = @('bob@contoso.com')
+                Destinations = @(
+                    @{
+                        Remove             = 'content'
+                        Path               = $testFolder[0]
+                        ComputerName       = $env:COMPUTERNAME
+                        OlderThanDays      = 3
+                        RemoveEmptyFolders = $true
+                    }
+                    @{
+                        Remove             = 'content'
+                        Path               = $testFolder[1]
+                        ComputerName       = $env:COMPUTERNAME
+                        OlderThanDays      = 3
+                        RemoveEmptyFolders = $true
+                    }
+                )
+            } | ConvertTo-Json | Out-File @testOutParams
+
+            $testRemoved = @{
+                files   = @($testFile[2], $testFile[4], $testFile[5])
+                folders = @($testFolder[3],$testFolder[4], $testFolder[5])
+            }
+            $testNotRemoved = @{
+                files   = @($testFile[3], $testFile[0], $testFile[1])
+                folders = @($testFolder[0], $testFolder[2])
+            }
+
+            . $testScript @testParams
+        }
+        Context 'remove the requested' {
+            It 'files' {
+                $testRemoved.files | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Not -Exist
+                }
+            }
+            It 'folders' {
+                $testRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Not -Exist
+                }
+            }
+        }
+        Context 'not remove other' {
+            It 'files' {
+                $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Exist
+                }
+            }
+            It 'folders' {
+                $testNotRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Exist
+                }
+            }
+        }
+    }
 } 
