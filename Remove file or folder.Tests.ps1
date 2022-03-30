@@ -680,6 +680,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
                 $actualRow.Path | Should -Be $testRow.Path
                 $actualRow.Error | Should -Be $testRow.Error
                 $actualRow.Action | Should -Be $testRow.Action
+                $actualRow.CreationTime | Should -Not -BeNullOrEmpty
             }
         }
     }
@@ -814,6 +815,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
                 $actualRow.Path | Should -Be $testRow.Path
                 $actualRow.Error | Should -Be $testRow.Error
                 $actualRow.Action | Should -Be $testRow.Action
+                $actualRow.CreationTime | Should -Not -BeNullOrEmpty
             }
         }
     }
