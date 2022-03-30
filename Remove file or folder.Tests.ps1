@@ -322,7 +322,7 @@ Describe 'send an e-mail to the admin when' {
             }
         }
     }
-} -tag test
+}
 Describe "when 'Remove' is 'file'" {
     BeforeAll {
         $testFolder = 0..2 | ForEach-Object {
@@ -830,3 +830,89 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
         }
     } 
 }
+Describe "when 'OlderThanDays' is not '0'" {
+    Context "and Remove is 'file'" {
+        BeforeAll {
+            $testFolder = 0..2 | ForEach-Object {
+                (New-Item "TestDrive:/folder$_" -ItemType Directory).FullName
+            }
+            $testFile = 0..2 | ForEach-Object {
+                (New-Item "TestDrive:/file$_.txt" -ItemType File).FullName
+            }
+            # $testFolder = @(
+            #     'TestDrive:/folderA' ,
+            #     'TestDrive:/folderB' ,
+            #     'TestDrive:/folderC' 
+            # ) | ForEach-Object {
+            # (New-Item $_ -ItemType Directory).FullName
+            # }
+            # $testFile = @(
+            #     'TestDrive:/fileX.txt',
+            #     'TestDrive:/fileZ.txt'
+            #     # 'TestDrive:/folderA/fileA.txt',
+            #     # 'TestDrive:/folderB/fileB.txt' ,
+            #     # 'TestDrive:/folderC/fileC.txt' 
+            # ) | ForEach-Object {
+            # (New-Item $_ -ItemType File).FullName
+            # }
+
+            @($testFile[0]) | ForEach-Object {
+                $testItem = Get-Item -LiteralPath $_
+                $testItem.CreationTime = (Get-Date).AddDays(-5)
+            }
+
+            @{
+                MailTo       = @('bob@contoso.com')
+                Destinations = @(
+                    @{
+                        Remove        = 'file'
+                        Path          = $testFile[0]
+                        ComputerName  = $env:COMPUTERNAME
+                        OlderThanDays = 3
+                    }
+                    @{
+                        Remove        = 'file'
+                        Path          = $testFile[1]
+                        ComputerName  = $env:COMPUTERNAME
+                        OlderThanDays = 3
+                    }
+                )
+            } | ConvertTo-Json | Out-File @testOutParams
+
+            $testRemoved = @{
+                files   = @($testFile[0])
+                folders = $null
+            }
+            $testNotRemoved = @{
+                files   = @($testFile[1],$testFile[2])
+                folders = @($testFolder[0], $testFolder[1], $testFolder[2])
+            }
+
+            . $testScript @testParams
+        }
+        Context 'remove the requested' {
+            It 'files' {
+                $testRemoved.files | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Not -Exist
+                }
+            }
+            It 'folders' {
+                $testRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Not -Exist
+                }
+            }
+        }
+        Context 'not remove other' {
+            It 'files' {
+                $testNotRemoved.files | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Exist
+                }
+            }
+            It 'folders' {
+                $testNotRemoved.folders | Where-Object { $_ } | ForEach-Object {
+                    $_ | Should -Exist
+                }
+            }
+        }
+    }
+} -Tag test
