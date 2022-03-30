@@ -35,7 +35,8 @@ Begin {
             [String]$Path,
             [Parameter(Mandatory)]
             [Int]$OlderThanDays,
-            [Boolean]$RemoveEmptyFolders
+            [Boolean]$RemoveEmptyFolders,
+            [String]$Name
         )
 
         Try {
@@ -43,6 +44,7 @@ Begin {
     
             $result = [PSCustomObject]@{
                 Type               = $Type
+                Name               = $Name
                 Path               = $Path
                 OlderThanDays      = $OlderThanDays
                 OlderThanDate      = $compareDate
@@ -306,16 +308,17 @@ Process {
             $invokeParams = @{
                 ComputerName = $d.ComputerName
                 ScriptBlock  = $scriptBlock
-                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders
+                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders, $d.Name
                 AsJob        = $true
             }
             if (-not $d.ComputerName) { 
                 $invokeParams.ComputerName = $env:COMPUTERNAME
             }
 
-            $M = "Start job on '{0}' for path '{1}' OlderThanDays '{2}' RemoveEmptyFolders '{3}'" -f $invokeParams.ComputerName,
+            $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}'" -f $invokeParams.ComputerName,
             $invokeParams.ArgumentList[0], $invokeParams.ArgumentList[1],
-            $invokeParams.ArgumentList[2]
+            $invokeParams.ArgumentList[2], $invokeParams.ArgumentList[3], 
+            $invokeParams.ArgumentList[4]
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
             Invoke-Command @invokeParams
@@ -422,21 +425,22 @@ End {
             $job in 
             $jobResults | Sort-Object -Property 'Path', 'ComputerName'
         ) {
-            "{0}{1}<br>{2}<br>{3}{4}" -f 
+            "{0}<br>{1}<br>{2}{3}" -f 
             $(
                 if ($job.Path -match '^\\\\') {
-                    '<a href="{0}">{0}</a>' -f $job.Path 
-                }
-                else {
-                    '<a href="{0}">{1}</a>' -f $job.Path, (
-                        $job.Path -Replace '^.{2}', (
-                            '\\{0}\{1}$' -f $job.ComputerName, $job.Path[0]
-                        )
+                    '<a href="{0}">{1}</a>' -f $job.Path, $(
+                        if ($job.Name) { $job.Name }
+                        else { $job.Path }
                     )
                 }
-            ), $(
-                if ($job.ComputerName -ne $env:COMPUTERNAME) {
-                    ', ' + $job.ComputerName
+                else {
+                    $uncPath = $job.Path -Replace '^.{2}', (
+                        '\\{0}\{1}$' -f $job.ComputerName, $job.Path[0]
+                    )
+                    '<a href="{0}">{1}</a>' -f $uncPath, $(
+                        if ($job.Name) { $job.Name }
+                        else { $uncPath }
+                    )
                 }
             ), $(
                 $description = if ($job.Type -eq 'File') {

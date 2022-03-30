@@ -337,6 +337,7 @@ Describe "when 'Remove' is 'file'" {
                 MailTo       = @('bob@contoso.com')
                 Destinations = @(
                     @{
+                        Name          = 'FTP log file'
                         Remove        = 'file'
                         Path          = $testFile[0]
                         ComputerName  = $env:COMPUTERNAME
@@ -378,7 +379,7 @@ Describe "when 'Remove' is 'file'" {
             $testMail = @{
                 Priority = 'High'
                 Subject  = '1 removed, 1 error'
-                Message  = "*<ul><li><a href=`"c:\not existing file`">\\$env:COMPUTERNAME\c$\not existing file</a><br>Remove file<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFile[0])*Remove file<br>Removed: 1</li></ul>*
+                Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing file`">\\$env:COMPUTERNAME\c$\not existing file</a><br>Remove file<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*<li><a href=`"*$($testFile[0].Name)`">FTP log file</a><br>Remove file<br>Removed: 1</li></ul>*
             *<p><i>* Check the attachment for details</i></p>*"
             }
 
@@ -443,7 +444,7 @@ Describe "when 'Remove' is 'file'" {
             ($Attachments -like '*log.xlsx') -and
             ($Message -like $testMail.Message)
             }
-        }
+        } -tag test
     }
     Context  "and 'OlderThanDays' is not '0'" {
         BeforeAll {
@@ -569,7 +570,7 @@ Describe "when 'Remove' is 'folder'" {
             $testMail = @{
                 Priority = 'High'
                 Subject  = '1 removed, 1 error'
-                Message  = "*<ul><li><a href=`"c:\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0])*Remove folder<br>Removed: 1</li></ul>*
+                Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0].Name)*Remove folder<br>Removed: 1</li></ul>*
             *<p><i>* Check the attachment for details</i></p>*"
             }
 
@@ -768,7 +769,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
             $testMail = @{
                 Priority = 'High'
                 Subject  = '2 removed, 1 error'
-                Message  = "*<ul><li><a href=`"c:\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0<br><b style=`"color:red;`">Folder not found</b><br><br></li>*$($testFolder[0])*Remove folder content and remove empty folders<br>Removed: 2</li></ul>*
+                Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0<br><b style=`"color:red;`">Folder not found</b><br><br></li>*$($testFolder[0].Name)*Remove folder content and remove empty folders<br>Removed: 2</li></ul>*
             *<p><i>* Check the attachment for details</i></p>*"
             }
 
@@ -997,7 +998,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             $testMail = @{
                 Priority = 'High'
                 Subject  = '2 removed, 1 error'
-                Message  = "*<ul><li><a href=`"c:\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0<br><b style=`"color:red;`">Folder not found</b><br><br></li>*$($testFolder[0])*Remove folder content<br>Removed: 2</li></ul>*
+                Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0<br><b style=`"color:red;`">Folder not found</b><br><br></li>*$($testFolder[0].Name)*Remove folder content<br>Removed: 2</li></ul>*
             *<p><i>* Check the attachment for details</i></p>*"
             }
 
