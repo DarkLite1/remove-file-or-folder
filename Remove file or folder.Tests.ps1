@@ -107,7 +107,7 @@ Describe 'send an e-mail to the admin when' {
                 .$testScript @testParams
                 
                 Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'ComputerName' found for path 'd:\bla'*")
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*destination path 'd:\bla'*No 'ComputerName' found*")
                 }
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
@@ -175,7 +175,7 @@ Describe 'send an e-mail to the admin when' {
                     .$testScript @testParams
                                 
                     Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'RemoveEmptyFolders' found*")
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'RemoveEmptyFolders' not found*")
                     }
                     Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                         $EntryType -eq 'Error'
@@ -242,7 +242,7 @@ Describe 'send an e-mail to the admin when' {
                     .$testScript @testParams
                                 
                     Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'OlderThanDays' number found*")
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'OlderThanDays' not found*")
                     }
                     Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                         $EntryType -eq 'Error'
@@ -265,7 +265,7 @@ Describe 'send an e-mail to the admin when' {
                     .$testScript @testParams
                 
                     Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*'OlderThanDays' needs to be a number, the value 'a' is not supported*")
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'OlderThanDays' needs to be a number, the value 'a' is not supported*")
                     }
                     Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                         $EntryType -eq 'Error'
@@ -288,7 +288,7 @@ Describe 'send an e-mail to the admin when' {
                     .$testScript @testParams
                 
                     Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile* 'RemoveEmptyFolders' cannot be used with 'Remove' value 'file'*")
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile* Property 'RemoveEmptyFolders' cannot be used with 'Remove' value 'file'*")
                     }
                     Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                         $EntryType -eq 'Error'
@@ -322,7 +322,7 @@ Describe 'send an e-mail to the admin when' {
             }
         }
     }
-}
+} -tag test
 Describe "when 'Remove' is 'file'" {
     BeforeAll {
         $testFolder = 0..2 | ForEach-Object {
@@ -829,4 +829,4 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             ($Message -like $testMail.Message)
         }
     } 
-} -Tag test
+}
