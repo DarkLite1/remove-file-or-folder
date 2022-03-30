@@ -278,6 +278,14 @@ Begin {
             if ($d.ComputerName) {
                 $d.ComputerName = $d.ComputerName.ToUpper()
             }
+            if ($d.Remove -ne 'content') {
+                $addParams = @{
+                    InputObject       = $d
+                    NotePropertyName  = 'RemoveEmptyFolders'
+                    NotePropertyValue = $false
+                }
+                Add-Member @addParams
+            }
         }
         #endregion
 
@@ -298,14 +306,11 @@ Process {
             $invokeParams = @{
                 ComputerName = $d.ComputerName
                 ScriptBlock  = $scriptBlock
-                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays
+                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders
                 AsJob        = $true
             }
             if (-not $d.ComputerName) { 
                 $invokeParams.ComputerName = $env:COMPUTERNAME
-            }
-            if ($d.RemoveEmptyFolders) {
-                $invokeParams.ArgumentList += $d.RemoveEmptyFolders
             }
 
             $M = "Start job on '{0}' for path '{1}' OlderThanDays '{2}' RemoveEmptyFolders '{3}'" -f $invokeParams.ComputerName,
