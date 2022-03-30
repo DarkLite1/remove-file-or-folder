@@ -1,26 +1,26 @@
 {
   "Destinations": [
     {
+      "Name": "FTP log file",
       "Remove": "file",
       "Path": "\\\\contoso\\file.txt",
       "ComputerName": null,
-      "OlderThanDays": 0,
-      "EmailMessage": "Log file app"
+      "OlderThanDays": 0
     },
     {
+      "Name": null,
       "Remove": "folder",
       "Path": "\\\\contoso\\folder",
       "ComputerName": null,
-      "OlderThanDays": 0,
-      "EmailMessage": null
+      "OlderThanDays": 0
     },
     {
+      "Name": "Notepad log folder A",
       "Remove": "content",
       "Path": "c:\\data\\folder",
       "ComputerName": "PC1",
       "RemoveEmptyFolders": false,
-      "OlderThanDays": 20,
-      "EmailMessage": "Application A"
+      "OlderThanDays": 20
     }
   ]
 }
