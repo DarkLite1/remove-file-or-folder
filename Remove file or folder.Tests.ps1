@@ -56,6 +56,21 @@ Describe 'send an e-mail to the admin when' {
             }
         }
         Context 'property' {
+            It 'MailTo is missing' {
+                @{
+                    # MailTo       = @('bob@contoso.com')
+                    Destinations = @()
+                } | ConvertTo-Json | Out-File @testOutParams
+                
+                .$testScript @testParams
+                
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'MailTo' addresses found*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
+            }
             It 'Destinations is missing' {
                 @{
                     MailTo = @('bob@contoso.com')
@@ -444,7 +459,7 @@ Describe "when 'Remove' is 'file'" {
             ($Attachments -like '*log.xlsx') -and
             ($Message -like $testMail.Message)
             }
-        } -tag test
+        } -Tag test
     }
     Context  "and 'OlderThanDays' is not '0'" {
         BeforeAll {
