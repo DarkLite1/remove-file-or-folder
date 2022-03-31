@@ -1,4 +1,5 @@
 {
+  "MailTo": ["bob@constoso.com"],
   "Destinations": [
     {
       "Name": "FTP log file",
