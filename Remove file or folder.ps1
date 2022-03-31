@@ -326,24 +326,31 @@ Begin {
 Process {
     Try {
         #region Remove files/folders on remote machines
-        $jobs = foreach ($d in $Destinations) {
+        $jobs = @()
+
+        foreach ($d in $Destinations) {
             $invokeParams = @{
-                ComputerName = $d.ComputerName
                 ScriptBlock  = $scriptBlock
                 ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders, $d.Name
-                AsJob        = $true
-            }
-            if (-not $d.ComputerName) { 
-                $invokeParams.ComputerName = $env:COMPUTERNAME
             }
 
-            $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}'" -f $invokeParams.ComputerName,
+            $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}'" -f $(
+                if ($d.ComputerName) { $d.ComputerName }
+                else { $env:COMPUTERNAME }
+            ),
             $invokeParams.ArgumentList[0], $invokeParams.ArgumentList[1],
             $invokeParams.ArgumentList[2], $invokeParams.ArgumentList[3], 
             $invokeParams.ArgumentList[4]
-            Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+            Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
 
-            Invoke-Command @invokeParams
+            if ($d.ComputerName) {
+                $invokeParams.ComputerName = $d.ComputerName
+                $invokeParams.AsJob = $true
+                $jobs += Invoke-Command @invokeParams
+            }
+            else {
+                $Jobs += Start-Job @invokeParams
+            }
             # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays -RemoveEmptyFolders $d.RemoveEmptyFolders
         }
 
