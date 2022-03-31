@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Remove files or folders on remote machines.
+    Remove files, folders or folder content on remote machines.
 
 .DESCRIPTION
     This script reads a .JSON file containing the destination paths where files
