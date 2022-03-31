@@ -423,7 +423,7 @@ End {
 
         $jobResultsHtmlListItems = foreach (
             $job in 
-            $jobResults | Sort-Object -Property 'Path', 'ComputerName'
+            $jobResults | Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
             "{0}<br>{1}<br>{2}{3}" -f 
             $(
