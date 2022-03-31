@@ -3,16 +3,38 @@
 
 <#
 .SYNOPSIS
-    Remove files or folders on remote machine.
+    Remove files or folders on remote machines.
 
 .DESCRIPTION
-    The script reads an Excel file containing a computer name and a local folder
-    or file path in each row. It then tries to remove the files or folders 
-    defined on the requested computers.
+    This script reads a .JSON file containing the destination paths where files
+    or folders need to be removed. When 'OlderThanDays' is '0' all files or 
+    folders will be removed, depending on the chosen 'Remove' type, regardless 
+    their creation date. 
 
-.PARAMETER Path
-    Path to the Excel file containing the rows with the computer names and local
-    folder/file paths.
+.PARAMETER MailTo
+    E-mail addresses of where to send the summary e-mail
+
+.PARAMETER Destinations
+    Contains an array of objects where each object represents a 'Path' and its
+    specific settings on file, folder or content removal
+
+.PARAMETER Destinations.Name
+    The name to display in the email send to the user instead of the full path
+
+.PARAMETER Destinations.Remove
+    file    : remove the file specified in 'Path'
+    folder  : remove the folder and its contents specified in 'Path'
+    content : remove the files in the folder specified in 'Path'
+
+.PARAMETER Destinations.Path
+    Can be a local path when 'ComputerName' is used or a UNC path
+
+.PARAMETER Destinations.OlderThanDays
+    Only remove files that are older than x days
+
+.PARAMETER Destinations.RemoveEmptyFolders
+    Can only be used with 'Remove' set to 'content' and will remove all empty 
+    folders after the files have been removed
 #>
 
 [CmdLetBinding()]
