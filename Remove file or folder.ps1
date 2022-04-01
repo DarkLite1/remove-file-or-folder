@@ -535,11 +535,15 @@ End {
             Bcc       = $ScriptAdmin
             Message   = "<p>Summary:</p>
                 $errorsHtmlList
-                $jobResultsHtmlList
-                <p><i>* Check the attachment for details</i></p>"
+                $jobResultsHtmlList"
             LogFolder = $LogParams.LogFolder
             Header    = $ScriptName
             Save      = $LogFile + ' - Mail.html'
+        }
+
+        if ($mailParams.Attachments) {
+            $mailParams.Message += 
+            "<p><i>* Check the attachment for details</i></p>"
         }
    
         Get-ScriptRuntimeHC -Stop
