@@ -447,7 +447,15 @@ End {
 
         #region Create html lists
         $errorsHtmlList = if ($unknownErrorCount) {
-            "<p>During removal <b>$unknownErrorCount non terminating errors</b> were detected:$($Error.Exception.Message | Where-Object { $_ } | ConvertTo-HtmlListHC)</p>"
+            "<p>During removal <b>$unknownErrorCount non terminating {0} detected:{1}</p>" -f $(
+                if ($unknownErrorCount -eq 1) {
+                    'error</b> was'
+                }
+                else {
+                    'errors</b> were'
+                }
+            ),
+            $($Error.Exception.Message | Where-Object { $_ } | ConvertTo-HtmlListHC)
         }
 
         $jobResultsHtmlListItems = foreach (
