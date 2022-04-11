@@ -533,8 +533,9 @@ End {
         $mailParams += @{
             To        = $MailTo
             Bcc       = $ScriptAdmin
-            Message   = "<p>Summary:</p>
+            Message   = "
                 $errorsHtmlList
+                <p>Summary:</p>
                 $jobResultsHtmlList"
             LogFolder = $LogParams.LogFolder
             Header    = $ScriptName
