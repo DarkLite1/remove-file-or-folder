@@ -357,7 +357,8 @@ Process {
         $M = "Wait for all $($jobs.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
-        $jobResults = if ($jobs) { $jobs | Wait-Job -Force | Receive-Job }
+        # $jobResults = if ($jobs) { $jobs | Wait-Job -Force | Receive-Job }
+        $jobResults = if ($jobs) { $jobs | Receive-Job -Wait -AutoRemoveJob }
         #endregion
 
         #region Export results to Excel log file
@@ -399,9 +400,9 @@ Process {
         Write-EventLog @EventErrorParams -Message "FAILURE:`n`n- $_"
         Write-EventLog @EventEndParams; Exit 1
     }
-    Finally {
-        Get-Job | Remove-Job
-    }
+    # Finally {
+    #     Get-Job | Remove-Job
+    # }
 }
 
 End {
