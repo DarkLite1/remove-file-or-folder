@@ -43,6 +43,7 @@ Param (
     [String]$ScriptName,
     [Parameter(Mandatory)]
     [String]$ImportFile,
+    [Int]$MaxConcurrentJobs = 4,
     [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\File or folder\Remove file or folder\$ScriptName",
     [String]$ScriptAdmin = $env:POWERSHELL_SCRIPT_ADMIN
 )
@@ -343,15 +344,17 @@ Process {
             $invokeParams.ArgumentList[4]
             Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
 
-            if ($d.ComputerName) {
+            $jobs += if ($d.ComputerName) {
                 $invokeParams.ComputerName = $d.ComputerName
                 $invokeParams.AsJob = $true
-                $jobs += Invoke-Command @invokeParams
+                Invoke-Command @invokeParams
             }
             else {
-                $Jobs += Start-Job @invokeParams
+                Start-Job @invokeParams
             }
             # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays -RemoveEmptyFolders $d.RemoveEmptyFolders
+
+            Wait-MaxRunningJobsHC -Name $jobs -MaxThreads $MaxConcurrentJobs
         }
 
         $M = "Wait for all $($jobs.count) jobs to finish"
