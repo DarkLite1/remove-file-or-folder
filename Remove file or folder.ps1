@@ -357,7 +357,7 @@ Process {
         $M = "Wait for all $($jobs.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
-        $jobResults = if ($jobs) { $jobs | Wait-Job | Receive-Job }
+        $jobResults = if ($jobs) { $jobs | Wait-Job -Force | Receive-Job }
         #endregion
 
         #region Export results to Excel log file
