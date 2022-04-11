@@ -354,7 +354,7 @@ Process {
             # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays -RemoveEmptyFolders $d.RemoveEmptyFolders
         }
 
-        $M = "Wait for all $($jobs.count) jobs finish"
+        $M = "Wait for all $($jobs.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
         $jobResults = if ($jobs) { $jobs | Wait-Job | Receive-Job }
