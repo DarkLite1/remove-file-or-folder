@@ -358,7 +358,9 @@ Process {
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
         # $jobResults = if ($jobs) { $jobs | Wait-Job -Force | Receive-Job }
-        $jobResults = if ($jobs) { $jobs | Receive-Job -Wait -AutoRemoveJob }
+        $jobResults = if ($jobs) { 
+            Receive-Job -Job $jobs -Wait -AutoRemoveJob -Force 
+        }
         #endregion
 
         #region Export results to Excel log file
