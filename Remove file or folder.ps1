@@ -405,9 +405,6 @@ Process {
         Write-EventLog @EventErrorParams -Message "FAILURE:`n`n- $_"
         Write-EventLog @EventEndParams; Exit 1
     }
-    # Finally {
-    #     Get-Job | Remove-Job
-    # }
 }
 
 End {
