@@ -447,7 +447,7 @@ Describe "when 'Remove' is 'file'" {
                     $actualRow.Error | Should -Be $testRow.Error
                     $actualRow.Action | Should -Be $testRow.Action
                 }
-            }
+            } -Tag test
         }
         It 'send a summary mail to the user' {
             Should -Invoke Send-MailHC -Exactly 1 -Scope Context -ParameterFilter {

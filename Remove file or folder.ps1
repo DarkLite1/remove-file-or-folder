@@ -70,7 +70,8 @@ Begin {
         switch ($Type) {
             'file' {
                 if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-                    [PSCustomObject]@{
+                    [PSCustomObject]@{ 
+                        ComputerName = $env:COMPUTERNAME
                         Type         = 'File'
                         FullName     = $Path
                         CreationTime = $null
@@ -83,7 +84,8 @@ Begin {
             'folder' {
                 if (-not (Test-Path -LiteralPath $Path -PathType Container)
                 ) {
-                    [PSCustomObject]@{
+                    [PSCustomObject]@{ 
+                        ComputerName = $env:COMPUTERNAME
                         Type         = 'Folder'
                         FullName     = $Path
                         CreationTime = $null
@@ -122,7 +124,8 @@ Begin {
         } | ForEach-Object {
             try {
                 Remove-Item @removeParams -LiteralPath $_.FullName
-                [PSCustomObject]@{
+                [PSCustomObject]@{ 
+                    ComputerName = $env:COMPUTERNAME
                     Type         = $removalType
                     FullName     = $_.FullName 
                     CreationTime = $_.CreationTime
@@ -131,7 +134,8 @@ Begin {
                 }
             }
             catch {
-                [PSCustomObject]@{
+                [PSCustomObject]@{ 
+                    ComputerName = $env:COMPUTERNAME
                     Type         = $removalType
                     FullName     = $_.FullName 
                     CreationTime = $_.CreationTime
@@ -163,7 +167,8 @@ Begin {
                 $emptyFolders | ForEach-Object {
                     try {
                         Remove-Item @removeParams -LiteralPath $_.FullName
-                        [PSCustomObject]@{
+                        [PSCustomObject]@{ 
+                            ComputerName = $env:COMPUTERNAME
                             Type         = 'Folder' 
                             FullName     = $_.FullName 
                             CreationTime = $_.CreationTime
@@ -172,7 +177,8 @@ Begin {
                         }
                     }
                     catch {
-                        [PSCustomObject]@{
+                        [PSCustomObject]@{ 
+                            ComputerName = $env:COMPUTERNAME
                             Type         = 'Folder' 
                             FullName     = $_.FullName 
                             CreationTime = $_.CreationTime
