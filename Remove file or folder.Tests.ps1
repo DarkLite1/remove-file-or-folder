@@ -447,7 +447,7 @@ Describe "when 'Remove' is 'file'" {
                     $actualRow.Error | Should -Be $testRow.Error
                     $actualRow.Action | Should -Be $testRow.Action
                 }
-            } -Tag test
+            }
         }
         It 'send a summary mail to the user' {
             Should -Invoke Send-MailHC -Exactly 1 -Scope Context -ParameterFilter {
@@ -847,7 +847,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
             ($Attachments -like '*log.xlsx') -and
             ($Message -like $testMail.Message)
             }
-        } -Tag test
+        }
     }
     Context  "and 'OlderThanDays' is not '0'" {
         BeforeAll {
@@ -1010,7 +1010,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             $testMail = @{
                 Priority = 'High'
                 Subject  = '2 removed, 1 error'
-                Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0<br><b style=`"color:red;`">Folder not found</b><br><br></li>*$($testFolder[0].Name)*Remove folder content<br>Removed: 2</li></ul><p><i>* Check the attachment for details</i></p>*"
+                Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><b style=`"color:red;`">Folder 'c:\not existing folder' not found</b><br><br></li>*$($testFolder[0].Name)*Remove folder content<br>Removed: 2</li></ul><p><i>* Check the attachment for details</i></p>*"
             }
 
             $Error.Clear()
@@ -1075,7 +1075,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             ($Attachments -like '*log.xlsx') -and
             ($Message -like $testMail.Message)
             }
-        }
+        } -Tag test
     }
     Context  "and 'OlderThanDays' is not '0'" {
         BeforeAll {
