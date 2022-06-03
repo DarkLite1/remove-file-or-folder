@@ -428,18 +428,13 @@ End {
                 Measure-Object
             ).Count
             removalErrors = (
-                $Destinations.JobResults | Where-Object { $_.Error } |
-                Measure-Object
+                $Destinations.JobResults.Error | Measure-Object
             ).Count
             jobErrors     = (
-                (
-                    $Destinations.JobErrors | Where-Object { $_ } | 
-                    Measure-Object
-                ).Count
-            )
+                $Destinations.JobErrors | Measure-Object
+            ).Count
             systemErrors  = (
-                $Error.Exception.Message | Where-Object { $_ } |
-                Measure-Object
+                $Error.Exception.Message | Measure-Object
             ).Count
         }
         #endregion
