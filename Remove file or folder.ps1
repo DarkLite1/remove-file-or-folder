@@ -58,160 +58,134 @@ Begin {
             [String]$Path,
             [Parameter(Mandatory)]
             [Int]$OlderThanDays,
-            [Boolean]$RemoveEmptyFolders,
-            [String]$Name
+            [Boolean]$RemoveEmptyFolders
         )
 
-        Try {
-            $compareDate = (Get-Date).AddDays(-$OlderThanDays)
-    
-            $result = [PSCustomObject]@{
-                Type               = $Type
-                Name               = $Name
-                Path               = $Path
-                OlderThanDays      = $OlderThanDays
-                OlderThanDate      = $compareDate
-                ComputerName       = $env:COMPUTERNAME
-                RemoveEmptyFolders = $RemoveEmptyFolders
-                Items              = @()
-                Error              = $null
-            }
+        $compareDate = (Get-Date).AddDays(-$OlderThanDays)
 
-            #region Create get params and test file folder
-            $commandToRun = "Get-Item -LiteralPath '$Path'"
-            $removalType = 'File'
+        #region Create get params and test file folder
+        $commandToRun = "Get-Item -LiteralPath '$Path'"
+        $removalType = 'File'
 
-            switch ($Type) {
-                'file' {
-                    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-                        $result.Items += [PSCustomObject]@{
-                            Type         = 'File'
-                            FullName     = $Path
-                            CreationTime = $null
-                            Action       = $null
-                            Error        = 'Path not found'
-                        }
-                        Exit
-                    }
-                }
-                'folder' {
-                    if (-not (Test-Path -LiteralPath $Path -PathType Container)
-                    ) {
-                        $result.Items += [PSCustomObject]@{
-                            Type         = 'Folder'
-                            FullName     = $Path
-                            CreationTime = $null
-                            Action       = $null
-                            Error        = 'Path not found'
-                        }
-                        Exit
-                    }
-                    $removalType = 'Folder'
-                    break
-                }
-                'content' {
-                    if (-not (Test-Path -LiteralPath $Path -PathType Container)
-                    ) {
-                        throw 'Folder not found'
-                    }
-                    $commandToRun = "Get-ChildItem -LiteralPath '$Path' -Recurse -File"
-                    break
-                }
-                Default {
-                    throw "Type '$_' not supported"
-                }
-            }
-            #endregion
-
-            #region Remove items
-            $removeParams = @{
-                Recurse     = $true
-                Force       = $true
-                ErrorAction = 'Stop'
-            }
-
-            [Array]$result.Items = Invoke-Expression $commandToRun | 
-            Where-Object { 
-                    ($_.CreationTime -lt $compareDate) -or
-                    ($OlderThanDays -eq 0)
-            } | ForEach-Object {
-                try {
-                    Remove-Item @removeParams -LiteralPath $_.FullName
+        switch ($Type) {
+            'file' {
+                if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
                     [PSCustomObject]@{
-                        Type         = $removalType
-                        FullName     = $_.FullName 
-                        CreationTime = $_.CreationTime
-                        Action       = 'Removed'
-                        Error        = $null
-                    }
-                }
-                catch {
-                    [PSCustomObject]@{
-                        Type         = $removalType
-                        FullName     = $_.FullName 
-                        CreationTime = $_.CreationTime
+                        Type         = 'File'
+                        FullName     = $Path
+                        CreationTime = $null
                         Action       = $null
-                        Error        = $_
+                        Error        = 'Path not found'
                     }
-                    $Error.RemoveAt(0)
+                    Exit
                 }
             }
-            #endregion
-
-            #region Remove empty folders
-            if (
-                ($Type -eq 'content') -and
-                ($RemoveEmptyFolders)
-            ) {
-                $failedFolderRemoval = @()
-
-                $getParams = @{
-                    LiteralPath = $Path
-                    Directory   = $true
-                    Recurse     = $true
-                }
-
-                while (
-                    $emptyFolders = Get-ChildItem @getParams | 
-                    Where-Object { 
-                        ($_.GetFileSystemInfos().Count -eq 0) -and 
-                        ($failedFolderRemoval -notContains $_.FullName) 
-                    }
+            'folder' {
+                if (-not (Test-Path -LiteralPath $Path -PathType Container)
                 ) {
-                    $result.Items += $emptyFolders | ForEach-Object {
-                        try {
-                            Remove-Item @removeParams -LiteralPath $_.FullName
-                            [PSCustomObject]@{
-                                Type         = 'Folder' 
-                                FullName     = $_.FullName 
-                                CreationTime = $_.CreationTime
-                                Action       = 'Removed'
-                                Error        = $null
-                            }
-                        }
-                        catch {
-                            [PSCustomObject]@{
-                                Type         = 'Folder' 
-                                FullName     = $_.FullName 
-                                CreationTime = $_.CreationTime
-                                Action       = $null
-                                Error        = $_
-                            }
-                            $Error.RemoveAt(0)
-                            $failedFolderRemoval += $_.FullName
-                        }
-                    }   
+                    [PSCustomObject]@{
+                        Type         = 'Folder'
+                        FullName     = $Path
+                        CreationTime = $null
+                        Action       = $null
+                        Error        = 'Path not found'
+                    }
+                    Exit
+                }
+                $removalType = 'Folder'
+                break
+            }
+            'content' {
+                if (
+                    -not (Test-Path -LiteralPath $Path -PathType Container)
+                ) {
+                    throw "Folder '$Path' not found"
+                }
+                $commandToRun = "Get-ChildItem -LiteralPath '$Path' -Recurse -File"
+                break
+            }
+            Default {
+                throw "Type '$_' not supported"
+            }
+        }
+        #endregion
+
+        #region Remove items
+        $removeParams = @{
+            Recurse     = $true
+            Force       = $true
+            ErrorAction = 'Stop'
+        }
+
+        Invoke-Expression $commandToRun | Where-Object { 
+            ($_.CreationTime -lt $compareDate) -or ($OlderThanDays -eq 0)
+        } | ForEach-Object {
+            try {
+                Remove-Item @removeParams -LiteralPath $_.FullName
+                [PSCustomObject]@{
+                    Type         = $removalType
+                    FullName     = $_.FullName 
+                    CreationTime = $_.CreationTime
+                    Action       = 'Removed'
+                    Error        = $null
                 }
             }
-            #endregion
+            catch {
+                [PSCustomObject]@{
+                    Type         = $removalType
+                    FullName     = $_.FullName 
+                    CreationTime = $_.CreationTime
+                    Action       = $null
+                    Error        = $_
+                }
+                $Error.RemoveAt(0)
+            }
         }
-        Catch {
-            $result.Error = $_
-            $Error.RemoveAt(0)
+        #endregion
+
+        #region Remove empty folders
+        if (($Type -eq 'content') -and ($RemoveEmptyFolders)) {
+            $failedFolderRemoval = @()
+
+            $getParams = @{
+                LiteralPath = $Path
+                Directory   = $true
+                Recurse     = $true
+            }
+
+            while (
+                $emptyFolders = Get-ChildItem @getParams | 
+                Where-Object { 
+                    ($_.GetFileSystemInfos().Count -eq 0) -and 
+                    ($failedFolderRemoval -notContains $_.FullName) 
+                }
+            ) {
+                $emptyFolders | ForEach-Object {
+                    try {
+                        Remove-Item @removeParams -LiteralPath $_.FullName
+                        [PSCustomObject]@{
+                            Type         = 'Folder' 
+                            FullName     = $_.FullName 
+                            CreationTime = $_.CreationTime
+                            Action       = 'Removed'
+                            Error        = $null
+                        }
+                    }
+                    catch {
+                        [PSCustomObject]@{
+                            Type         = 'Folder' 
+                            FullName     = $_.FullName 
+                            CreationTime = $_.CreationTime
+                            Action       = $null
+                            Error        = $_
+                        }
+                        $Error.RemoveAt(0)
+                        $failedFolderRemoval += $_.FullName
+                    }
+                }   
+            }
         }
-        finally {
-            $result
-        }
+        #endregion
     }
 
     Try {
@@ -327,24 +301,32 @@ Begin {
 Process {
     Try {
         #region Remove files/folders on remote machines
-        $jobs = @()
-
         foreach ($d in $Destinations) {
             $invokeParams = @{
                 ScriptBlock  = $scriptBlock
-                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders, $d.Name
+                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders
             }
 
-            $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}'" -f $(
+            $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}'" -f $(
                 if ($d.ComputerName) { $d.ComputerName }
                 else { $env:COMPUTERNAME }
             ),
             $invokeParams.ArgumentList[0], $invokeParams.ArgumentList[1],
-            $invokeParams.ArgumentList[2], $invokeParams.ArgumentList[3], 
-            $invokeParams.ArgumentList[4]
+            $invokeParams.ArgumentList[2], $invokeParams.ArgumentList[3]
             Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
 
-            $jobs += if ($d.ComputerName) {
+            #region Add job properties
+            $addParams = @{
+                NotePropertyMembers = @{
+                    Job        = $null
+                    JobResults = @()
+                    JobErrors  = @()
+                }
+            }
+            $d | Add-Member @addParams
+            #endregion
+
+            $d.Job = if ($d.ComputerName) {
                 $invokeParams.ComputerName = $d.ComputerName
                 $invokeParams.AsJob = $true
                 Invoke-Command @invokeParams
@@ -354,24 +336,45 @@ Process {
             }
             # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays -RemoveEmptyFolders $d.RemoveEmptyFolders
 
-            Wait-MaxRunningJobsHC -Name $jobs -MaxThreads $MaxConcurrentJobs
+            $waitParams = @{
+                Name       = $Destinations.Job | Where-Object { $_ }
+                MaxThreads = $MaxConcurrentJobs
+            }
+            Wait-MaxRunningJobsHC @waitParams
         }
 
-        $M = "Wait for all $($jobs.count) jobs to finish"
+        $M = "Wait for all $($Destinations.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
-        # $jobResults = if ($jobs) { $jobs | Wait-Job -Force | Receive-Job }
-        $jobResults = if ($jobs) { 
-            Receive-Job -Job $jobs -Wait -AutoRemoveJob -Force 
+        $Destinations.Job | Wait-Job
+
+        foreach ($d in $Destinations) {
+            #region Get job results and job errors
+            $jobErrors = @()
+            $receiveParams = @{
+                ErrorVariable = 'jobErrors'
+                ErrorAction   = 'SilentlyContinue'
+            }
+            $d.JobResults += $d.Job | Receive-Job @receiveParams
+        
+            foreach ($e in $jobErrors) {
+                $d.JobErrors += $e.ToString()
+                $Error.Remove($e)
+
+                $M = "Job error on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f 
+                $task.Job.Location, $d.Remove, $d.Path, $d.OlderThanDays, 
+                $d.RemoveEmptyFolders, $d.Name, $e.ToString()
+                Write-Verbose $M; Write-EventLog @EventErrorParams -Message $M
+            }
+            #endregion
         }
-        #endregion
 
         #region Export results to Excel log file
-        $exportToExcel = foreach (
+        $jobResults = foreach (
             $job in 
-            $jobResults | Where-Object { $_.Items }
+            $Destinations.JobResults | Where-Object { $_ }
         ) {
-            $job.Items | Select-Object -Property @{
+            $job | Select-Object -Property @{
                 Name       = 'ComputerName'; 
                 Expression = { $job.ComputerName } 
             },
@@ -381,8 +384,8 @@ Process {
             }, 'CreationTime', 'Action', 'Error'
         }
 
-        if ($exportToExcel) {
-            $M = "Export $($exportToExcel.Count) rows to Excel"
+        if ($jobResults) {
+            $M = "Export $($jobResults.Count) rows to Excel"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
             
             $excelParams = @{
@@ -393,7 +396,7 @@ Process {
                 AutoSize           = $true
                 FreezeTopRow       = $true
             }
-            $exportToExcel | Export-Excel @excelParams
+            $jobResults | Export-Excel @excelParams
 
             $mailParams.Attachments = $excelParams.Path
         }
@@ -412,127 +415,131 @@ End {
         #region Send mail to user
 
         #region Error counters
-        $removalErrorCount = (
-            $jobResults.Items | Where-Object { $_.Error } |
-            Measure-Object
-        ).Count
-
-        $jobErrorCount = (
-            $jobResults | Where-Object { $_.Error } |
-            Measure-Object
-        ).Count
-
-        $unknownErrorCount = (
-            $Error.Exception.Message | Where-Object { $_ } |
-            Measure-Object
-        ).Count
-           
-        $totalErrorCount = $removalErrorCount + $jobErrorCount + 
-        $unknownErrorCount
+        $counter = @{
+            removedItems  = (
+                $Destinations.JobResults | 
+                Where-Object { ($_.Action -eq 'Removed') } | 
+                Measure-Object
+            ).Count
+            removalErrors = (
+                $Destinations.JobResults | Where-Object { $_.Error } |
+                Measure-Object
+            ).Count
+            jobErrors     = (
+                (
+                    $Destinations.JobErrors | Where-Object { $_ } | 
+                    Measure-Object
+                ).Count
+            )
+            systemErrors  = (
+                $Error.Exception.Message | Where-Object { $_ } |
+                Measure-Object
+            ).Count
+        }
         #endregion
 
         #region Mail subject and priority
-        $removedItemsCount = (
-            $jobResults.Items | Where-Object { ($_.Action -eq 'Removed') } | Measure-Object
-        ).Count
+        $mailParams.Priority = 'Normal'
+        $mailParams.Subject = '{0} removed' -f $counter.removedItems
 
-        $mailParams.Subject = "$removedItemsCount removed"
-
-        if ($totalErrorCount) {
+        if (
+            $totalErrorCount = $counter.removalErrors + $counter.jobErrors + 
+            $counter.systemErrors
+        ) {
             $mailParams.Priority = 'High'
             $mailParams.Subject += ", $totalErrorCount error{0}" -f $(
-                if ($totalErrorCount -lt 1) {
-                    's'
-                }
+                if ($totalErrorCount -lt 1) { 's' }
             )
         }
         #endregion
 
         #region Create html lists
-        $errorsHtmlList = if ($unknownErrorCount) {
-            "<p>During removal <b>$unknownErrorCount non terminating {0} detected:{1}</p>" -f $(
-                if ($unknownErrorCount -eq 1) {
-                    'error</b> was'
-                }
-                else {
-                    'errors</b> were'
-                }
+        $systemErrorsHtmlList = if ($counter.systemErrors) {
+            "<p>Detected <b>{0} non terminating error{1}:{2}</p>" -f $counter.systemErrors, 
+            $(
+                if ($counter.systemErrors -gt 1) { 's' }
             ),
-            $($Error.Exception.Message | Where-Object { $_ } | ConvertTo-HtmlListHC)
+            $(
+                $Error.Exception.Message | Where-Object { $_ } | 
+                ConvertTo-HtmlListHC
+            )
         }
 
         $jobResultsHtmlListItems = foreach (
-            $job in 
-            $jobResults | Sort-Object -Property 'Name', 'Path', 'ComputerName'
+            $d in 
+            $Destinations | Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
-            "{0}<br>{1}<br>{2}{3}" -f 
+            "{0}<br>{1}<br>Removed: {2}{3}{4}" -f 
             $(
-                if ($job.Path -match '^\\\\') {
-                    '<a href="{0}">{1}</a>' -f $job.Path, $(
-                        if ($job.Name) { $job.Name }
-                        else { $job.Path }
+                if ($d.Path -match '^\\\\') {
+                    '<a href="{0}">{1}</a>' -f $d.Path, $(
+                        if ($d.Name) { $d.Name }
+                        else { $d.Path }
                     )
                 }
                 else {
-                    $uncPath = $job.Path -Replace '^.{2}', (
-                        '\\{0}\{1}$' -f $job.ComputerName, $job.Path[0]
+                    $uncPath = $d.Path -Replace '^.{2}', (
+                        '\\{0}\{1}$' -f $d.ComputerName, $d.Path[0]
                     )
                     '<a href="{0}">{1}</a>' -f $uncPath, $(
-                        if ($job.Name) { $job.Name }
+                        if ($d.Name) { $d.Name }
                         else { $uncPath }
                     )
                 }
-            ), $(
-                $description = if ($job.Type -eq 'File') {
-                    if ($job.OlderThanDays -eq 0) {
+            ), 
+            $(
+                $description = if ($d.Remove -eq 'File') {
+                    if ($d.OlderThanDays -eq 0) {
                         'Remove file'
                     }
                     else {
                         "Remove file when it's older than {0} days" -f 
-                        $job.OlderThanDays
+                        $d.OlderThanDays
                     }
                 }
-                elseif ($job.Type -eq 'Folder') {
-                    if ($job.OlderThanDays -eq 0) {
+                elseif ($d.Remove -eq 'Folder') {
+                    if ($d.OlderThanDays -eq 0) {
                         'Remove folder'
                     }
                     else {
                         "Remove folder when it's older than {0} days" -f 
-                        $job.OlderThanDays
+                        $d.OlderThanDays
                     }
                 }
-                elseif ($job.Type -eq 'Content') {
-                    if ($job.OlderThanDays -eq 0) {
+                elseif ($d.Remove -eq 'Content') {
+                    if ($d.OlderThanDays -eq 0) {
                         'Remove folder content'
                     }
                     else {
                         'Remove folder content that is older than {0} days' -f 
-                        $job.OlderThanDays
+                        $d.OlderThanDays
                     }
                 }
-                if ($job.RemoveEmptyFolders) {
+                if ($d.RemoveEmptyFolders) {
                     $description += ' and remove empty folders'
                 }
                 $description
-            ), $(
-                $counters = 'Removed: {0}' -f 
-                $(
-                    (
-                        $job.Items | Where-Object { $_.Action -eq 'Removed' } | 
+            ), 
+            $(
+                (
+                    $d.JobResults | 
+                    Where-Object { $_.Action -eq 'Removed' } | 
+                    Measure-Object
+                ).Count
+            ),
+            $(
+                if ($moveFilesErrorCount = (
+                        $d.JobResults | Where-Object { $_.Error } | 
                         Measure-Object
-                    ).Count
-                )
-                if (
-                    $errorCount = (
-                        $job.Items | Where-Object { $_.Error } | Measure-Object
-                    ).Count
-                ) {
-                    $counters += ', <b style="color:red;">errors: {0}</b>' -f $errorCount
+                    ).Count + $d.JobErrors.Count) {
+                    ', <b style="color:red;">errors: {0}</b>' -f $moveFilesErrorCount
                 }
-                $counters
-            ), $(
-                if ($job.Error) {
-                    '<br><b style="color:red;">{0}</b>' -f $job.Error
+            ),
+            $(
+                if ($d.JobErrors) {
+                    $d.JobErrors | ForEach-Object {
+                        '<br><b style="color:red;">{0}</b>' -f $_
+                    }
                 }
             )
         }
@@ -545,7 +552,7 @@ End {
             To        = $MailTo
             Bcc       = $ScriptAdmin
             Message   = "
-                $errorsHtmlList
+                $systemErrorsHtmlList
                 <p>Summary:</p>
                 $jobResultsHtmlList"
             LogFolder = $LogParams.LogFolder
