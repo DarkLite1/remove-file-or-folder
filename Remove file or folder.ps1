@@ -456,7 +456,7 @@ End {
 
         #region Create html lists
         $systemErrorsHtmlList = if ($counter.systemErrors) {
-            "<p>Detected <b>{0} non terminating error{1}:{2}</p>" -f $counter.systemErrors, 
+            "<p>Detected <b>{0} non terminating error{1}</b>:{2}</p>" -f $counter.systemErrors, 
             $(
                 if ($counter.systemErrors -gt 1) { 's' }
             ),
