@@ -376,18 +376,17 @@ Process {
         }
 
         #region Export results to Excel log file
-        $jobResults = foreach (
-            $job in 
-            $Destinations.JobResults | Where-Object { $_ }
-        ) {
-            $job | Select-Object -Property @{
-                Name       = 'ComputerName'; 
-                Expression = { $job.ComputerName } 
-            },
-            'Type', @{
+        $jobResults = foreach ($d in $Destinations) {
+            $d.JobResults | Select-Object -Property 'ComputerName',
+            'Type', 
+            @{
                 Name       = 'Path'; 
                 Expression = { $_.FullName } 
-            }, 'CreationTime', 'Action', 'Error'
+            }, 
+            'CreationTime', @{
+                Name       = 'OlderThanDays'; 
+                Expression = { $d.OlderThanDays } 
+            }, 'Action', 'Error'
         }
 
         if ($jobResults) {

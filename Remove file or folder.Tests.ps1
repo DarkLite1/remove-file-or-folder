@@ -369,18 +369,20 @@ Describe "when 'Remove' is 'file'" {
 
             $testExportedExcelRows = @(
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'File'
-                    Path         = $testFile[0]
-                    Error        = $null
-                    Action       = 'Removed'
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'File'
+                    Path          = $testFile[0]
+                    Error         = $null
+                    Action        = 'Removed'
+                    OlderThanDays = 0
                 }
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'File'
-                    Path         = 'c:\not existing file'
-                    Error        = 'Path not found'
-                    Action       = $null
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'File'
+                    Path          = 'c:\not existing file'
+                    Error         = 'Path not found'
+                    Action        = $null
+                    OlderThanDays = 0
                 }
             )
             $testRemoved = @{
@@ -443,6 +445,7 @@ Describe "when 'Remove' is 'file'" {
                     }
                     $actualRow.ComputerName | Should -Be $testRow.ComputerName
                     $actualRow.Type | Should -Be $testRow.Type
+                    $actualRow.OlderThanDays | Should -Be $testRow.OlderThanDays
                     $actualRow.Path | Should -Be $testRow.Path
                     $actualRow.Error | Should -Be $testRow.Error
                     $actualRow.Action | Should -Be $testRow.Action
@@ -559,18 +562,20 @@ Describe "when 'Remove' is 'folder'" {
 
             $testExportedExcelRows = @(
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'Folder'
-                    Path         = $testFolder[0]
-                    Error        = $null
-                    Action       = 'Removed'
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'Folder'
+                    Path          = $testFolder[0]
+                    Error         = $null
+                    Action        = 'Removed'
+                    OlderThanDays = 0
                 }
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'Folder'
-                    Path         = 'c:\not existing folder'
-                    Error        = 'Path not found'
-                    Action       = $null
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'Folder'
+                    Path          = 'c:\not existing folder'
+                    Error         = 'Path not found'
+                    Action        = $null
+                    OlderThanDays = 0
                 }
             )
             $testRemoved = @{
@@ -634,10 +639,11 @@ Describe "when 'Remove' is 'folder'" {
                     $actualRow.ComputerName | Should -Be $testRow.ComputerName
                     $actualRow.Type | Should -Be $testRow.Type
                     $actualRow.Path | Should -Be $testRow.Path
+                    $actualRow.OlderThanDays | Should -Be $testRow.OlderThanDays
                     $actualRow.Error | Should -Be $testRow.Error
                     $actualRow.Action | Should -Be $testRow.Action
                 }
-            }
+            } -Tag test
         }
         It 'send a summary mail to the user' {
             Should -Invoke Send-MailHC -Exactly 1 -Scope Context -ParameterFilter {
@@ -757,18 +763,20 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
 
             $testExportedExcelRows = @(
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'Folder'
-                    Path         = $testFolder[3]
-                    Error        = $null
-                    Action       = 'Removed'
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'Folder'
+                    Path          = $testFolder[3]
+                    Error         = $null
+                    Action        = 'Removed'
+                    OlderThanDays = 0
                 }
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'File'
-                    Path         = $testFile[3]
-                    Error        = $null
-                    Action       = 'Removed'
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'File'
+                    Path          = $testFile[3]
+                    Error         = $null
+                    Action        = 'Removed'
+                    OlderThanDays = 0
                 }
             )
             $testRemoved = @{
@@ -832,6 +840,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
                     $actualRow.ComputerName | Should -Be $testRow.ComputerName
                     $actualRow.Type | Should -Be $testRow.Type
                     $actualRow.Path | Should -Be $testRow.Path
+                    $actualRow.OlderThanDays | Should -Be $testRow.OlderThanDays
                     $actualRow.Error | Should -Be $testRow.Error
                     $actualRow.Action | Should -Be $testRow.Action
                     $actualRow.CreationTime | Should -Not -BeNullOrEmpty
@@ -983,18 +992,20 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
 
             $testExportedExcelRows = @(
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'File'
-                    Path         = $testFile[3]
-                    Error        = $null
-                    Action       = 'Removed'
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'File'
+                    Path          = $testFile[3]
+                    Error         = $null
+                    Action        = 'Removed'
+                    OlderThanDays = 0
                 }
                 @{
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'File'
-                    Path         = $testFile[4]
-                    Error        = $null
-                    Action       = 'Removed'
+                    ComputerName  = $env:COMPUTERNAME
+                    Type          = 'File'
+                    Path          = $testFile[4]
+                    Error         = $null
+                    Action        = 'Removed'
+                    OlderThanDays = 0
                 }
             )
             $testRemoved = @{
@@ -1059,6 +1070,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
                     }
                     $actualRow.ComputerName | Should -Be $testRow.ComputerName
                     $actualRow.Type | Should -Be $testRow.Type
+                    $actualRow.OlderThanDays | Should -Be $testRow.OlderThanDays
                     $actualRow.Path | Should -Be $testRow.Path
                     $actualRow.Error | Should -Be $testRow.Error
                     $actualRow.Action | Should -Be $testRow.Action
