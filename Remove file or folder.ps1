@@ -376,7 +376,7 @@ Process {
         }
 
         #region Export results to Excel log file
-        $jobResults = foreach ($d in $Destinations) {
+        $exportToExcel = foreach ($d in $Destinations) {
             $d.JobResults | Select-Object -Property 'ComputerName',
             'Type', 
             @{
@@ -389,8 +389,8 @@ Process {
             }, 'Action', 'Error'
         }
 
-        if ($jobResults) {
-            $M = "Export $($jobResults.Count) rows to Excel"
+        if ($exportToExcel) {
+            $M = "Export $($exportToExcel.Count) rows to Excel"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
             
             $excelParams = @{
@@ -401,7 +401,7 @@ Process {
                 AutoSize           = $true
                 FreezeTopRow       = $true
             }
-            $jobResults | Export-Excel @excelParams
+            $exportToExcel | Export-Excel @excelParams
 
             $mailParams.Attachments = $excelParams.Path
         }
