@@ -123,26 +123,24 @@ Begin {
             ($_.CreationTime -lt $compareDate) -or ($OlderThanDays -eq 0)
         } | ForEach-Object {
             try {
-                Remove-Item @removeParams -LiteralPath $_.FullName
-                [PSCustomObject]@{ 
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = $removalType
-                    FullName     = $_.FullName 
-                    CreationTime = $_.CreationTime
-                    Action       = 'Removed'
-                    Error        = $null
-                }
-            }
-            catch {
-                [PSCustomObject]@{ 
+                $result = [PSCustomObject]@{ 
                     ComputerName = $env:COMPUTERNAME
                     Type         = $removalType
                     FullName     = $_.FullName 
                     CreationTime = $_.CreationTime
                     Action       = $null
-                    Error        = $_
+                    Error        = $null
                 }
+
+                Remove-Item @removeParams -LiteralPath $_.FullName
+                $result.Action = 'Removed'
+            }
+            catch {
+                $result.Error = $_
                 $Error.RemoveAt(0)
+            }
+            finally {
+                $result
             }
         }
         #endregion
@@ -166,27 +164,25 @@ Begin {
             ) {
                 $emptyFolders | ForEach-Object {
                     try {
-                        Remove-Item @removeParams -LiteralPath $_.FullName
-                        [PSCustomObject]@{ 
-                            ComputerName = $env:COMPUTERNAME
-                            Type         = 'Folder' 
-                            FullName     = $_.FullName 
-                            CreationTime = $_.CreationTime
-                            Action       = 'Removed'
-                            Error        = $null
-                        }
-                    }
-                    catch {
-                        [PSCustomObject]@{ 
+                        $result = [PSCustomObject]@{ 
                             ComputerName = $env:COMPUTERNAME
                             Type         = 'Folder' 
                             FullName     = $_.FullName 
                             CreationTime = $_.CreationTime
                             Action       = $null
-                            Error        = $_
+                            Error        = $null
                         }
+
+                        Remove-Item @removeParams -LiteralPath $_.FullName
+                        $result. Action = 'Removed'
+                    }
+                    catch {
+                        $result.Error = $_
                         $Error.RemoveAt(0)
                         $failedFolderRemoval += $_.FullName
+                    }
+                    finally {
+                        $result
                     }
                 }   
             }
@@ -199,15 +195,17 @@ Begin {
         Write-EventLog @EventStartParams
         Get-ScriptRuntimeHC -Start
 
+        $Error.Clear()
+
         #region Logging
         try {
-            $LogParams = @{
+            $logParams = @{
                 LogFolder    = New-Item -Path $LogFolder -ItemType 'Directory' -Force -ErrorAction 'Stop'
                 Name         = $ScriptName
                 Date         = 'ScriptStartTime'
                 NoFormatting = $true
             }
-            $LogFile = New-LogFileNameHC @LogParams
+            $logFile = New-LogFileNameHC @logParams
         }
         Catch {
             throw "Failed creating the log folder '$LogFolder': $_"
@@ -348,6 +346,7 @@ Process {
             }
             Wait-MaxRunningJobsHC @waitParams
         }
+        #endregion
 
         $M = "Wait for all $($Destinations.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
@@ -367,16 +366,27 @@ Process {
                 $d.JobErrors += $e.ToString()
                 $Error.Remove($e)
 
-                $M = "Job error on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f 
-                $task.Job.Location, $d.Remove, $d.Path, $d.OlderThanDays, 
+                $M = "'{0}' Error for Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f 
+                $d.Job.Location, $d.Remove, $d.Path, $d.OlderThanDays, 
                 $d.RemoveEmptyFolders, $d.Name, $e.ToString()
-                Write-Verbose $M; Write-EventLog @EventErrorParams -Message $M
+                Write-Warning $M; Write-EventLog @EventWarnParams -Message $M
             }
             #endregion
         }
 
-        #region Export results to Excel log file
-        $exportToExcel = foreach ($d in $Destinations) {
+        $excelParams = @{
+            Path               = $logFile + ' - Log.xlsx'
+            NoNumberConversion = '*'
+            AutoSize           = $true
+            FreezeTopRow       = $true
+        }
+        $excelSheet = @{
+            Overview = @()
+            Errors   = @()
+        }
+        
+        #region Create Excel worksheet Overview
+        $excelSheet.Overview += foreach ($d in $Destinations) {
             $d.JobResults | Select-Object -Property 'ComputerName',
             'Type', 
             @{
@@ -389,20 +399,57 @@ Process {
             }, 'Action', 'Error'
         }
 
-        if ($exportToExcel) {
-            $M = "Export $($exportToExcel.Count) rows to Excel"
+        if ($excelSheet.Overview) {
+            $M = "Export $($excelSheet.Overview.Count) rows to Excel"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
             
-            $excelParams = @{
-                Path               = $LogFile + '- Log.xlsx'
-                WorksheetName      = 'Overview'
-                TableName          = 'Overview'
-                NoNumberConversion = '*'
-                AutoSize           = $true
-                FreezeTopRow       = $true
-            }
-            $exportToExcel | Export-Excel @excelParams
+            $excelParams.WorksheetName = 'Overview'
+            $excelParams.TableName = 'Overview'
+            $excelSheet.Overview | Export-Excel @excelParams
 
+            $mailParams.Attachments = $excelParams.Path
+        }
+        #endregion
+
+        #region Create Excel worksheet Errors
+        $excelSheet.Errors += foreach ($d in $Destinations) {
+            $d.JobErrors | Where-Object { $_ } | Select-Object -Property @{
+                Name       = 'ComputerName';
+                Expression = { $d.ComputerName }
+            },
+            @{
+                Name       = 'Path';
+                Expression = { $d.Path }
+            },
+            @{
+                Name       = 'Remove'; 
+                Expression = { $d.Remove }
+            },
+            @{
+                Name       = 'OlderThanDays'; 
+                Expression = { $d.OlderThanDays }
+            },
+            @{
+                Name       = 'RemoveEmptyFolders'; 
+                Expression = { $d.RemoveEmptyFolders }
+            },
+            @{
+                Name       = 'Error';
+                Expression = { $_ -join ', ' }
+            }
+        }
+        
+        if ($excelSheet.Errors) {
+            $excelParams.WorksheetName = 'Errors'
+            $excelParams.TableName = 'Errors'
+        
+            $M = "Export {0} rows to sheet '{1}' in Excel file '{2}'" -f
+            $excelSheet.Errors.Count, 
+            $excelParams.WorksheetName, $excelParams.Path
+            Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+        
+            $excelSheet.Errors | Export-Excel @excelParams
+        
             $mailParams.Attachments = $excelParams.Path
         }
         #endregion
@@ -448,7 +495,7 @@ End {
         ) {
             $mailParams.Priority = 'High'
             $mailParams.Subject += ", $totalErrorCount error{0}" -f $(
-                if ($totalErrorCount -lt 1) { 's' }
+                if ($totalErrorCount -ne 1) { 's' }
             )
         }
         #endregion
@@ -457,7 +504,7 @@ End {
         $systemErrorsHtmlList = if ($counter.systemErrors) {
             "<p>Detected <b>{0} non terminating error{1}</b>:{2}</p>" -f $counter.systemErrors, 
             $(
-                if ($counter.systemErrors -gt 1) { 's' }
+                if ($counter.systemErrors -ne 1) { 's' }
             ),
             $(
                 $Error.Exception.Message | Where-Object { $_ } | 
@@ -469,7 +516,7 @@ End {
             $d in 
             $Destinations | Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
-            "{0}<br>{1}<br>Removed: {2}{3}{4}" -f 
+            "{0}<br>{1}<br>Removed: {2}{3}" -f 
             $(
                 if ($d.Path -match '^\\\\') {
                     '<a href="{0}">{1}</a>' -f $d.Path, $(
@@ -533,13 +580,6 @@ End {
                         Measure-Object
                     ).Count + $d.JobErrors.Count) {
                     ', <b style="color:red;">errors: {0}</b>' -f $errorCount
-                }
-            ),
-            $(
-                if ($d.JobErrors) {
-                    $d.JobErrors | ForEach-Object {
-                        '<br><b style="color:red;">{0}</b>' -f $_
-                    }
                 }
             )
         }
