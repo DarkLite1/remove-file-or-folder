@@ -14,9 +14,10 @@ BeforeAll {
 
     $testScript = $PSCommandPath.Replace('.Tests.ps1', '.ps1')
     $testParams = @{
-        ScriptName = 'Test (Brecht)'
-        ImportFile = $testOutParams.FilePath
-        LogFolder  = New-Item 'TestDrive:/log' -ItemType Directory
+        ScriptName  = 'Test (Brecht)'
+        ImportFile  = $testOutParams.FilePath
+        LogFolder   = New-Item 'TestDrive:/log' -ItemType Directory
+        ScriptAdmin = 'admin@contoso.com'
     }
     
     Mock Send-MailHC
@@ -850,11 +851,11 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
         Context 'Send a mail to the user' {
             BeforeAll {
                 $testMail = @{
-                    To       = 'bob@contoso.com'
-                    Bcc      = $ScriptAdmin
-                    Priority = 'High'
-                    Subject  = '2 removed, 1 error'
-                    Message  = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0].Name)*Remove folder content and remove empty folders<br>Removed: 2</li></ul><p><i>* Check the attachment for details</i></p>*"
+                    To          = 'bob@contoso.com'
+                    Bcc         = $ScriptAdmin
+                    Priority    = 'High'
+                    Subject     = '2 removed, 1 error'
+                    Message     = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\not existing folder`">\\$env:COMPUTERNAME\c$\not existing folder</a><br>Remove folder content and remove empty folders<br>Removed: 0, <b style=`"color:red;`">errors: 1</b><br><br></li>*$($testFolder[0].Name)*Remove folder content and remove empty folders<br>Removed: 2</li></ul><p><i>* Check the attachment for details</i></p>*"
                     Attachments = '* - log.xlsx'
                 }
             }
