@@ -31,9 +31,9 @@ Describe 'the mandatory parameters are' {
 Describe 'send an e-mail to the admin when' {
     BeforeAll {
         $MailAdminParams = {
-            ($To -eq $ScriptAdmin) -and ($Priority -eq 'High') -and 
+            ($To -eq $testParams.ScriptAdmin) -and ($Priority -eq 'High') -and 
             ($Subject -eq 'FAILURE')
-        }    
+        }
     }
     It 'the log folder cannot be created' {
         $testNewParams = $testParams.clone()
