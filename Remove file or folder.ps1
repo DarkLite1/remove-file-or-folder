@@ -24,8 +24,9 @@
 
 .PARAMETER Destinations.Remove
     file    : remove the file specified in 'Path'
-    folder  : remove the folder and its contents specified in 'Path'
-    content : remove the files in the folder specified in 'Path'
+    folder  : remove the files in the 'Path' folder
+    content : remove the files in the 'Path' folder and sub folders
+    (use RemoveEmptyFolders to delete empty folder)
 
 .PARAMETER Destinations.Path
     Can be a local path when 'ComputerName' is used or a UNC path
