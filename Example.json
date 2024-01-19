@@ -1,5 +1,6 @@
 {
   "MailTo": ["bob@constoso.com"],
+  "MaxConcurrentJobs": 15,
   "Destinations": [
     {
       "Name": "FTP log file",

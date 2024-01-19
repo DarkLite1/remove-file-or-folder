@@ -8,9 +8,9 @@
 
 .DESCRIPTION
     This script reads a .JSON file containing the destination paths where files
-    or folders need to be removed. When 'OlderThanDays' is '0' all files or 
-    folders will be removed, depending on the chosen 'Remove' type, regardless 
-    their creation date. 
+    or folders need to be removed. When 'OlderThanDays' is '0' all files or
+    folders will be removed, depending on the chosen 'Remove' type, regardless
+    their creation date.
 
 .PARAMETER MailTo
     E-mail addresses of where to send the summary e-mail
@@ -35,7 +35,7 @@
     Only remove files that are older than x days
 
 .PARAMETER Destinations.RemoveEmptyFolders
-    Can only be used with 'Remove' set to 'content' and will remove all empty 
+    Can only be used with 'Remove' set to 'content' and will remove all empty
     folders after the files have been removed
 #>
 
@@ -45,7 +45,6 @@ Param (
     [String]$ScriptName,
     [Parameter(Mandatory)]
     [String]$ImportFile,
-    [Int]$MaxConcurrentJobs = 4,
     [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\File or folder\Remove file or folder\$ScriptName",
     [String[]]$ScriptAdmin = @(
         $env:POWERSHELL_SCRIPT_ADMIN,
@@ -75,7 +74,7 @@ Begin {
         switch ($Type) {
             'file' {
                 if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-                    [PSCustomObject]@{ 
+                    [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
                         Type         = 'File'
                         FullName     = $Path
@@ -89,7 +88,7 @@ Begin {
             'folder' {
                 if (-not (Test-Path -LiteralPath $Path -PathType Container)
                 ) {
-                    [PSCustomObject]@{ 
+                    [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
                         Type         = 'Folder'
                         FullName     = $Path
@@ -124,14 +123,14 @@ Begin {
             ErrorAction = 'Stop'
         }
 
-        Invoke-Expression $commandToRun | Where-Object { 
+        Invoke-Expression $commandToRun | Where-Object {
             ($_.CreationTime -lt $compareDate) -or ($OlderThanDays -eq 0)
         } | ForEach-Object {
             try {
-                $result = [PSCustomObject]@{ 
+                $result = [PSCustomObject]@{
                     ComputerName = $env:COMPUTERNAME
                     Type         = $removalType
-                    FullName     = $_.FullName 
+                    FullName     = $_.FullName
                     CreationTime = $_.CreationTime
                     Action       = $null
                     Error        = $null
@@ -161,18 +160,18 @@ Begin {
             }
 
             while (
-                $emptyFolders = Get-ChildItem @getParams | 
-                Where-Object { 
-                    ($_.GetFileSystemInfos().Count -eq 0) -and 
-                    ($failedFolderRemoval -notContains $_.FullName) 
+                $emptyFolders = Get-ChildItem @getParams |
+                Where-Object {
+                    ($_.GetFileSystemInfos().Count -eq 0) -and
+                    ($failedFolderRemoval -notContains $_.FullName)
                 }
             ) {
                 $emptyFolders | ForEach-Object {
                     try {
-                        $result = [PSCustomObject]@{ 
+                        $result = [PSCustomObject]@{
                             ComputerName = $env:COMPUTERNAME
-                            Type         = 'Folder' 
-                            FullName     = $_.FullName 
+                            Type         = 'Folder'
+                            FullName     = $_.FullName
                             CreationTime = $_.CreationTime
                             Action       = $null
                             Error        = $null
@@ -189,7 +188,7 @@ Begin {
                     finally {
                         $result
                     }
-                }   
+                }
             }
         }
         #endregion
@@ -228,6 +227,17 @@ Begin {
         if (-not ($MailTo = $file.MailTo)) {
             throw "Input file '$ImportFile': No 'MailTo' addresses found."
         }
+
+        if (-not ($MaxConcurrentJobs = $file.MaxConcurrentJobs)) {
+            throw "Property 'MaxConcurrentJobs' not found"
+        }
+        try {
+            $null = $MaxConcurrentJobs.ToInt16($null)
+        }
+        catch {
+            throw "Property 'MaxConcurrentJobs' needs to be a number, the value '$MaxConcurrentJobs' is not supported."
+        }
+
         if (-not ($Destinations = $file.Destinations)) {
             throw "Input file '$ImportFile': No 'Destinations' found."
         }
@@ -245,7 +255,10 @@ Begin {
             if ($d.PSObject.Properties.Name -notContains 'OlderThanDays') {
                 throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'OlderThanDays' not found. Use value number '0' to remove all."
             }
-            if (-not ($d.OlderThanDays -is [int])) {
+            try {
+                $null = $d.OlderThanDays.ToInt16($null)
+            }
+            catch {
                 throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'OlderThanDays' needs to be a number, the value '$($d.OlderThanDays)' is not supported. Use value number '0' to remove all."
             }
             #endregion
@@ -366,13 +379,13 @@ Process {
                 ErrorAction   = 'SilentlyContinue'
             }
             $d.JobResults += $d.Job | Receive-Job @receiveParams
-        
+
             foreach ($e in $jobErrors) {
                 $d.JobErrors += $e.ToString()
                 $Error.Remove($e)
 
-                $M = "'{0}' Error for Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f 
-                $d.Job.Location, $d.Remove, $d.Path, $d.OlderThanDays, 
+                $M = "'{0}' Error for Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f
+                $d.Job.Location, $d.Remove, $d.Path, $d.OlderThanDays,
                 $d.RemoveEmptyFolders, $d.Name, $e.ToString()
                 Write-Warning $M; Write-EventLog @EventWarnParams -Message $M
             }
@@ -389,25 +402,25 @@ Process {
             Overview = @()
             Errors   = @()
         }
-        
+
         #region Create Excel worksheet Overview
         $excelSheet.Overview += foreach ($d in $Destinations) {
             $d.JobResults | Select-Object -Property 'ComputerName',
-            'Type', 
+            'Type',
             @{
-                Name       = 'Path'; 
-                Expression = { $_.FullName } 
-            }, 
+                Name       = 'Path';
+                Expression = { $_.FullName }
+            },
             'CreationTime', @{
-                Name       = 'OlderThanDays'; 
-                Expression = { $d.OlderThanDays } 
+                Name       = 'OlderThanDays';
+                Expression = { $d.OlderThanDays }
             }, 'Action', 'Error'
         }
 
         if ($excelSheet.Overview) {
             $M = "Export $($excelSheet.Overview.Count) rows to Excel"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
-            
+
             $excelParams.WorksheetName = 'Overview'
             $excelParams.TableName = 'Overview'
             $excelSheet.Overview | Export-Excel @excelParams
@@ -427,15 +440,15 @@ Process {
                 Expression = { $d.Path }
             },
             @{
-                Name       = 'Remove'; 
+                Name       = 'Remove';
                 Expression = { $d.Remove }
             },
             @{
-                Name       = 'OlderThanDays'; 
+                Name       = 'OlderThanDays';
                 Expression = { $d.OlderThanDays }
             },
             @{
-                Name       = 'RemoveEmptyFolders'; 
+                Name       = 'RemoveEmptyFolders';
                 Expression = { $d.RemoveEmptyFolders }
             },
             @{
@@ -443,18 +456,18 @@ Process {
                 Expression = { $_ -join ', ' }
             }
         }
-        
+
         if ($excelSheet.Errors) {
             $excelParams.WorksheetName = 'Errors'
             $excelParams.TableName = 'Errors'
-        
+
             $M = "Export {0} rows to sheet '{1}' in Excel file '{2}'" -f
-            $excelSheet.Errors.Count, 
+            $excelSheet.Errors.Count,
             $excelParams.WorksheetName, $excelParams.Path
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
-        
+
             $excelSheet.Errors | Export-Excel @excelParams
-        
+
             $mailParams.Attachments = $excelParams.Path
         }
         #endregion
@@ -474,8 +487,8 @@ End {
         #region Error counters
         $counter = @{
             removedItems  = (
-                $Destinations.JobResults | 
-                Where-Object { ($_.Action -eq 'Removed') } | 
+                $Destinations.JobResults |
+                Where-Object { ($_.Action -eq 'Removed') } |
                 Measure-Object
             ).Count
             removalErrors = (
@@ -495,7 +508,7 @@ End {
         $mailParams.Subject = '{0} removed' -f $counter.removedItems
 
         if (
-            $totalErrorCount = $counter.removalErrors + $counter.jobErrors + 
+            $totalErrorCount = $counter.removalErrors + $counter.jobErrors +
             $counter.systemErrors
         ) {
             $mailParams.Priority = 'High'
@@ -507,21 +520,21 @@ End {
 
         #region Create html lists
         $systemErrorsHtmlList = if ($counter.systemErrors) {
-            "<p>Detected <b>{0} non terminating error{1}</b>:{2}</p>" -f $counter.systemErrors, 
+            "<p>Detected <b>{0} non terminating error{1}</b>:{2}</p>" -f $counter.systemErrors,
             $(
                 if ($counter.systemErrors -ne 1) { 's' }
             ),
             $(
-                $Error.Exception.Message | Where-Object { $_ } | 
+                $Error.Exception.Message | Where-Object { $_ } |
                 ConvertTo-HtmlListHC
             )
         }
 
         $jobResultsHtmlListItems = foreach (
-            $d in 
+            $d in
             $Destinations | Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
-            "{0}<br>{1}<br>Removed: {2}{3}" -f 
+            "{0}<br>{1}<br>Removed: {2}{3}" -f
             $(
                 if ($d.Path -match '^\\\\') {
                     '<a href="{0}">{1}</a>' -f $d.Path, $(
@@ -538,14 +551,14 @@ End {
                         else { $uncPath }
                     )
                 }
-            ), 
+            ),
             $(
                 $description = if ($d.Remove -eq 'File') {
                     if ($d.OlderThanDays -eq 0) {
                         'Remove file'
                     }
                     else {
-                        "Remove file when it's older than {0} days" -f 
+                        "Remove file when it's older than {0} days" -f
                         $d.OlderThanDays
                     }
                 }
@@ -554,7 +567,7 @@ End {
                         'Remove folder'
                     }
                     else {
-                        "Remove folder when it's older than {0} days" -f 
+                        "Remove folder when it's older than {0} days" -f
                         $d.OlderThanDays
                     }
                 }
@@ -563,7 +576,7 @@ End {
                         'Remove folder content'
                     }
                     else {
-                        'Remove folder content that is older than {0} days' -f 
+                        'Remove folder content that is older than {0} days' -f
                         $d.OlderThanDays
                     }
                 }
@@ -571,28 +584,28 @@ End {
                     $description += ' and remove empty folders'
                 }
                 $description
-            ), 
+            ),
             $(
                 (
-                    $d.JobResults | 
-                    Where-Object { $_.Action -eq 'Removed' } | 
+                    $d.JobResults |
+                    Where-Object { $_.Action -eq 'Removed' } |
                     Measure-Object
                 ).Count
             ),
             $(
                 if ($errorCount = (
-                        $d.JobResults | Where-Object { $_.Error } | 
+                        $d.JobResults | Where-Object { $_.Error } |
                         Measure-Object
                     ).Count + $d.JobErrors.Count) {
                     ', <b style="color:red;">errors: {0}</b>' -f $errorCount
                 }
             )
         }
-   
-        $jobResultsHtmlList = $jobResultsHtmlListItems | 
+
+        $jobResultsHtmlList = $jobResultsHtmlListItems |
         ConvertTo-HtmlListHC -Spacing Wide
         #endregion
-        
+
         $mailParams += @{
             To        = $MailTo
             Bcc       = $ScriptAdmin
@@ -606,10 +619,10 @@ End {
         }
 
         if ($mailParams.Attachments) {
-            $mailParams.Message += 
+            $mailParams.Message +=
             "<p><i>* Check the attachment for details</i></p>"
         }
-   
+
         Get-ScriptRuntimeHC -Stop
         Send-MailHC @mailParams
         #endregion
