@@ -369,7 +369,7 @@ Process {
         $M = "Wait for all $($Destinations.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
-        $Destinations.Job | Wait-Job
+        $null = $Destinations.Job | Wait-Job
 
         foreach ($d in $Destinations) {
             #region Get job results and job errors
