@@ -1,7 +1,7 @@
 {
   "MailTo": ["bob@constoso.com"],
   "MaxConcurrentJobs": 15,
-  "Destinations": [
+  "Tasks": [
     {
       "Name": "FTP log file",
       "Remove": "file",

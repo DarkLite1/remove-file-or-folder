@@ -15,26 +15,26 @@
 .PARAMETER MailTo
     E-mail addresses of where to send the summary e-mail
 
-.PARAMETER Destinations
+.PARAMETER Tasks
     Contains an array of objects where each object represents a 'Path' and its
     specific settings on file, folder or content removal
 
-.PARAMETER Destinations.Name
+.PARAMETER Tasks.Name
     The name to display in the email send to the user instead of the full path
 
-.PARAMETER Destinations.Remove
+.PARAMETER Tasks.Remove
     file    : remove the file specified in 'Path'
     folder  : remove the files in the 'Path' folder
     content : remove the files in the 'Path' folder and sub folders
     (use RemoveEmptyFolders to delete empty folder)
 
-.PARAMETER Destinations.Path
+.PARAMETER Tasks.Path
     Can be a local path when 'ComputerName' is used or a UNC path
 
-.PARAMETER Destinations.OlderThanDays
+.PARAMETER Tasks.OlderThanDays
     Only remove files that are older than x days
 
-.PARAMETER Destinations.RemoveEmptyFolders
+.PARAMETER Tasks.RemoveEmptyFolders
     Can only be used with 'Remove' set to 'content' and will remove all empty
     folders after the files have been removed
 #>
@@ -238,54 +238,54 @@ Begin {
             throw "Property 'MaxConcurrentJobs' needs to be a number, the value '$MaxConcurrentJobs' is not supported."
         }
 
-        if (-not ($Destinations = $file.Destinations)) {
-            throw "Input file '$ImportFile': No 'Destinations' found."
+        if (-not ($Tasks = $file.Tasks)) {
+            throw "Input file '$ImportFile': No 'Tasks' found."
         }
-        foreach ($d in $Destinations) {
+        foreach ($task in $Tasks) {
             #region Path
-            if (-not $d.Path) {
-                throw "Input file '$ImportFile': No 'Path' found in one of the 'Destinations'."
+            if (-not $task.Path) {
+                throw "Input file '$ImportFile': No 'Path' found in one of the 'Tasks'."
             }
-            if (($d.Path -notMatch '^\\\\') -and (-not $d.ComputerName)) {
-                throw "Input file '$ImportFile' destination path '$($d.Path)': No 'ComputerName' found."
+            if (($task.Path -notMatch '^\\\\') -and (-not $task.ComputerName)) {
+                throw "Input file '$ImportFile' destination path '$($task.Path)': No 'ComputerName' found."
             }
             #endregion
 
             #region OlderThanDays
-            if ($d.PSObject.Properties.Name -notContains 'OlderThanDays') {
-                throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'OlderThanDays' not found. Use value number '0' to remove all."
+            if ($task.PSObject.Properties.Name -notContains 'OlderThanDays') {
+                throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'OlderThanDays' not found. Use value number '0' to remove all."
             }
             try {
-                $null = $d.OlderThanDays.ToInt16($null)
+                $null = $task.OlderThanDays.ToInt16($null)
             }
             catch {
-                throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'OlderThanDays' needs to be a number, the value '$($d.OlderThanDays)' is not supported. Use value number '0' to remove all."
+                throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'OlderThanDays' needs to be a number, the value '$($task.OlderThanDays)' is not supported. Use value number '0' to remove all."
             }
             #endregion
 
             #region Remove
-            if ($d.PSObject.Properties.Name -notContains 'Remove') {
-                throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'Remove' not found. Valid values are 'folder', 'file' or 'content'."
+            if ($task.PSObject.Properties.Name -notContains 'Remove') {
+                throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'Remove' not found. Valid values are 'folder', 'file' or 'content'."
             }
-            if ($d.Remove -notMatch '^folder$|^file$|^content$') {
-                throw "Input file '$ImportFile' destination path '$($d.Path)': Value '$($d.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
+            if ($task.Remove -notMatch '^folder$|^file$|^content$') {
+                throw "Input file '$ImportFile' destination path '$($task.Path)': Value '$($task.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
             }
             #endregion
 
             #region RemoveEmptyFolders
-            if ($d.Remove -eq 'content') {
+            if ($task.Remove -eq 'content') {
                 if (
-                    $d.PSObject.Properties.Name -notContains 'RemoveEmptyFolders'
+                    $task.PSObject.Properties.Name -notContains 'RemoveEmptyFolders'
                 ) {
-                    throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'RemoveEmptyFolders' not found."
+                    throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'RemoveEmptyFolders' not found."
                 }
-                if (-not ($d.RemoveEmptyFolders -is [boolean])) {
-                    throw "Input file '$ImportFile' destination path '$($d.Path)': The value '$($d.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
+                if (-not ($task.RemoveEmptyFolders -is [boolean])) {
+                    throw "Input file '$ImportFile' destination path '$($task.Path)': The value '$($task.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
                 }
             }
             else {
-                if ($d.RemoveEmptyFolders) {
-                    throw "Input file '$ImportFile' destination path '$($d.Path)': Property 'RemoveEmptyFolders' cannot be used with 'Remove' value '$($d.Remove)'."
+                if ($task.RemoveEmptyFolders) {
+                    throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'RemoveEmptyFolders' cannot be used with 'Remove' value '$($task.Remove)'."
                 }
             }
             #endregion
@@ -293,15 +293,15 @@ Begin {
         #endregion
 
         #region Convert .json properties
-        foreach ($d in $Destinations) {
-            $d.Remove = $d.Remove.ToLower()
-            $d.Path = $d.Path.ToLower()
-            if ($d.ComputerName) {
-                $d.ComputerName = $d.ComputerName.ToUpper()
+        foreach ($task in $Tasks) {
+            $task.Remove = $task.Remove.ToLower()
+            $task.Path = $task.Path.ToLower()
+            if ($task.ComputerName) {
+                $task.ComputerName = $task.ComputerName.ToUpper()
             }
-            if ($d.Remove -ne 'content') {
+            if ($task.Remove -ne 'content') {
                 $addParams = @{
-                    InputObject       = $d
+                    InputObject       = $task
                     NotePropertyName  = 'RemoveEmptyFolders'
                     NotePropertyValue = $false
                 }
@@ -323,14 +323,14 @@ Begin {
 Process {
     Try {
         #region Remove files/folders on remote machines
-        foreach ($d in $Destinations) {
+        foreach ($task in $Tasks) {
             $invokeParams = @{
                 ScriptBlock  = $scriptBlock
-                ArgumentList = $d.Remove, $d.Path, $d.OlderThanDays, $d.RemoveEmptyFolders
+                ArgumentList = $task.Remove, $task.Path, $task.OlderThanDays, $task.RemoveEmptyFolders
             }
 
             $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}'" -f $(
-                if ($d.ComputerName) { $d.ComputerName }
+                if ($task.ComputerName) { $task.ComputerName }
                 else { $env:COMPUTERNAME }
             ),
             $invokeParams.ArgumentList[0], $invokeParams.ArgumentList[1],
@@ -345,48 +345,48 @@ Process {
                     JobErrors  = @()
                 }
             }
-            $d | Add-Member @addParams
+            $task | Add-Member @addParams
             #endregion
 
-            $d.Job = if ($d.ComputerName) {
-                $invokeParams.ComputerName = $d.ComputerName
+            $task.Job = if ($task.ComputerName) {
+                $invokeParams.ComputerName = $task.ComputerName
                 $invokeParams.AsJob = $true
                 Invoke-Command @invokeParams
             }
             else {
                 Start-Job @invokeParams
             }
-            # & $scriptBlock -Type $d.Remove -Path $d.Path -OlderThanDays $d.OlderThanDays -RemoveEmptyFolders $d.RemoveEmptyFolders
+            # & $scriptBlock -Type $task.Remove -Path $task.Path -OlderThanDays $task.OlderThanDays -RemoveEmptyFolders $task.RemoveEmptyFolders
 
             $waitParams = @{
-                Name       = $Destinations.Job | Where-Object { $_ }
+                Name       = $Tasks.Job | Where-Object { $_ }
                 MaxThreads = $MaxConcurrentJobs
             }
             Wait-MaxRunningJobsHC @waitParams
         }
         #endregion
 
-        $M = "Wait for all $($Destinations.count) jobs to finish"
+        $M = "Wait for all $($Tasks.count) jobs to finish"
         Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
-        $null = $Destinations.Job | Wait-Job
+        $null = $Tasks.Job | Wait-Job
 
-        foreach ($d in $Destinations) {
+        foreach ($task in $Tasks) {
             #region Get job results and job errors
             $jobErrors = @()
             $receiveParams = @{
                 ErrorVariable = 'jobErrors'
                 ErrorAction   = 'SilentlyContinue'
             }
-            $d.JobResults += $d.Job | Receive-Job @receiveParams
+            $task.JobResults += $task.Job | Receive-Job @receiveParams
 
             foreach ($e in $jobErrors) {
-                $d.JobErrors += $e.ToString()
+                $task.JobErrors += $e.ToString()
                 $Error.Remove($e)
 
                 $M = "'{0}' Error for Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f
-                $d.Job.Location, $d.Remove, $d.Path, $d.OlderThanDays,
-                $d.RemoveEmptyFolders, $d.Name, $e.ToString()
+                $task.Job.Location, $task.Remove, $task.Path, $task.OlderThanDays,
+                $task.RemoveEmptyFolders, $task.Name, $e.ToString()
                 Write-Warning $M; Write-EventLog @EventWarnParams -Message $M
             }
             #endregion
@@ -404,8 +404,8 @@ Process {
         }
 
         #region Create Excel worksheet Overview
-        $excelSheet.Overview += foreach ($d in $Destinations) {
-            $d.JobResults | Select-Object -Property 'ComputerName',
+        $excelSheet.Overview += foreach ($task in $Tasks) {
+            $task.JobResults | Select-Object -Property 'ComputerName',
             'Type',
             @{
                 Name       = 'Path';
@@ -413,7 +413,7 @@ Process {
             },
             'CreationTime', @{
                 Name       = 'OlderThanDays';
-                Expression = { $d.OlderThanDays }
+                Expression = { $task.OlderThanDays }
             }, 'Action', 'Error'
         }
 
@@ -430,26 +430,26 @@ Process {
         #endregion
 
         #region Create Excel worksheet Errors
-        $excelSheet.Errors += foreach ($d in $Destinations) {
-            $d.JobErrors | Where-Object { $_ } | Select-Object -Property @{
+        $excelSheet.Errors += foreach ($task in $Tasks) {
+            $task.JobErrors | Where-Object { $_ } | Select-Object -Property @{
                 Name       = 'ComputerName';
-                Expression = { $d.ComputerName }
+                Expression = { $task.ComputerName }
             },
             @{
                 Name       = 'Path';
-                Expression = { $d.Path }
+                Expression = { $task.Path }
             },
             @{
                 Name       = 'Remove';
-                Expression = { $d.Remove }
+                Expression = { $task.Remove }
             },
             @{
                 Name       = 'OlderThanDays';
-                Expression = { $d.OlderThanDays }
+                Expression = { $task.OlderThanDays }
             },
             @{
                 Name       = 'RemoveEmptyFolders';
-                Expression = { $d.RemoveEmptyFolders }
+                Expression = { $task.RemoveEmptyFolders }
             },
             @{
                 Name       = 'Error';
@@ -487,15 +487,15 @@ End {
         #region Error counters
         $counter = @{
             removedItems  = (
-                $Destinations.JobResults |
+                $Tasks.JobResults |
                 Where-Object { ($_.Action -eq 'Removed') } |
                 Measure-Object
             ).Count
             removalErrors = (
-                $Destinations.JobResults.Error | Measure-Object
+                $Tasks.JobResults.Error | Measure-Object
             ).Count
             jobErrors     = (
-                $Destinations.JobErrors | Measure-Object
+                $Tasks.JobErrors | Measure-Object
             ).Count
             systemErrors  = (
                 $Error.Exception.Message | Measure-Object
@@ -531,72 +531,72 @@ End {
         }
 
         $jobResultsHtmlListItems = foreach (
-            $d in
-            $Destinations | Sort-Object -Property 'Name', 'Path', 'ComputerName'
+            $task in
+            $Tasks | Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
             "{0}<br>{1}<br>Removed: {2}{3}" -f
             $(
-                if ($d.Path -match '^\\\\') {
-                    '<a href="{0}">{1}</a>' -f $d.Path, $(
-                        if ($d.Name) { $d.Name }
-                        else { $d.Path }
+                if ($task.Path -match '^\\\\') {
+                    '<a href="{0}">{1}</a>' -f $task.Path, $(
+                        if ($task.Name) { $task.Name }
+                        else { $task.Path }
                     )
                 }
                 else {
-                    $uncPath = $d.Path -Replace '^.{2}', (
-                        '\\{0}\{1}$' -f $d.ComputerName, $d.Path[0]
+                    $uncPath = $task.Path -Replace '^.{2}', (
+                        '\\{0}\{1}$' -f $task.ComputerName, $task.Path[0]
                     )
                     '<a href="{0}">{1}</a>' -f $uncPath, $(
-                        if ($d.Name) { $d.Name }
+                        if ($task.Name) { $task.Name }
                         else { $uncPath }
                     )
                 }
             ),
             $(
-                $description = if ($d.Remove -eq 'File') {
-                    if ($d.OlderThanDays -eq 0) {
+                $description = if ($task.Remove -eq 'File') {
+                    if ($task.OlderThanDays -eq 0) {
                         'Remove file'
                     }
                     else {
                         "Remove file when it's older than {0} days" -f
-                        $d.OlderThanDays
+                        $task.OlderThanDays
                     }
                 }
-                elseif ($d.Remove -eq 'Folder') {
-                    if ($d.OlderThanDays -eq 0) {
+                elseif ($task.Remove -eq 'Folder') {
+                    if ($task.OlderThanDays -eq 0) {
                         'Remove folder'
                     }
                     else {
                         "Remove folder when it's older than {0} days" -f
-                        $d.OlderThanDays
+                        $task.OlderThanDays
                     }
                 }
-                elseif ($d.Remove -eq 'Content') {
-                    if ($d.OlderThanDays -eq 0) {
+                elseif ($task.Remove -eq 'Content') {
+                    if ($task.OlderThanDays -eq 0) {
                         'Remove folder content'
                     }
                     else {
                         'Remove folder content that is older than {0} days' -f
-                        $d.OlderThanDays
+                        $task.OlderThanDays
                     }
                 }
-                if ($d.RemoveEmptyFolders) {
+                if ($task.RemoveEmptyFolders) {
                     $description += ' and remove empty folders'
                 }
                 $description
             ),
             $(
                 (
-                    $d.JobResults |
+                    $task.JobResults |
                     Where-Object { $_.Action -eq 'Removed' } |
                     Measure-Object
                 ).Count
             ),
             $(
                 if ($errorCount = (
-                        $d.JobResults | Where-Object { $_.Error } |
+                        $task.JobResults | Where-Object { $_.Error } |
                         Measure-Object
-                    ).Count + $d.JobErrors.Count) {
+                    ).Count + $task.JobErrors.Count) {
                     ', <b style="color:red;">errors: {0}</b>' -f $errorCount
                 }
             )

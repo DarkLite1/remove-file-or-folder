@@ -66,7 +66,7 @@ Describe 'send an e-mail to the admin when' {
                 @{
                     # MailTo       = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
-                    Destinations      = @()
+                    Tasks             = @()
                 } | ConvertTo-Json | Out-File @testOutParams
 
                 .$testScript @testParams
@@ -78,7 +78,7 @@ Describe 'send an e-mail to the admin when' {
                     $EntryType -eq 'Error'
                 }
             }
-            It 'Destinations is missing' {
+            It 'Tasks is missing' {
                 @{
                     MailTo            = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
@@ -87,7 +87,7 @@ Describe 'send an e-mail to the admin when' {
                 .$testScript @testParams
 
                 Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Destinations' found*")
+                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Tasks' found*")
                 }
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
@@ -97,7 +97,7 @@ Describe 'send an e-mail to the admin when' {
                 @{
                     MailTo            = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
-                    Destinations      = @(
+                    Tasks             = @(
                         @{
                             ComputerName       = $null
                             OlderThanDays      = 'a'
@@ -119,7 +119,7 @@ Describe 'send an e-mail to the admin when' {
                 @{
                     MailTo            = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
-                    Destinations      = @(
+                    Tasks             = @(
                         @{
                             Path               = 'd:\bla'
                             ComputerName       = $null
@@ -142,7 +142,7 @@ Describe 'send an e-mail to the admin when' {
                 @{
                     MailTo            = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
-                    Destinations      = @(
+                    Tasks             = @(
                         @{
                             Path               = '\\contoso\share'
                             ComputerName       = $null
@@ -165,7 +165,7 @@ Describe 'send an e-mail to the admin when' {
                 @{
                     MailTo            = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
-                    Destinations      = @(
+                    Tasks             = @(
                         @{
                             Remove             = 'wrong'
                             Path               = '\\contoso\share'
@@ -190,7 +190,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove        = 'content'
                                 Path          = '\\contoso\share'
@@ -213,7 +213,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove             = 'content'
                                 Path               = '\\contoso\share'
@@ -237,7 +237,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove             = 'content'
                                 Path               = '\\contoso\share'
@@ -260,7 +260,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove             = 'file'
                                 Path               = '\\contoso\share'
@@ -283,7 +283,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove             = 'file'
                                 Path               = '\\contoso\share'
@@ -307,7 +307,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove             = 'file'
                                 Path               = '\\contoso\share'
@@ -333,7 +333,7 @@ Describe 'send an e-mail to the admin when' {
                     @{
                         MailTo            = @('bob@contoso.com')
                         MaxConcurrentJobs = 4
-                        Destinations      = @(
+                        Tasks             = @(
                             @{
                                 Remove             = 'folder'
                                 Path               = '\\contoso\share'
@@ -370,7 +370,7 @@ Describe "when 'Remove' is 'file'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Name          = 'FTP log file'
                         Remove        = 'file'
@@ -500,7 +500,7 @@ Describe "when 'Remove' is 'file'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove        = 'file'
                         Path          = $testFile[0]
@@ -566,7 +566,7 @@ Describe "when 'Remove' is 'folder'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove        = 'folder'
                         Path          = $testFolder[0]
@@ -695,7 +695,7 @@ Describe "when 'Remove' is 'folder'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove        = 'folder'
                         Path          = $testFolder[0]
@@ -767,7 +767,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -935,7 +935,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -1012,7 +1012,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -1220,7 +1220,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Destinations      = @(
+                Tasks             = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -1282,7 +1282,7 @@ Describe 'a non terminating job error' {
         @{
             MailTo            = @('bob@contoso.com')
             MaxConcurrentJobs = 4
-            Destinations      = @(
+            Tasks             = @(
                 @{
                     Remove             = 'content'
                     Path               = $testFolder
