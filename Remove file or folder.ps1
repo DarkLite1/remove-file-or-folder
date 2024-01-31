@@ -292,21 +292,38 @@ Begin {
         }
         #endregion
 
-        #region Convert .json properties
         foreach ($task in $Tasks) {
+            #region Format input
             $task.Remove = $task.Remove.ToLower()
             $task.Path = $task.Path.ToLower()
-            if ($task.ComputerName) {
-                $task.ComputerName = $task.ComputerName.ToUpper()
+            #endregion
+
+            #region Set ComputerName if there is none
+            if (
+                (-not $task.ComputerName) -or
+                ($task.ComputerName -eq 'localhost') -or
+                ($task.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
+            ) {
+                $task.ComputerName = $env:COMPUTERNAME
             }
+            #endregion
+
             if ($task.Remove -ne 'content') {
-                $addParams = @{
-                    InputObject       = $task
-                    NotePropertyName  = 'RemoveEmptyFolders'
-                    NotePropertyValue = $false
+                $task | Add-Member -NotePropertyMembers @{
+                    RemoveEmptyFolders = $false
                 }
-                Add-Member @addParams
             }
+
+            #region Add properties
+            $task | Add-Member -NotePropertyMembers @{
+                Job     = @{
+                    Object  = $null
+                    Results = @()
+                    Errors  = @()
+                }
+                Session = $null
+            }
+            #endregion
         }
         #endregion
 
@@ -322,7 +339,7 @@ Begin {
 
 Process {
     Try {
-        #region Remove files/folders on remote machines
+        #region Start jobs to remove file or folders
         foreach ($task in $Tasks) {
             $invokeParams = @{
                 ScriptBlock  = $scriptBlock
@@ -337,60 +354,82 @@ Process {
             $invokeParams.ArgumentList[2], $invokeParams.ArgumentList[3]
             Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
 
-            #region Add job properties
-            $addParams = @{
-                NotePropertyMembers = @{
-                    Job        = $null
-                    JobResults = @()
-                    JobErrors  = @()
-                }
-            }
-            $task | Add-Member @addParams
-            #endregion
-
-            $task.Job = if ($task.ComputerName) {
-                $invokeParams.ComputerName = $task.ComputerName
-                $invokeParams.AsJob = $true
-                Invoke-Command @invokeParams
-            }
-            else {
-                Start-Job @invokeParams
-            }
             # & $scriptBlock -Type $task.Remove -Path $task.Path -OlderThanDays $task.OlderThanDays -RemoveEmptyFolders $task.RemoveEmptyFolders
 
-            $waitParams = @{
-                Name       = $Tasks.Job | Where-Object { $_ }
+            #region Start job
+            $computerName = $task.ComputerName
+
+            $task.Job.Object = if (
+                $computerName -eq $ENV:COMPUTERNAME
+            ) {
+                Start-Job @invokeParams
+            }
+            else {
+                try {
+                    $task.Session = New-PSSessionHC -ComputerName $computerName
+                    $invokeParams += @{
+                        Session = $task.Session
+                        AsJob   = $true
+                    }
+                    Invoke-Command @invokeParams
+                }
+                catch {
+                    Write-Warning "Failed creating a session to '$computerName': $_"
+                    Continue
+                }
+            }
+            #endregion
+
+            #region Wait for max running jobs
+            $waitJobParams = @{
+                Job        = $Tasks.Job.Object | Where-Object { $_ }
                 MaxThreads = $MaxConcurrentJobs
             }
-            Wait-MaxRunningJobsHC @waitParams
+
+            if ($waitJobParams.Job) {
+                Wait-MaxRunningJobsHC @waitJobParams
+            }
+            #endregion
         }
         #endregion
 
-        $M = "Wait for all $($Tasks.count) jobs to finish"
-        Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
+        #region Wait for all jobs to finish
+        $waitJobParams = @{
+            Job = $Tasks.Job.Object | Where-Object { $_ }
+        }
+        if ($waitJobParams.Job) {
+            Write-Verbose 'Wait for all jobs to finish'
 
-        $null = $Tasks.Job | Wait-Job
+            $null = Wait-Job @waitJobParams
+        }
+        #endregion
 
-        foreach ($task in $Tasks) {
-            #region Get job results and job errors
+        #region Get job results and job errors
+        foreach (
+            $task in
+            $Tasks | Where-Object { $_.Job.Object }
+        ) {
             $jobErrors = @()
             $receiveParams = @{
                 ErrorVariable = 'jobErrors'
                 ErrorAction   = 'SilentlyContinue'
             }
-            $task.JobResults += $task.Job | Receive-Job @receiveParams
+            $task.Job.Results += $task.Job.Object | Receive-Job @receiveParams
 
             foreach ($e in $jobErrors) {
-                $task.JobErrors += $e.ToString()
+                $task.Job.Errors += $e.ToString()
                 $Error.Remove($e)
 
                 $M = "'{0}' Error for Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f
-                $task.Job.Location, $task.Remove, $task.Path, $task.OlderThanDays,
-                $task.RemoveEmptyFolders, $task.Name, $e.ToString()
+                $task.ComputerName, $task.Remove, $task.Path,
+                $task.OlderThanDays, $task.RemoveEmptyFolders,
+                $task.Name, $e.ToString()
                 Write-Warning $M; Write-EventLog @EventWarnParams -Message $M
             }
-            #endregion
+
+            $task.Session | Remove-PSSession -ErrorAction Ignore
         }
+        #endregion
 
         $excelParams = @{
             Path               = $logFile + ' - Log.xlsx'
@@ -404,8 +443,11 @@ Process {
         }
 
         #region Create Excel worksheet Overview
-        $excelSheet.Overview += foreach ($task in $Tasks) {
-            $task.JobResults | Select-Object -Property 'ComputerName',
+        $excelSheet.Overview += foreach (
+            $task in
+            $Tasks
+        ) {
+            $task.Job.Results | Select-Object -Property 'ComputerName',
             'Type',
             @{
                 Name       = 'Path';
@@ -430,8 +472,11 @@ Process {
         #endregion
 
         #region Create Excel worksheet Errors
-        $excelSheet.Errors += foreach ($task in $Tasks) {
-            $task.JobErrors | Where-Object { $_ } | Select-Object -Property @{
+        $excelSheet.Errors += foreach (
+            $task in
+            $Tasks
+        ) {
+            $task.Job.Errors | Where-Object { $_ } | Select-Object -Property @{
                 Name       = 'ComputerName';
                 Expression = { $task.ComputerName }
             },
@@ -487,15 +532,15 @@ End {
         #region Error counters
         $counter = @{
             removedItems  = (
-                $Tasks.JobResults |
+                $Tasks.Job.Results |
                 Where-Object { ($_.Action -eq 'Removed') } |
                 Measure-Object
             ).Count
             removalErrors = (
-                $Tasks.JobResults.Error | Measure-Object
+                $Tasks.Job.Results.Error | Measure-Object
             ).Count
             jobErrors     = (
-                $Tasks.JobErrors | Measure-Object
+                $Tasks.Job.Errors | Measure-Object
             ).Count
             systemErrors  = (
                 $Error.Exception.Message | Measure-Object
@@ -587,16 +632,16 @@ End {
             ),
             $(
                 (
-                    $task.JobResults |
+                    $task.Job.Results |
                     Where-Object { $_.Action -eq 'Removed' } |
                     Measure-Object
                 ).Count
             ),
             $(
                 if ($errorCount = (
-                        $task.JobResults | Where-Object { $_.Error } |
+                        $task.Job.Results | Where-Object { $_.Error } |
                         Measure-Object
-                    ).Count + $task.JobErrors.Count) {
+                    ).Count + $task.Job.Errors.Count) {
                     ', <b style="color:red;">errors: {0}</b>' -f $errorCount
                 }
             )

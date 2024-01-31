@@ -1304,10 +1304,10 @@ Describe 'a non terminating job error' {
             }
         )
 
-        Mock Invoke-Command {
-            & $realCmdLet.InvokeCommand -Scriptblock {
+        Mock Start-Job {
+            & $realCmdLet.StartJob -Scriptblock {
                 Write-Error 'Oops'
-            } -AsJob -ComputerName $env:COMPUTERNAME
+            }
         }
 
         . $testScript @testParams
