@@ -316,12 +316,11 @@ Begin {
 
             #region Add properties
             $task | Add-Member -NotePropertyMembers @{
-                Job     = @{
+                Job = @{
                     Object  = $null
                     Results = @()
                     Errors  = @()
                 }
-                Session = $null
             }
             #endregion
         }
@@ -432,8 +431,6 @@ Process {
                 $task.Name, $e.ToString()
                 Write-Warning $M; Write-EventLog @EventWarnParams -Message $M
             }
-
-            $task.Session | Remove-PSSession -ErrorAction Ignore
         }
         #endregion
 
