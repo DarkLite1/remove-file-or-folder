@@ -1,12 +1,7 @@
 #Requires -Modules Pester
-#Requires -Version 5.1
+#Requires -Version 7
 
 BeforeAll {
-    $realCmdLet = @{
-        StartJob      = Get-Command Start-Job
-        InvokeCommand = Get-Command Invoke-Command
-    }
-
     $testOutParams = @{
         FilePath = (New-Item "TestDrive:/Test.json" -ItemType File).FullName
         Encoding = 'utf8'
@@ -369,7 +364,7 @@ Describe "when 'Remove' is 'file'" {
 
             @{
                 MailTo            = @('bob@contoso.com')
-                MaxConcurrentJobs = 4
+                MaxConcurrentJobs = 2
                 Tasks             = @(
                     @{
                         Name          = 'FTP log file'
@@ -1281,12 +1276,12 @@ Describe 'a non terminating job error' {
 
         @{
             MailTo            = @('bob@contoso.com')
-            MaxConcurrentJobs = 4
+            MaxConcurrentJobs = 1
             Tasks             = @(
                 @{
                     Remove             = 'content'
                     Path               = $testFolder
-                    ComputerName       = $env:COMPUTERNAME
+                    ComputerName       = 'NotExisting'
                     RemoveEmptyFolders = $false
                     OlderThanDays      = 0
                 }
@@ -1295,20 +1290,14 @@ Describe 'a non terminating job error' {
 
         $testExportedExcelRows = @(
             @{
-                ComputerName       = $env:COMPUTERNAME
+                ComputerName       = 'NotExisting'
                 Path               = $testFolder
                 Remove             = 'content'
                 RemoveEmptyFolders = $false
                 OlderThanDays      = 0
-                Error              = 'Oops'
+                Error              = '*Connecting to remote server NotExisting failed*'
             }
         )
-
-        Mock Start-Job {
-            & $realCmdLet.StartJob -Scriptblock {
-                Write-Error 'Oops'
-            }
-        }
 
         . $testScript @testParams
     }
@@ -1335,7 +1324,7 @@ Describe 'a non terminating job error' {
                 $actualRow.OlderThanDays | Should -Be $testRow.OlderThanDays
                 $actualRow.RemoveEmptyFolders |
                 Should -Be $testRow.RemoveEmptyFolders
-                $actualRow.Error | Should -Be $testRow.Error
+                $actualRow.Error | Should -BeLike $testRow.Error
             }
         }
     }
@@ -1346,7 +1335,7 @@ Describe 'a non terminating job error' {
                 Bcc         = $ScriptAdmin
                 Priority    = 'High'
                 Subject     = '0 removed, 1 error'
-                Message     = "*<ul><li><a href=`"\\$env:COMPUTERNAME\c$\*\folder`">\\$env:COMPUTERNAME\c$\*\folder</a><br>Remove folder content<br>Removed: 0, <b style=`"color:red;`">errors: 1</b></li></ul><p><i>* Check the attachment for details</i></p>*"
+                Message     = "*<ul><li><a href=`"\\NotExisting\c$\*\folder`">\\NotExisting\c$\*\folder</a><br>Remove folder content<br>Removed: 0, <b style=`"color:red;`">errors: 1</b></li></ul><p><i>* Check the attachment for details</i></p>*"
                 Attachments = '* - log.xlsx'
             }
         }
