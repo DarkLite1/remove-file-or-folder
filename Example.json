@@ -1,28 +1,44 @@
 {
   "MailTo": ["bob@constoso.com"],
-  "MaxConcurrentJobs": 15,
-  "Tasks": [
-    {
-      "Name": "FTP log file",
-      "Remove": "file",
-      "Path": "\\\\contoso\\file.txt",
-      "ComputerName": null,
-      "OlderThanDays": 0
-    },
-    {
-      "Name": null,
-      "Remove": "folder",
-      "Path": "\\\\contoso\\folder",
-      "ComputerName": null,
-      "OlderThanDays": 0
-    },
-    {
-      "Name": "Notepad log folder A",
-      "Remove": "content",
-      "Path": "c:\\data\\folder",
-      "ComputerName": "PC1",
-      "RemoveEmptyFolders": false,
-      "OlderThanDays": 20
+  "MaxConcurrentJobs": 4,
+  "Remove": {
+    "File": [
+      {
+        "Name": "FTP log file",
+        "Path": "\\\\contoso\\file.txt",
+        "ComputerName": null,
+        "OlderThan": {
+          "Quantity": 1,
+          "Unit": "Day"
+        }
+      }
+    ],
+    "FilesInFolder": [
+      {
+        "Name": null,
+        "Path": "\\\\contoso\\folder",
+        "ComputerName": null,
+        "Recurse": true,
+        "OlderThan": {
+          "Quantity": 1,
+          "Unit": "Day"
+        }
+      }
+    ],
+    "EmptyFolders": [
+      {
+        "Name": null,
+        "Path": "\\\\contoso\\folder",
+        "ComputerName": null,
+        "Recurse": true
+      }
+    ]
+  },
+  "?": {
+    "Remove": {
+      "File": "Remove the specified file",
+      "FilesInFolder": "Remove files in a folder",
+      "RemoveEmptyFolders": "Remove empty folders"
     }
-  ]
+  }
 }
