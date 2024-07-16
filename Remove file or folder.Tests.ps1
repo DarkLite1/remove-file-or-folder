@@ -134,7 +134,7 @@ Describe 'send an e-mail to the admin when' {
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
-            } -Tag test
+            }
             It 'SendMail.When not supported' {
                 $testNewInputFile = Copy-ObjectHC $testInputFile
                 $testNewInputFile.SendMail.When = 'NotSupported'
@@ -349,6 +349,23 @@ Describe 'send an e-mail to the admin when' {
                                 $EntryType -eq 'Error'
                             }
                         }
+                    }
+                }
+                It 'Recurse it not a boolean' {
+                    $testNewInputFile = Copy-ObjectHC $testInputFile
+                    $testNewInputFile.Remove.FilesInFolder[0].Recurse = 'a'
+
+                    $testNewInputFile | ConvertTo-Json -Depth 7 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and
+                        ($Message -like "*Property 'Remove.FilesInFolder.Recurse' is not a boolean value*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
                     }
                 }
                 It 'Path is a local path but no ComputerName is given' {

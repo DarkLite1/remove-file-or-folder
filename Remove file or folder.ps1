@@ -199,6 +199,22 @@ Begin {
                 ) {
                     throw "No 'Remove.FilesInFolder.ComputerName' found for path '$($fileInFolderToRemove.Path)'"
                 }
+
+                #region Test boolean values
+                foreach (
+                    $boolean in
+                    @(
+                        'Recurse'
+                    )
+                ) {
+                    try {
+                        $null = [Boolean]::Parse($fileInFolderToRemove.$boolean)
+                    }
+                    catch {
+                        throw "Property 'Remove.FilesInFolder.$boolean' is not a boolean value"
+                    }
+                }
+                #endregion
             }
 
             foreach ($emptyFoldersToRemove in $file.Remove.EmptyFolders) {
