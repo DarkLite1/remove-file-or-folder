@@ -1,5 +1,8 @@
 {
-  "MailTo": ["bob@constoso.com"],
+  "SendMail": {
+    "To": ["bob@contoso.com"],
+    "When": "Always"
+  },
   "MaxConcurrentJobs": 4,
   "Remove": {
     "File": [
@@ -34,6 +37,8 @@
     ]
   },
   "?": {
+    "OlderThan.Unit": "Day | Month | Year",
+    "SendMail.When": "Never | OnlyOnError | OnlyOnErrorOrAction | Always",
     "Remove": {
       "File": "Remove the specified file",
       "FilesInFolder": "Remove files in a folder",

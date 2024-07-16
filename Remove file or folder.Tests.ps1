@@ -2,6 +2,46 @@
 #Requires -Version 7
 
 BeforeAll {
+    $testInputFile = @{
+        SendMail          = @{
+            To   = 'bob@contoso.com'
+            When = 'Always'
+        }
+        MaxConcurrentJobs = 1
+        Remove            = @{
+            File          = @(
+                @{
+                    Name         = 'FTP log file'
+                    ComputerName = 'PC1'
+                    Path         = 'z:\file.txt'
+                    OlderThan    = @{
+                        Quantity = 1
+                        Unit     = 'Day'
+                    }
+                }
+            )
+            FilesInFolder = @(
+                @{
+                    Name         = 'App log folder'
+                    ComputerName = 'PC2'
+                    Path         = 'z:\folder'
+                    Recurse      = $true
+                    OlderThan    = @{
+                        Quantity = 1
+                        Unit     = 'Day'
+                    }
+                }
+            )
+            EmptyFolders  = @(
+                @{
+                    Name         = 'Delivery notes'
+                    ComputerName = 'PC3'
+                    Path         = 'z:\folder'
+                }
+            )
+        }
+    }
+
     $testOutParams = @{
         FilePath = (New-Item "TestDrive:/Test.json" -ItemType File).FullName
         Encoding = 'utf8'
@@ -57,64 +97,142 @@ Describe 'send an e-mail to the admin when' {
             }
         }
         Context 'property' {
-            It 'MailTo is missing' {
-                @{
-                    # MailTo       = @('bob@contoso.com')
-                    MaxConcurrentJobs = 4
-                    Tasks             = @()
-                } | ConvertTo-Json | Out-File @testOutParams
+            It '<_> not found' -ForEach @(
+                'SendMail', 'MaxConcurrentJobs', 'Remove'
+            ) {
+                $testNewInputFile = Copy-ObjectHC $testInputFile
+                $testNewInputFile.$_ = $null
+
+                $testNewInputFile | ConvertTo-Json -Depth 7 |
+                Out-File @testOutParams
 
                 .$testScript @testParams
 
                 Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'MailTo' addresses found*")
+                    (&$MailAdminParams) -and
+                    ($Message -like "*$ImportFile*Property '$_' not found*")
                 }
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
             }
-            It 'Tasks is missing' {
-                @{
-                    MailTo            = @('bob@contoso.com')
-                    MaxConcurrentJobs = 4
-                } | ConvertTo-Json | Out-File @testOutParams
+            It 'SendMail.<_> not found' -ForEach @(
+                'To', 'When'
+            ) {
+                $testNewInputFile = Copy-ObjectHC $testInputFile
+                $testNewInputFile.SendMail.$_ = $null
+
+                $testNewInputFile | ConvertTo-Json -Depth 7 |
+                Out-File @testOutParams
 
                 .$testScript @testParams
 
                 Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Tasks' found*")
+                        (&$MailAdminParams) -and
+                        ($Message -like "*$ImportFile*Property 'SendMail.$_' not found*")
                 }
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
-            }
-            It 'Path is missing' {
-                @{
-                    MailTo            = @('bob@contoso.com')
-                    MaxConcurrentJobs = 4
-                    Tasks             = @(
-                        @{
-                            ComputerName       = $null
-                            OlderThanDays      = 'a'
-                            RemoveEmptyFolders = $false
+            } -Tag test
+            Context "Remove.File" {
+                It '<_> not found' -ForEach @(
+                    'Path', 'OlderThan'
+                ) {
+                    $testNewInputFile = Copy-ObjectHC $testInputFile
+                    $testNewInputFile.Remove = $testNewInputFile.Remove.File
+                    $testNewInputFile.Remove.File.$_ = $null
+
+                    $testNewInputFile | ConvertTo-Json -Depth 7 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and
+                    ($Message -like "*$ImportFile*Property 'Remove.File.$_' not found*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+                Context 'OlderThan' {
+                    Context 'OlderThan.Unit' {
+                        It 'not found' {
+                            $testNewInputFile = Copy-ObjectHC $testInputFile
+                            $testNewInputFile.Remove.File[0].OlderThan.Remove("Unit")
+
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
+
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Remove.File.OlderThan.Unit' found*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
                         }
-                    )
-                } | ConvertTo-Json | Out-File @testOutParams
+                        It 'is not supported' {
+                            $testNewInputFile = Copy-ObjectHC $testInputFile
+                            $testNewInputFile.Remove.File[0].OlderThan.Unit = 'notSupported'
 
-                .$testScript @testParams
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
 
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Path' found*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*Value 'notSupported' is not supported by 'Remove.File.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
+                        }
+                    }
+                    Context 'OlderThan.Quantity' {
+                        It 'not found' {
+                            $testNewInputFile = Copy-ObjectHC $testInputFile
+                            $testNewInputFile.Remove.File[0].OlderThan.Remove("Quantity")
+
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
+
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'Remove.File.OlderThan.Quantity' not found. Use value number '0' to move all files*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
+                        }
+                        It 'is not a number' {
+                            $testNewInputFile = Copy-ObjectHC $testInputFile
+                            $testNewInputFile.Remove.File[0].OlderThan.Quantity = 'a'
+
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
+
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'Remove.File.OlderThan.Quantity' needs to be a number, the value 'a' is not supported*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
+                        }
+                    }
                 }
             }
+
             It 'Path is a local path but no ComputerName is given' {
                 @{
                     MailTo            = @('bob@contoso.com')
                     MaxConcurrentJobs = 4
-                    Tasks             = @(
+                    Remove            = @(
                         @{
                             Path               = 'd:\bla'
                             ComputerName       = $null
@@ -133,222 +251,6 @@ Describe 'send an e-mail to the admin when' {
                     $EntryType -eq 'Error'
                 }
             }
-            It 'Remove is missing' {
-                @{
-                    MailTo            = @('bob@contoso.com')
-                    MaxConcurrentJobs = 4
-                    Tasks             = @(
-                        @{
-                            Path               = '\\contoso\share'
-                            ComputerName       = $null
-                            OlderThanDays      = 0
-                            RemoveEmptyFolders = $false
-                        }
-                    )
-                } | ConvertTo-Json | Out-File @testOutParams
-
-                .$testScript @testParams
-
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'Remove' not found*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
-                }
-            }
-            It 'Remove value is incorrect' {
-                @{
-                    MailTo            = @('bob@contoso.com')
-                    MaxConcurrentJobs = 4
-                    Tasks             = @(
-                        @{
-                            Remove             = 'wrong'
-                            Path               = '\\contoso\share'
-                            ComputerName       = $null
-                            OlderThanDays      = 0
-                            RemoveEmptyFolders = $false
-                        }
-                    )
-                } | ConvertTo-Json | Out-File @testOutParams
-
-                .$testScript @testParams
-
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Value 'wrong' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported*")
-                }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
-                }
-            }
-            Context "Remove is 'content'" {
-                It 'RemoveEmptyFolders is missing' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove        = 'content'
-                                Path          = '\\contoso\share'
-                                ComputerName  = $null
-                                OlderThanDays = 20
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'RemoveEmptyFolders' not found*")
-                    }
-                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                        $EntryType -eq 'Error'
-                    }
-                }
-                It 'RemoveEmptyFolders is not a boolean' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove             = 'content'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                OlderThanDays      = 20
-                                RemoveEmptyFolders = 'yes'
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*The value 'yes' in 'RemoveEmptyFolders' is not a true false value*")
-                    }
-                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                        $EntryType -eq 'Error'
-                    }
-                }
-                It 'RemoveEmptyFolders is correct' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove             = 'content'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                OlderThanDays      = 20
-                                RemoveEmptyFolders = $false
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Not -Invoke Send-MailHC -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*'RemoveEmptyFolders'*")
-                    }
-                }
-            }
-            Context "Remove is 'file'" {
-                It 'OlderThanDays is missing' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove             = 'file'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                RemoveEmptyFolders = $false
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'OlderThanDays' not found*")
-                    }
-                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                        $EntryType -eq 'Error'
-                    }
-                }
-                It 'OlderThanDays is not a number' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove             = 'file'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                OlderThanDays      = 'a'
-                                RemoveEmptyFolders = $false
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'OlderThanDays' needs to be a number, the value 'a' is not supported*")
-                    }
-                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                        $EntryType -eq 'Error'
-                    }
-                }
-                It 'RemoveEmptyFolders is not null' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove             = 'file'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                OlderThanDays      = 0
-                                RemoveEmptyFolders = $true
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile* Property 'RemoveEmptyFolders' cannot be used with 'Remove' value 'file'*")
-                    }
-                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                        $EntryType -eq 'Error'
-                    }
-                }
-            }
-            Context "Remove is 'folder'" {
-                It 'RemoveEmptyFolders is not null' {
-                    @{
-                        MailTo            = @('bob@contoso.com')
-                        MaxConcurrentJobs = 4
-                        Tasks             = @(
-                            @{
-                                Remove             = 'folder'
-                                Path               = '\\contoso\share'
-                                ComputerName       = $null
-                                OlderThanDays      = 0
-                                RemoveEmptyFolders = $true
-                            }
-                        )
-                    } | ConvertTo-Json | Out-File @testOutParams
-
-                    .$testScript @testParams
-
-                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile* 'RemoveEmptyFolders' cannot be used with 'Remove' value 'folder'*")
-                    }
-                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                        $EntryType -eq 'Error'
-                    }
-                }
-            }
         }
     }
 }
@@ -365,7 +267,7 @@ Describe "when 'Remove' is 'file'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 2
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Name          = 'FTP log file'
                         Remove        = 'file'
@@ -495,7 +397,7 @@ Describe "when 'Remove' is 'file'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove        = 'file'
                         Path          = $testFile[0]
@@ -561,7 +463,7 @@ Describe "when 'Remove' is 'folder'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove        = 'folder'
                         Path          = $testFolder[0]
@@ -690,7 +592,7 @@ Describe "when 'Remove' is 'folder'" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove        = 'folder'
                         Path          = $testFolder[0]
@@ -762,7 +664,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -930,7 +832,7 @@ Describe "when 'Remove' is 'content' and remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -1007,7 +909,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -1215,7 +1117,7 @@ Describe "when 'Remove' is 'content' and do not remove empty folders" {
             @{
                 MailTo            = @('bob@contoso.com')
                 MaxConcurrentJobs = 4
-                Tasks             = @(
+                Remove            = @(
                     @{
                         Remove             = 'content'
                         Path               = $testFolder[0]
@@ -1277,7 +1179,7 @@ Describe 'a non terminating job error' {
         @{
             MailTo            = @('bob@contoso.com')
             MaxConcurrentJobs = 1
-            Tasks             = @(
+            Remove            = @(
                 @{
                     Remove             = 'content'
                     Path               = $testFolder

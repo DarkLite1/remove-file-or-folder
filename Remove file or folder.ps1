@@ -88,19 +88,35 @@ Begin {
         #endregion
 
         #region Test .json file properties
-        if (-not ($MailTo = $file.MailTo)) {
-            throw "Input file '$ImportFile': No 'MailTo' addresses found."
-        }
-
-        if (-not ($MaxConcurrentJobs = $file.MaxConcurrentJobs)) {
-            throw "Property 'MaxConcurrentJobs' not found"
-        }
         try {
-            $null = $MaxConcurrentJobs.ToInt16($null)
+            @(
+                'SendMail', 'MaxConcurrentJobs', 'Remove'
+            ).where(
+                { -not $file.$_ }
+            ).foreach(
+                { throw "Property '$_' not found" }
+            )
+
+            @(
+                'To', 'When'
+            ).where(
+                { -not $file.SendMail.$_ }
+            ).foreach(
+                { throw "Property 'SendMail.$_' not found" }
+            )
+
+            $MaxConcurrentJobs = $file.MaxConcurrentJobs
+            try {
+                $null = $MaxConcurrentJobs.ToInt16($null)
+            }
+            catch {
+                throw "Property 'MaxConcurrentJobs' needs to be a number, the value '$MaxConcurrentJobs' is not supported."
+            }
         }
         catch {
-            throw "Property 'MaxConcurrentJobs' needs to be a number, the value '$MaxConcurrentJobs' is not supported."
+            throw "Input file '$ImportFile': $_"
         }
+
 
         if (-not ($Tasks = $file.Tasks)) {
             throw "Input file '$ImportFile': No 'Tasks' found."
