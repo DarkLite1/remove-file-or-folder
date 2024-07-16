@@ -134,6 +134,23 @@ Describe 'send an e-mail to the admin when' {
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
+            } -Tag test
+            It 'SendMail.When not supported' {
+                $testNewInputFile = Copy-ObjectHC $testInputFile
+                $testNewInputFile.SendMail.When = 'NotSupported'
+
+                $testNewInputFile | ConvertTo-Json -Depth 7 |
+                Out-File @testOutParams
+
+                .$testScript @testParams
+
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and
+                        ($Message -like "*Value '$($testNewInputFile.SendMail.When)' for 'SendMail.When' is not supported. Supported values are 'Never, OnlyOnError, OnlyOnErrorOrAction or Always'*")
+                }
+                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                    $EntryType -eq 'Error'
+                }
             }
             Context "Remove.File" {
                 BeforeEach {
@@ -395,7 +412,7 @@ Describe 'send an e-mail to the admin when' {
             }
         }
     }
-} -Tag test
+}  -Tag test
 Describe "when 'Remove' is 'file'" {
     Context  "and 'OlderThanDays' is '0'" {
         BeforeAll {

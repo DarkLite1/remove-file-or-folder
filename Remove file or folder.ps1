@@ -105,6 +105,10 @@ Begin {
                 { throw "Property 'SendMail.$_' not found" }
             )
 
+            if ($file.SendMail.When -notMatch '^Never$|^OnlyOnError$|^OnlyOnErrorOrAction$|^Always$') {
+                throw "Value '$($file.SendMail.When)' for 'SendMail.When' is not supported. Supported values are 'Never, OnlyOnError, OnlyOnErrorOrAction or Always'"
+            }
+
             $MaxConcurrentJobs = $file.MaxConcurrentJobs
             try {
                 $null = $MaxConcurrentJobs.ToInt16($null)
