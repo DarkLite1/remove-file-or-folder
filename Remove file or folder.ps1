@@ -223,37 +223,26 @@ Begin {
         }
         #endregion
 
-        foreach ($task in $Tasks) {
-            #region Format input
-            $task.Remove = $task.Remove.ToLower()
-            $task.Path = $task.Path.ToLower()
-            #endregion
+        #region Convert .json file
+        @(
+            $file.Remove.File,
+            $file.Remove.FilesInFolder,
+            $file.Remove.EmptyFolders
+        ).foreach(
+            {
+                $_.Path = $_.Path.ToLower()
 
-            #region Set ComputerName if there is none
-            if (
-                (-not $task.ComputerName) -or
-                ($task.ComputerName -eq 'localhost') -or
-                ($task.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
-            ) {
-                $task.ComputerName = $env:COMPUTERNAME
-            }
-            #endregion
-
-            if ($task.Remove -ne 'content') {
-                $task | Add-Member -NotePropertyMembers @{
-                    RemoveEmptyFolders = $false
+                #region Set ComputerName
+                if (
+                    (-not $_.ComputerName) -or
+                    ($_.ComputerName -eq 'localhost') -or
+                    ($_.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
+                ) {
+                    $_.ComputerName = $env:COMPUTERNAME
                 }
+                #endregion
             }
-
-            #region Add properties
-            $task | Add-Member -NotePropertyMembers @{
-                Job = @{
-                    Results = @()
-                    Errors  = @()
-                }
-            }
-            #endregion
-        }
+        )
         #endregion
 
         $mailParams = @{ }
