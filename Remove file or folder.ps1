@@ -196,6 +196,23 @@ Begin {
                     throw "No 'Remove.FilesInFolder.ComputerName' found for path '$($fileInFolderToRemove.Path)'"
                 }
             }
+
+            foreach ($emptyFoldersToRemove in $file.Remove.EmptyFolders) {
+                @(
+                    'Path'
+                ).where(
+                    { -not $emptyFoldersToRemove.$_ }
+                ).foreach(
+                    { throw "Property 'Remove.EmptyFolders.$_' not found" }
+                )
+
+                if (
+                    ($emptyFoldersToRemove.Path -notMatch '^\\\\') -and
+                    (-not $emptyFoldersToRemove.ComputerName)
+                ) {
+                    throw "No 'Remove.EmptyFolders.ComputerName' found for path '$($emptyFoldersToRemove.Path)'"
+                }
+            }
         }
         catch {
             throw "Input file '$ImportFile': $_"

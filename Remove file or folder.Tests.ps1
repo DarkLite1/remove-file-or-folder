@@ -350,10 +350,52 @@ Describe 'send an e-mail to the admin when' {
                         $EntryType -eq 'Error'
                     }
                 }
-            } -Tag test
+            }
+            Context "Remove.EmptyFolders" {
+                BeforeEach {
+                    $testNewInputFile = Copy-ObjectHC $testInputFile
+                    $testNewInputFile.Remove = @{
+                        EmptyFolders = $testNewInputFile.Remove.EmptyFolders
+                    }
+                }
+                It '<_> not found' -ForEach @(
+                    'Path'
+                ) {
+                    $testNewInputFile.Remove.EmptyFolders[0].$_ = $null
+
+                    $testNewInputFile | ConvertTo-Json -Depth 7 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and
+                    ($Message -like "*$ImportFile*Property 'Remove.EmptyFolders.$_' not found*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+                It 'Path is a local path but no ComputerName is given' {
+                    $testNewInputFile.Remove.EmptyFolders[0].ComputerName = $null
+                    $testNewInputFile.Remove.EmptyFolders[0].Path = 'd:\bla'
+
+                    $testNewInputFile | ConvertTo-Json -Depth 5 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*No 'Remove.EmptyFolders.ComputerName' found for path '$($testNewInputFile.Remove.EmptyFolders[0].Path)'*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+            }
         }
     }
-}
+} -Tag test
 Describe "when 'Remove' is 'file'" {
     Context  "and 'OlderThanDays' is '0'" {
         BeforeAll {
