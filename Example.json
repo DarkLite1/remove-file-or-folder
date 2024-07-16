@@ -5,8 +5,8 @@
     "File": [
       {
         "Name": "FTP log file",
-        "Path": "\\\\contoso\\file.txt",
         "ComputerName": null,
+        "Path": "\\\\contoso\\file.txt",
         "OlderThan": {
           "Quantity": 1,
           "Unit": "Day"
@@ -16,8 +16,8 @@
     "FilesInFolder": [
       {
         "Name": null,
-        "Path": "\\\\contoso\\folder",
         "ComputerName": null,
+        "Path": "\\\\contoso\\folder",
         "Recurse": true,
         "OlderThan": {
           "Quantity": 1,
@@ -28,8 +28,8 @@
     "EmptyFolders": [
       {
         "Name": null,
-        "Path": "\\\\contoso\\folder",
         "ComputerName": null,
+        "Path": "\\\\contoso\\folder",
         "Recurse": true
       }
     ]
