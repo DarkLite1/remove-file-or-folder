@@ -29,8 +29,7 @@
       {
         "Name": null,
         "ComputerName": null,
-        "Path": "\\\\contoso\\folder",
-        "Recurse": true
+        "Path": "\\\\contoso\\folder"
       }
     ]
   },
