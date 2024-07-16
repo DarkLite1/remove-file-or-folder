@@ -112,63 +112,93 @@ Begin {
             catch {
                 throw "Property 'MaxConcurrentJobs' needs to be a number, the value '$MaxConcurrentJobs' is not supported."
             }
+
+            foreach ($fileToRemove in $file.Remove.File) {
+                @(
+                    'Path', 'OlderThan'
+                ).where(
+                    { -not $fileToRemove.$_ }
+                ).foreach(
+                    { throw "Property 'Remove.File.$_' not found" }
+                )
+
+                #region OlderThan
+                if (-not $fileToRemove.OlderThan.Unit) {
+                    throw "No 'Remove.File.OlderThan.Unit' found"
+                }
+
+                if ($fileToRemove.OlderThan.Unit -notMatch '^Day$|^Month$|^Year$') {
+                    throw "Value '$($fileToRemove.OlderThan.Unit)' is not supported by 'Remove.File.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
+                }
+
+                if ($fileToRemove.PSObject.Properties.Name -notContains 'OlderThan') {
+                    throw "Property 'Remove.File.OlderThan' with 'Quantity' and 'Unit' not found."
+                }
+
+                if ($fileToRemove.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
+                    throw "Property 'Remove.File.OlderThan.Quantity' not found. Use value number '0' to move all files."
+                }
+
+                try {
+                    $null = [int]$fileToRemove.OlderThan.Quantity
+                }
+                catch {
+                    throw "Property 'Remove.File.OlderThan.Quantity' needs to be a number, the value '$($fileToRemove.OlderThan.Quantity)' is not supported. Use value number '0' to move all files."
+                }
+                #endregion
+
+                if (
+                    ($fileToRemove.Path -notMatch '^\\\\') -and
+                    (-not $fileToRemove.ComputerName)
+                ) {
+                    throw "No 'Remove.File.ComputerName' found for path '$($fileToRemove.Path)'"
+                }
+            }
+
+            foreach ($fileInFolderToRemove in $file.Remove.FilesInFolder) {
+                @(
+                    'Path', 'OlderThan'
+                ).where(
+                    { -not $fileInFolderToRemove.$_ }
+                ).foreach(
+                    { throw "Property 'Remove.FilesInFolder.$_' not found" }
+                )
+
+                #region OlderThan
+                if (-not $fileInFolderToRemove.OlderThan.Unit) {
+                    throw "No 'Remove.FilesInFolder.OlderThan.Unit' found"
+                }
+
+                if ($fileInFolderToRemove.OlderThan.Unit -notMatch '^Day$|^Month$|^Year$') {
+                    throw "Value '$($fileInFolderToRemove.OlderThan.Unit)' is not supported by 'Remove.FilesInFolder.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
+                }
+
+                if ($fileInFolderToRemove.PSObject.Properties.Name -notContains 'OlderThan') {
+                    throw "Property 'Remove.FilesInFolder.OlderThan' with 'Quantity' and 'Unit' not found."
+                }
+
+                if ($fileInFolderToRemove.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
+                    throw "Property 'Remove.FilesInFolder.OlderThan.Quantity' not found. Use value number '0' to move all files."
+                }
+
+                try {
+                    $null = [int]$fileInFolderToRemove.OlderThan.Quantity
+                }
+                catch {
+                    throw "Property 'Remove.FilesInFolder.OlderThan.Quantity' needs to be a number, the value '$($fileInFolderToRemove.OlderThan.Quantity)' is not supported. Use value number '0' to move all files."
+                }
+                #endregion
+
+                if (
+                    ($fileInFolderToRemove.Path -notMatch '^\\\\') -and
+                    (-not $fileInFolderToRemove.ComputerName)
+                ) {
+                    throw "No 'Remove.FilesInFolder.ComputerName' found for path '$($fileInFolderToRemove.Path)'"
+                }
+            }
         }
         catch {
             throw "Input file '$ImportFile': $_"
-        }
-
-
-        if (-not ($Tasks = $file.Tasks)) {
-            throw "Input file '$ImportFile': No 'Tasks' found."
-        }
-        foreach ($task in $Tasks) {
-            #region Path
-            if (-not $task.Path) {
-                throw "Input file '$ImportFile': No 'Path' found in one of the 'Tasks'."
-            }
-            if (($task.Path -notMatch '^\\\\') -and (-not $task.ComputerName)) {
-                throw "Input file '$ImportFile' destination path '$($task.Path)': No 'ComputerName' found."
-            }
-            #endregion
-
-            #region OlderThanDays
-            if ($task.PSObject.Properties.Name -notContains 'OlderThanDays') {
-                throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'OlderThanDays' not found. Use value number '0' to remove all."
-            }
-            try {
-                $null = $task.OlderThanDays.ToInt16($null)
-            }
-            catch {
-                throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'OlderThanDays' needs to be a number, the value '$($task.OlderThanDays)' is not supported. Use value number '0' to remove all."
-            }
-            #endregion
-
-            #region Remove
-            if ($task.PSObject.Properties.Name -notContains 'Remove') {
-                throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'Remove' not found. Valid values are 'folder', 'file' or 'content'."
-            }
-            if ($task.Remove -notMatch '^folder$|^file$|^content$') {
-                throw "Input file '$ImportFile' destination path '$($task.Path)': Value '$($task.Remove)' in 'Remove' is not valid, only values 'folder', 'file' or 'content' are supported."
-            }
-            #endregion
-
-            #region RemoveEmptyFolders
-            if ($task.Remove -eq 'content') {
-                if (
-                    $task.PSObject.Properties.Name -notContains 'RemoveEmptyFolders'
-                ) {
-                    throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'RemoveEmptyFolders' not found."
-                }
-                if (-not ($task.RemoveEmptyFolders -is [boolean])) {
-                    throw "Input file '$ImportFile' destination path '$($task.Path)': The value '$($task.RemoveEmptyFolders)' in 'RemoveEmptyFolders' is not a true false value."
-                }
-            }
-            else {
-                if ($task.RemoveEmptyFolders) {
-                    throw "Input file '$ImportFile' destination path '$($task.Path)': Property 'RemoveEmptyFolders' cannot be used with 'Remove' value '$($task.Remove)'."
-                }
-            }
-            #endregion
         }
         #endregion
 

@@ -134,14 +134,18 @@ Describe 'send an e-mail to the admin when' {
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
                 }
-            } -Tag test
+            }
             Context "Remove.File" {
+                BeforeEach {
+                    $testNewInputFile = Copy-ObjectHC $testInputFile
+                    $testNewInputFile.Remove = @{
+                        File = $testNewInputFile.Remove.File
+                    }
+                }
                 It '<_> not found' -ForEach @(
                     'Path', 'OlderThan'
                 ) {
-                    $testNewInputFile = Copy-ObjectHC $testInputFile
-                    $testNewInputFile.Remove = $testNewInputFile.Remove.File
-                    $testNewInputFile.Remove.File.$_ = $null
+                    $testNewInputFile.Remove.File[0].$_ = $null
 
                     $testNewInputFile | ConvertTo-Json -Depth 7 |
                     Out-File @testOutParams
@@ -159,7 +163,6 @@ Describe 'send an e-mail to the admin when' {
                 Context 'OlderThan' {
                     Context 'OlderThan.Unit' {
                         It 'not found' {
-                            $testNewInputFile = Copy-ObjectHC $testInputFile
                             $testNewInputFile.Remove.File[0].OlderThan.Remove("Unit")
 
                             $testNewInputFile | ConvertTo-Json -Depth 5 |
@@ -175,7 +178,6 @@ Describe 'send an e-mail to the admin when' {
                             }
                         }
                         It 'is not supported' {
-                            $testNewInputFile = Copy-ObjectHC $testInputFile
                             $testNewInputFile.Remove.File[0].OlderThan.Unit = 'notSupported'
 
                             $testNewInputFile | ConvertTo-Json -Depth 5 |
@@ -193,7 +195,6 @@ Describe 'send an e-mail to the admin when' {
                     }
                     Context 'OlderThan.Quantity' {
                         It 'not found' {
-                            $testNewInputFile = Copy-ObjectHC $testInputFile
                             $testNewInputFile.Remove.File[0].OlderThan.Remove("Quantity")
 
                             $testNewInputFile | ConvertTo-Json -Depth 5 |
@@ -209,7 +210,6 @@ Describe 'send an e-mail to the admin when' {
                             }
                         }
                         It 'is not a number' {
-                            $testNewInputFile = Copy-ObjectHC $testInputFile
                             $testNewInputFile.Remove.File[0].OlderThan.Quantity = 'a'
 
                             $testNewInputFile | ConvertTo-Json -Depth 5 |
@@ -226,31 +226,131 @@ Describe 'send an e-mail to the admin when' {
                         }
                     }
                 }
-            }
+                It 'Path is a local path but no ComputerName is given' {
+                    $testNewInputFile.Remove.File[0].ComputerName = $null
+                    $testNewInputFile.Remove.File[0].Path = 'd:\bla'
 
-            It 'Path is a local path but no ComputerName is given' {
-                @{
-                    MailTo            = @('bob@contoso.com')
-                    MaxConcurrentJobs = 4
-                    Remove            = @(
-                        @{
-                            Path               = 'd:\bla'
-                            ComputerName       = $null
-                            OlderThanDays      = 'a'
-                            RemoveEmptyFolders = $false
+                    $testNewInputFile | ConvertTo-Json -Depth 5 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*No 'Remove.File.ComputerName' found for path '$($testNewInputFile.Remove.File[0].Path)'*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+            }
+            Context "Remove.FilesInFolder" {
+                BeforeEach {
+                    $testNewInputFile = Copy-ObjectHC $testInputFile
+                    $testNewInputFile.Remove = @{
+                        FilesInFolder = $testNewInputFile.Remove.FilesInFolder
+                    }
+                }
+                It '<_> not found' -ForEach @(
+                    'Path', 'OlderThan'
+                ) {
+                    $testNewInputFile.Remove.FilesInFolder[0].$_ = $null
+
+                    $testNewInputFile | ConvertTo-Json -Depth 7 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and
+                    ($Message -like "*$ImportFile*Property 'Remove.FilesInFolder.$_' not found*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
+                }
+                Context 'OlderThan' {
+                    Context 'OlderThan.Unit' {
+                        It 'not found' {
+                            $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Remove("Unit")
+
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
+
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*No 'Remove.FilesInFolder.OlderThan.Unit' found*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
                         }
-                    )
-                } | ConvertTo-Json | Out-File @testOutParams
+                        It 'is not supported' {
+                            $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Unit = 'notSupported'
 
-                .$testScript @testParams
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
 
-                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
-                    (&$MailAdminParams) -and ($Message -like "*$ImportFile*destination path 'd:\bla'*No 'ComputerName' found*")
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*Value 'notSupported' is not supported by 'Remove.FilesInFolder.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
+                        }
+                    }
+                    Context 'OlderThan.Quantity' {
+                        It 'not found' {
+                            $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Remove("Quantity")
+
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
+
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'Remove.FilesInFolder.OlderThan.Quantity' not found. Use value number '0' to move all files*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
+                        }
+                        It 'is not a number' {
+                            $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Quantity = 'a'
+
+                            $testNewInputFile | ConvertTo-Json -Depth 5 |
+                            Out-File @testOutParams
+
+                            .$testScript @testParams
+
+                            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*$ImportFile*Property 'Remove.FilesInFolder.OlderThan.Quantity' needs to be a number, the value 'a' is not supported*")
+                            }
+                            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                                $EntryType -eq 'Error'
+                            }
+                        }
+                    }
                 }
-                Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
-                    $EntryType -eq 'Error'
+                It 'Path is a local path but no ComputerName is given' {
+                    $testNewInputFile.Remove.FilesInFolder[0].ComputerName = $null
+                    $testNewInputFile.Remove.FilesInFolder[0].Path = 'd:\bla'
+
+                    $testNewInputFile | ConvertTo-Json -Depth 5 |
+                    Out-File @testOutParams
+
+                    .$testScript @testParams
+
+                    Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                        (&$MailAdminParams) -and ($Message -like "*No 'Remove.FilesInFolder.ComputerName' found for path '$($testNewInputFile.Remove.FilesInFolder[0].Path)'*")
+                    }
+                    Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                        $EntryType -eq 'Error'
+                    }
                 }
-            }
+            } -Tag test
         }
     }
 }
