@@ -37,7 +37,7 @@
     "Remove": {
       "File": "Remove the specified file",
       "FilesInFolder": "Remove files in a folder",
-      "RemoveEmptyFolders": "Remove all empty folders in a folder"
+      "EmptyFolders": "Remove all empty folders in a folder"
     }
   }
 }
