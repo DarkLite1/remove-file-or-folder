@@ -260,8 +260,6 @@ Begin {
             }
         )
         #endregion
-
-        $mailParams = @{ }
     }
     Catch {
         Write-Warning $_
@@ -288,144 +286,7 @@ Process {
 
                 $invokeParams = @{
                     ArgumentList = $task.Remove, $task.Path, $task.OlderThanDays, $task.RemoveEmptyFolders
-                    ScriptBlock  = {
-                        Param (
-                            [Parameter(Mandatory)]
-                            [ValidateSet('file', 'folder', 'content')]
-                            [String]$Type,
-                            [Parameter(Mandatory)]
-                            [String]$Path,
-                            [Parameter(Mandatory)]
-                            [Int]$OlderThanDays,
-                            [Boolean]$RemoveEmptyFolders
-                        )
-
-                        $compareDate = (Get-Date).AddDays(-$OlderThanDays)
-
-                        #region Create get params and test file folder
-                        $commandToRun = "Get-Item -LiteralPath '$Path'  -ErrorAction Stop"
-                        $removalType = 'File'
-
-                        switch ($Type) {
-                            'file' {
-                                if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-                                    return [PSCustomObject]@{
-                                        ComputerName = $env:COMPUTERNAME
-                                        Type         = 'File'
-                                        FullName     = $Path
-                                        CreationTime = $null
-                                        Action       = $null
-                                        Error        = 'Path not found'
-                                    }
-                                }
-                            }
-                            'folder' {
-                                if (-not (Test-Path -LiteralPath $Path -PathType Container)
-                                ) {
-                                    return [PSCustomObject]@{
-                                        ComputerName = $env:COMPUTERNAME
-                                        Type         = 'Folder'
-                                        FullName     = $Path
-                                        CreationTime = $null
-                                        Action       = $null
-                                        Error        = 'Path not found'
-                                    }
-                                }
-                                $removalType = 'Folder'
-                                break
-                            }
-                            'content' {
-                                if (
-                                    -not (Test-Path -LiteralPath $Path -PathType Container)
-                                ) {
-                                    throw "Folder '$Path' not found"
-                                }
-                                $commandToRun = "Get-ChildItem -LiteralPath '$Path' -Recurse -File -ErrorAction Stop"
-                                break
-                            }
-                            Default {
-                                throw "Type '$_' not supported"
-                            }
-                        }
-                        #endregion
-
-                        #region Remove items
-                        $removeParams = @{
-                            Recurse     = $true
-                            Force       = $true
-                            ErrorAction = 'Stop'
-                        }
-
-                        Invoke-Expression $commandToRun | Where-Object {
-                        ($_.CreationTime -lt $compareDate) -or ($OlderThanDays -eq 0)
-                        } | ForEach-Object {
-                            try {
-                                $result = [PSCustomObject]@{
-                                    ComputerName = $env:COMPUTERNAME
-                                    Type         = $removalType
-                                    FullName     = $_.FullName
-                                    CreationTime = $_.CreationTime
-                                    Action       = $null
-                                    Error        = $null
-                                }
-
-                                Remove-Item @removeParams -LiteralPath $_.FullName
-                                $result.Action = 'Removed'
-                            }
-                            catch {
-                                $result.Error = $_
-                                $Error.RemoveAt(0)
-                            }
-                            finally {
-                                $result
-                            }
-                        }
-                        #endregion
-
-                        #region Remove empty folders
-                        if (($Type -eq 'content') -and ($RemoveEmptyFolders)) {
-                            $failedFolderRemoval = @()
-
-                            $getParams = @{
-                                LiteralPath = $Path
-                                Directory   = $true
-                                Recurse     = $true
-                            }
-
-                            while (
-                                $emptyFolders = Get-ChildItem @getParams |
-                                Where-Object {
-                                ($_.GetFileSystemInfos().Count -eq 0) -and
-                                ($failedFolderRemoval -notContains $_.FullName)
-                                }
-                            ) {
-                                $emptyFolders | ForEach-Object {
-                                    try {
-                                        $result = [PSCustomObject]@{
-                                            ComputerName = $env:COMPUTERNAME
-                                            Type         = 'Folder'
-                                            FullName     = $_.FullName
-                                            CreationTime = $_.CreationTime
-                                            Action       = $null
-                                            Error        = $null
-                                        }
-
-                                        Remove-Item @removeParams -LiteralPath $_.FullName
-                                        $result. Action = 'Removed'
-                                    }
-                                    catch {
-                                        $result.Error = $_
-                                        $Error.RemoveAt(0)
-                                        $failedFolderRemoval += $_.FullName
-                                    }
-                                    finally {
-                                        $result
-                                    }
-                                }
-                            }
-                        }
-                        #endregion
-                    }
+                    ScriptBlock  = $null
                 }
 
                 $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}'" -f
@@ -491,6 +352,8 @@ Process {
 
 End {
     try {
+        $mailParams = @{ }
+
         $excelParams = @{
             Path               = $logFile + ' - Log.xlsx'
             NoNumberConversion = '*'
