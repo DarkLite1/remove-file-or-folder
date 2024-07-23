@@ -153,10 +153,6 @@ Begin {
                     throw "Value '$($fileToRemove.OlderThan.Unit)' is not supported by 'Remove.File.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
                 }
 
-                if ($fileToRemove.PSObject.Properties.Name -notContains 'OlderThan') {
-                    throw "Property 'Remove.File.OlderThan' with 'Quantity' and 'Unit' not found."
-                }
-
                 if ($fileToRemove.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
                     throw "Property 'Remove.File.OlderThan.Quantity' not found. Use value number '0' to move all files."
                 }
@@ -193,10 +189,6 @@ Begin {
 
                 if ($fileInFolderToRemove.OlderThan.Unit -notMatch '^Day$|^Month$|^Year$') {
                     throw "Value '$($fileInFolderToRemove.OlderThan.Unit)' is not supported by 'Remove.FilesInFolder.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
-                }
-
-                if ($fileInFolderToRemove.PSObject.Properties.Name -notContains 'OlderThan') {
-                    throw "Property 'Remove.FilesInFolder.OlderThan' with 'Quantity' and 'Unit' not found."
                 }
 
                 if ($fileInFolderToRemove.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
