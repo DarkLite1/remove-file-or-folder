@@ -270,6 +270,40 @@ Begin {
             }
         )
         #endregion
+
+        #region Create tasks to execute
+        $tasksToExecute = @()
+
+        $file.Remove.File.foreach(
+            {
+                $tasksToExecute += $_ | Select-Object -Property *,
+                @{
+                    Name       = 'Type'
+                    Expression = { 'RemoveFile' }
+                }
+            }
+        )
+
+        $file.Remove.FilesInFolder.foreach(
+            {
+                $tasksToExecute += $_ | Select-Object -Property *,
+                @{
+                    Name       = 'Type'
+                    Expression = { 'RemoveFilesInFolder' }
+                }
+            }
+        )
+
+        $file.Remove.EmptyFolders.foreach(
+            {
+                $tasksToExecute += $_ | Select-Object -Property *,
+                @{
+                    Name       = 'Type'
+                    Expression = { 'RemoveEmptyFolders' }
+                }
+            }
+        )
+        #endregion
     }
     Catch {
         Write-Warning $_
