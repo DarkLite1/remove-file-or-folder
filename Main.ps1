@@ -12,31 +12,49 @@
     folders will be removed, depending on the chosen 'Remove' type, regardless
     their creation date.
 
-.PARAMETER MailTo
-    E-mail addresses of where to send the summary e-mail
+.PARAMETER Remove.File
+    A collection of file paths that need to be removed.
 
-.PARAMETER Tasks
-    Contains an array of objects where each object represents a 'Path' and its
-    specific settings on file, folder or content removal
+.PARAMETER Remove.FilesInFolder
+    A collection of folder paths where to look for files that need to be
+    removed.
 
-.PARAMETER Tasks.Name
-    The name to display in the email send to the user instead of the full path
+.PARAMETER Remove.EmptyFolders
+    A collection of folder paths where to look for empty folders that need to be
+    removed.
 
-.PARAMETER Tasks.Remove
-    file    : remove the file specified in 'Path'
-    folder  : remove the files in the 'Path' folder
-    content : remove the files in the 'Path' folder and sub folders
-    (use RemoveEmptyFolders to delete empty folder)
+.PARAMETER Remove.File.Name
+    The name to display in the email send to the user instead of the full path.
 
-.PARAMETER Tasks.Path
+.PARAMETER Remove.File.ComputerName
+    Computer name where the removal action will be executed.
+
+.PARAMETER Remove.File.Path
     Can be a local path when 'ComputerName' is used or a UNC path
 
-.PARAMETER Tasks.OlderThanDays
-    Only remove files that are older than x days
+.PARAMETER Remove.File.OlderThan.Quantity
+    Number of units (day, ..).
 
-.PARAMETER Tasks.RemoveEmptyFolders
-    Can only be used with 'Remove' set to 'content' and will remove all empty
-    folders after the files have been removed
+.PARAMETER Remove.File.OlderThan.Unit
+    Valid options:
+    - Day
+    - Month
+    - Year
+
+.PARAMETER MaxConcurrentJobs
+    Determines how many jobs to run at the same time
+
+.PARAMETER SendMail.To
+    List of e-mail addresses where to send the e-mail too.
+
+.PARAMETER SendMail.When
+    When to send an e-mail.
+
+    Valid options:
+    - Never               : Never send an e-mail
+    - Always              : Always send an e-mail, even without matches
+    - OnlyOnErrorOrAction : Only send an e-mail when action is taken or on error
+    - OnlyOnError         : Only send an e-mail on error
 
 .PARAMETER PSSessionConfiguration
     The version of PowerShell on the remote endpoint as returned by
