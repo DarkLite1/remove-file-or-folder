@@ -454,6 +454,25 @@ Describe 'send an e-mail to the admin when' {
                 }
             }
         }
+        It 'there is nothing to execute' {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+
+            $testNewInputFile.Remove = @{
+                File = @()
+            }
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                (&$MailAdminParams) -and ($Message -like "No tasks to execute*")
+            }
+            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                $EntryType -eq 'Error'
+            }
+        }
     }
 }
 Describe 'execute script' {
