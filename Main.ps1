@@ -68,9 +68,9 @@ Param (
     [Parameter(Mandatory)]
     [String]$ImportFile,
     [HashTable]$Path = @{
-        RemoveFile               = "$PSScriptRoot\Remove file.ps1"
-        RemoveFilesInFolder      = "$PSScriptRoot\Remove files in folder.ps1"
-        RemoveEmptyFoldersScript = "$PSScriptRoot\Remove empty folders.ps1"
+        RemoveFileScript          = "$PSScriptRoot\Remove file.ps1"
+        RemoveEmptyFoldersScript  = "$PSScriptRoot\Remove empty folders.ps1"
+        RemoveFilesInFolderScript = "$PSScriptRoot\Remove files in folder.ps1"
     },
     [String]$PSSessionConfiguration = 'PowerShell.7',
     [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\File or folder\Remove file or folder\$ScriptName",
@@ -275,34 +275,32 @@ Begin {
         #endregion
 
         #region Convert .json file
-        @(
-            $file.Remove.File,
-            $file.Remove.FilesInFolder,
-            $file.Remove.EmptyFolders
-        ).foreach(
-            {
-                $_.Path = $_.Path.ToLower()
+        $convertScriptBlock = {
+            $_.Path = $_.Path.ToLower()
 
-                #region Set ComputerName
-                if (
-                    (-not $_.ComputerName) -or
-                    ($_.ComputerName -eq 'localhost') -or
-                    ($_.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
-                ) {
-                    $_.ComputerName = $env:COMPUTERNAME
-                }
-                #endregion
-
-                #region Add properties
-                $_ | Add-Member -NotePropertyMembers @{
-                    Job = @{
-                        Results = @()
-                        Errors  = @()
-                    }
-                }
-                #endregion
+            #region Set ComputerName
+            if (
+                (-not $_.ComputerName) -or
+                ($_.ComputerName -eq 'localhost') -or
+                ($_.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
+            ) {
+                $_.ComputerName = $env:COMPUTERNAME
             }
-        )
+            #endregion
+
+            #region Add properties
+            $_ | Add-Member -NotePropertyMembers @{
+                Job = @{
+                    Results = @()
+                    Errors  = @()
+                }
+            }
+            #endregion
+        }
+
+        $file.Remove.File.foreach({ & $convertScriptBlock })
+        $file.Remove.FilesInFolder.foreach({ & $convertScriptBlock })
+        $file.Remove.EmptyFolders.foreach({ & $convertScriptBlock })
         #endregion
 
         #region Create tasks to execute
@@ -337,6 +335,10 @@ Begin {
                 }
             }
         )
+
+        if (-not $tasksToExecute) {
+            throw 'No tasks to execute'
+        }
         #endregion
     }
     Catch {
@@ -363,11 +365,11 @@ Process {
                 #endregion
 
                 #region Create script arguments
-                $invokeParams = switch ($task.Type) {
+                switch ($task.Type) {
                     'RemoveFile' {
-                        @{
+                        $invokeParams = @{
                             ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
-                            FilePath     = $pathItem.RemoveFile
+                            FilePath     = $pathItem.RemoveFileScript
                         }
 
                         $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
@@ -375,11 +377,13 @@ Process {
                         $invokeParams.ArgumentList[0],
                         $invokeParams.ArgumentList[1],
                         $invokeParams.ArgumentList[2]
+
+                        break
                     }
                     'RemoveFilesInFolder' {
-                        @{
+                        $invokeParams = @{
                             ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
-                            FilePath     = $pathItem.RemoveFilesInFolder
+                            FilePath     = $pathItem.RemoveFilesInFolderScript
                         }
 
                         $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}'" -f
@@ -388,9 +392,11 @@ Process {
                         $invokeParams.ArgumentList[1],
                         $invokeParams.ArgumentList[2],
                         $invokeParams.ArgumentList[3]
+
+                        break
                     }
                     'RemoveEmptyFolders' {
-                        @{
+                        $invokeParams = @{
                             ArgumentList = $task.Path
                             FilePath     = $pathItem.RemoveEmptyFoldersScript
                         }
@@ -398,6 +404,8 @@ Process {
                         $M = "Start job '$_' on '{0}' with Path '{1}'" -f
                         $task.ComputerName,
                         $invokeParams.ArgumentList[0]
+
+                        break
                     }
                     Default {
                         throw "Type '$_' not supported"
@@ -675,7 +683,7 @@ End {
         #endregion
 
         $mailParams += @{
-            To        = $MailTo
+            To        = $file.SendMail.To
             Bcc       = $ScriptAdmin
             Message   = "
                 $systemErrorsHtmlList

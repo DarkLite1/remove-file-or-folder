@@ -51,15 +51,16 @@ BeforeAll {
     $testParams = @{
         ScriptName  = 'Test (Brecht)'
         Path        = @{
-            RemoveEmptyFoldersScript = (New-Item 'TestDrive:/a.ps1' -ItemType File).FullName
-            RemoveFile               = (New-Item 'TestDrive:/b.ps1' -ItemType File).FullName
-            RemoveFilesInFolder      = (New-Item 'TestDrive:/c.ps1' -ItemType File).FullName
+            RemoveFileScript          = (New-Item 'TestDrive:/b.ps1' -ItemType File).FullName
+            RemoveEmptyFoldersScript  = (New-Item 'TestDrive:/a.ps1' -ItemType File).FullName
+            RemoveFilesInFolderScript = (New-Item 'TestDrive:/c.ps1' -ItemType File).FullName
         }
         ImportFile  = $testOutParams.FilePath
         LogFolder   = New-Item 'TestDrive:/log' -ItemType Directory
         ScriptAdmin = 'admin@contoso.com'
     }
 
+    Mock Invoke-Command
     Mock Send-MailHC
     Mock Write-EventLog
 }
@@ -454,4 +455,74 @@ Describe 'send an e-mail to the admin when' {
             }
         }
     }
-} -Tag test
+}
+Describe 'execute script' {
+    Context 'Remove.File' {
+        BeforeAll {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+
+            $testNewInputFile.Remove = @{
+                File = $testNewInputFile.Remove.File
+            }
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+        }
+        It 'with the correct arguments' {
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                ($ComputerName -eq $testNewInputFile.Remove.File[0].ComputerName) -and
+                ($FilePath -eq $testParams.Path.RemoveFileScript) -and
+                ($ArgumentList[0] -eq $testNewInputFile.Remove.File[0].Path) -and
+                ($ArgumentList[1] -eq $testNewInputFile.Remove.File[0].OlderThan.Unit) -and
+                ($ArgumentList[2] -eq $testNewInputFile.Remove.File[0].OlderThan.Quantity)
+            }
+        }
+    }
+    Context 'Remove.FilesInFolder' {
+        BeforeAll {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+
+            $testNewInputFile.Remove = @{
+                FilesInFolder = $testNewInputFile.Remove.FilesInFolder
+            }
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+        }
+        It 'with the correct arguments' {
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                ($ComputerName -eq $testNewInputFile.Remove.FilesInFolder[0].ComputerName) -and
+                ($FilePath -eq $testParams.Path.RemoveFilesInFolderScript) -and
+                ($ArgumentList[0] -eq $testNewInputFile.Remove.FilesInFolder[0].Path) -and
+                ($ArgumentList[1] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Unit) -and
+                ($ArgumentList[2] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) -and
+                ($ArgumentList[3] -eq $testNewInputFile.Remove.FilesInFolder[0].Recurse)
+            }
+        }
+    }
+    Context 'Remove.RemoveEmptyFolders' {
+        BeforeAll {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+
+            $testNewInputFile.Remove = @{
+                EmptyFolders = $testNewInputFile.Remove.EmptyFolders
+            }
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+        }
+        It 'with the correct arguments' {
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                ($ComputerName -eq $testNewInputFile.Remove.EmptyFolders[0].ComputerName) -and
+                ($FilePath -eq $testParams.Path.RemoveEmptyFoldersScript) -and
+                ($ArgumentList[0] -eq $testNewInputFile.Remove.EmptyFolders[0].Path)
+            }
+        }
+    }
+}
