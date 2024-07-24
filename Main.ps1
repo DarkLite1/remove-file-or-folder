@@ -298,9 +298,9 @@ Begin {
             #endregion
         }
 
-        $file.Remove.File.foreach({ & $convertScriptBlock })
-        $file.Remove.FilesInFolder.foreach({ & $convertScriptBlock })
-        $file.Remove.EmptyFolders.foreach({ & $convertScriptBlock })
+        # $file.Remove.File.foreach({ & $convertScriptBlock })
+        # $file.Remove.FilesInFolder.foreach({ & $convertScriptBlock })
+        # $file.Remove.EmptyFolders.foreach({ & $convertScriptBlock })
         #endregion
 
         #region Create tasks to execute
@@ -308,6 +308,8 @@ Begin {
 
         $file.Remove.File.foreach(
             {
+                & $convertScriptBlock
+
                 $tasksToExecute += $_ | Select-Object -Property *,
                 @{
                     Name       = 'Type'
@@ -318,6 +320,8 @@ Begin {
 
         $file.Remove.FilesInFolder.foreach(
             {
+                & $convertScriptBlock
+
                 $tasksToExecute += $_ | Select-Object -Property *,
                 @{
                     Name       = 'Type'
@@ -328,6 +332,8 @@ Begin {
 
         $file.Remove.EmptyFolders.foreach(
             {
+                & $convertScriptBlock
+
                 $tasksToExecute += $_ | Select-Object -Property *,
                 @{
                     Name       = 'Type'
