@@ -399,7 +399,9 @@ Process {
                         $task.ComputerName,
                         $invokeParams.ArgumentList[0]
                     }
-                    Default { "Type '$_' not supported" }
+                    Default {
+                        throw "Type '$_' not supported"
+                    }
                 }
 
                 Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
