@@ -67,6 +67,11 @@ Param (
     [String]$ScriptName,
     [Parameter(Mandatory)]
     [String]$ImportFile,
+    [HashTable]$Path = @{
+        RemoveEmptyFoldersScript = "$PSScriptRoot\Remove empty folders.ps1"
+        RemoveFile               = "$PSScriptRoot\Remove file.ps1"
+        RemoveFilesInFolder      = "$PSScriptRoot\Remove files in folder.ps1"
+    },
     [String]$PSSessionConfiguration = 'PowerShell.7',
     [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\File or folder\Remove file or folder\$ScriptName",
     [String[]]$ScriptAdmin = @(
@@ -81,7 +86,27 @@ Begin {
         Write-EventLog @EventStartParams
         Get-ScriptRuntimeHC -Start
 
-        $Error.Clear()
+        #region Test path exists
+        $pathItem = @{}
+
+        $Path.GetEnumerator().ForEach(
+            {
+                try {
+                    $key = $_.Key
+                    $value = $_.Value
+
+                    $params = @{
+                        Path        = $value
+                        ErrorAction = 'Stop'
+                    }
+                    $PathItem[$key] = (Get-Item @params).FullName
+                }
+                catch {
+                    throw "Path.$key '$value' not found"
+                }
+            }
+        )
+        #endregion
 
         #region Logging
         try {

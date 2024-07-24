@@ -50,6 +50,11 @@ BeforeAll {
     $testScript = $PSCommandPath.Replace('.Tests.ps1', '.ps1')
     $testParams = @{
         ScriptName  = 'Test (Brecht)'
+        Path        = @{
+            RemoveEmptyFoldersScript = (New-Item 'TestDrive:/a.ps1' -ItemType File).FullName
+            RemoveFile               = (New-Item 'TestDrive:/b.ps1' -ItemType File).FullName
+            RemoveFilesInFolder      = (New-Item 'TestDrive:/c.ps1' -ItemType File).FullName
+        }
         ImportFile  = $testOutParams.FilePath
         LogFolder   = New-Item 'TestDrive:/log' -ItemType Directory
         ScriptAdmin = 'admin@contoso.com'
@@ -71,6 +76,26 @@ Describe 'send an e-mail to the admin when' {
             ($Subject -eq 'FAILURE')
         }
     }
+    Context 'the file is not found' {
+        It 'Path.<_>' -ForEach @(
+            'RemoveEmptyFoldersScript', 'RemoveFile', 'RemoveFilesInFolder'
+        ) {
+            $testNewParams = Copy-ObjectHC $testParams
+            $testNewParams.Path.$_ = 'c:\NotExisting.ps1'
+
+            $testInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testNewParams
+
+            Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and ($Message -like "*Path.$_ 'c:\NotExisting.ps1' not found*")
+            }
+            Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
+                $EntryType -eq 'Error'
+            }
+        }
+    }  -Tag test
     It 'the log folder cannot be created' {
         $testNewParams = $testParams.clone()
         $testNewParams.LogFolder = 'xxx:://notExistingLocation'
@@ -429,7 +454,7 @@ Describe 'send an e-mail to the admin when' {
             }
         }
     }
-}  -Tag test
+}
 Describe "when 'Remove' is 'file'" {
     Context  "and 'OlderThanDays' is '0'" {
         BeforeAll {
