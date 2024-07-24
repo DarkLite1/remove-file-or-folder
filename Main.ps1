@@ -68,9 +68,9 @@ Param (
     [Parameter(Mandatory)]
     [String]$ImportFile,
     [HashTable]$Path = @{
-        RemoveEmptyFoldersScript = "$PSScriptRoot\Remove empty folders.ps1"
         RemoveFile               = "$PSScriptRoot\Remove file.ps1"
         RemoveFilesInFolder      = "$PSScriptRoot\Remove files in folder.ps1"
+        RemoveEmptyFoldersScript = "$PSScriptRoot\Remove empty folders.ps1"
     },
     [String]$PSSessionConfiguration = 'PowerShell.7',
     [String]$LogFolder = "$env:POWERSHELL_LOG_FOLDER\File or folder\Remove file or folder\$ScriptName",
@@ -99,7 +99,7 @@ Begin {
                         Path        = $value
                         ErrorAction = 'Stop'
                     }
-                    $PathItem[$key] = (Get-Item @params).FullName
+                    $pathItem[$key] = (Get-Item @params).FullName
                 }
                 catch {
                     throw "Path.$key '$value' not found"
@@ -292,6 +292,15 @@ Begin {
                     $_.ComputerName = $env:COMPUTERNAME
                 }
                 #endregion
+
+                #region Add properties
+                $_ | Add-Member -NotePropertyMembers @{
+                    Job = @{
+                        Results = @()
+                        Errors  = @()
+                    }
+                }
+                #endregion
             }
         )
         #endregion
@@ -353,16 +362,48 @@ Process {
                 }
                 #endregion
 
-                $invokeParams = @{
-                    ArgumentList = $task.Remove, $task.Path, $task.OlderThanDays, $task.RemoveEmptyFolders
-                    ScriptBlock  = $null
+                #region Create script arguments
+                $invokeParams = switch ($task.Type) {
+                    'RemoveFile' {
+                        @{
+                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
+                            FilePath     = $pathItem.RemoveFile
+                        }
+
+                        $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
+                        $task.ComputerName,
+                        $invokeParams.ArgumentList[0],
+                        $invokeParams.ArgumentList[1],
+                        $invokeParams.ArgumentList[2]
+                    }
+                    'RemoveFilesInFolder' {
+                        @{
+                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
+                            FilePath     = $pathItem.RemoveFilesInFolder
+                        }
+
+                        $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}'" -f
+                        $task.ComputerName,
+                        $invokeParams.ArgumentList[0],
+                        $invokeParams.ArgumentList[1],
+                        $invokeParams.ArgumentList[2],
+                        $invokeParams.ArgumentList[3]
+                    }
+                    'RemoveEmptyFolders' {
+                        @{
+                            ArgumentList = $task.Path
+                            FilePath     = $pathItem.RemoveEmptyFoldersScript
+                        }
+
+                        $M = "Start job '$_' on '{0}' with Path '{1}'" -f
+                        $task.ComputerName,
+                        $invokeParams.ArgumentList[0]
+                    }
+                    Default { "Type '$_' not supported" }
                 }
 
-                $M = "Start job on '{0}' with Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}'" -f
-                $task.ComputerName,
-                $invokeParams.ArgumentList[0], $invokeParams.ArgumentList[1],
-                $invokeParams.ArgumentList[2], $invokeParams.ArgumentList[3]
                 Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
+                #endregion
 
                 #region Start job
                 $computerName = $task.ComputerName
@@ -371,7 +412,7 @@ Process {
                     $computerName -eq $ENV:COMPUTERNAME
                 ) {
                     $params = $invokeParams.ArgumentList
-                    & $invokeParams.ScriptBlock @params
+                    & $invokeParams.FilePath @params
                 }
                 else {
                     $invokeParams += @{
@@ -385,13 +426,11 @@ Process {
             }
             catch {
                 $task.Job.Errors += $_
-                $Error.RemoveAt(0)
 
-                $M = "'{0}' Error for Remove '{1}' Path '{2}' OlderThanDays '{3}' RemoveEmptyFolders '{4}' Name '{5}': {6}" -f
-                $task.ComputerName, $task.Remove, $task.Path,
-                $task.OlderThanDays, $task.RemoveEmptyFolders,
-                $task.Name, $task.Job.Errors[0]
+                $M = "'{0}' Error for $M : {6}" -f $_
                 Write-Warning $M; Write-EventLog @EventErrorParams -Message $M
+
+                $Error.RemoveAt(0)
             }
         }
 
@@ -409,7 +448,7 @@ Process {
         }
         #endregion
 
-        $Tasks | ForEach-Object @foreachParams
+        $tasksToExecute | ForEach-Object @foreachParams
     }
     Catch {
         Write-Warning $_
