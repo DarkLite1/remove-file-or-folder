@@ -618,7 +618,8 @@ End {
 
         $jobResultsHtmlListItems = foreach (
             $task in
-            $tasksToExecute | Sort-Object -Property 'Name', 'Path', 'ComputerName'
+            $tasksToExecute |
+            Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
             "{0}<br>{1}<br>Removed: {2}{3}" -f
             $(
@@ -639,36 +640,33 @@ End {
                 }
             ),
             $(
-                $description = if ($task.Remove -eq 'File') {
-                    if ($task.OlderThanDays -eq 0) {
+                $description = switch ($task.Type) {
+                    'RemoveFile' {
                         'Remove file'
+                        break
                     }
-                    else {
-                        "Remove file when it's older than {0} days" -f
-                        $task.OlderThanDays
+                    'RemoveFilesInFolder' {
+                        'Remove files in folder'
+                        break
                     }
-                }
-                elseif ($task.Remove -eq 'Folder') {
-                    if ($task.OlderThanDays -eq 0) {
-                        'Remove folder'
+                    'RemoveEmptyFolders' {
+                        'Remove empty folders'
+                        break
                     }
-                    else {
-                        "Remove folder when it's older than {0} days" -f
-                        $task.OlderThanDays
-                    }
-                }
-                elseif ($task.Remove -eq 'Content') {
-                    if ($task.OlderThanDays -eq 0) {
-                        'Remove folder content'
-                    }
-                    else {
-                        'Remove folder content that is older than {0} days' -f
-                        $task.OlderThanDays
+                    Default {
+                        throw "Type '$_' not supported"
                     }
                 }
-                if ($task.RemoveEmptyFolders) {
-                    $description += ' and remove empty folders'
+
+                if ($task.OlderThan.Quantity) {
+                    $description += ' older than {0} {1}{2}' -f
+                    $($task.OlderThan.Quantity),
+                    $($task.OlderThan.Unit.ToLower()),
+                    $(
+                        if ($task.OlderThan.Quantity -ne 1) { 's' }
+                    )
                 }
+
                 $description
             ),
             $(
@@ -692,16 +690,41 @@ End {
         ConvertTo-HtmlListHC -Spacing Wide
         #endregion
 
+        #region Check to send mail to user
+        $sendMailToUser = $false
+
+        if (
+            (
+                ($file.SendMail.When -eq 'Always')
+            ) -or
+            (
+                ($file.SendMail.When -eq 'OnlyOnError') -and
+                $totalErrorCount
+            ) -or
+            (
+                ($file.SendMail.When -eq 'OnlyOnErrorOrAction') -and
+                (
+                    ($counter.removedItems) -or $totalErrorCount
+                )
+            )
+        ) {
+            $sendMailToUser = $true
+        }
+        #endregion
+
+        #region Send mail to user
         $mailParams += @{
-            To        = $file.SendMail.To
-            Bcc       = $ScriptAdmin
-            Message   = "
+            To             = $file.SendMail.To
+            Bcc            = $ScriptAdmin
+            Message        = "
                 $systemErrorsHtmlList
                 <p>Summary:</p>
                 $jobResultsHtmlList"
-            LogFolder = $LogParams.LogFolder
-            Header    = $ScriptName
-            Save      = $LogFile + ' - Mail.html'
+            LogFolder      = $LogParams.LogFolder
+            Header         = $ScriptName
+            EventLogSource = $ScriptName
+            Save           = $LogFile + ' - Mail.html'
+            ErrorAction    = 'Stop'
         }
 
         if ($mailParams.Attachments) {
@@ -710,7 +733,27 @@ End {
         }
 
         Get-ScriptRuntimeHC -Stop
-        Send-MailHC @mailParams
+
+        if ($sendMailToUser) {
+            $M = 'Send e-mail to the user'
+            Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
+
+            if ($totalErrorCount) {
+                $mailParams.Bcc = $ScriptAdmin
+            }
+            Send-MailHC @mailParams
+        }
+        else {
+            $M = 'Send no e-mail to the user'
+            Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
+
+            if ($totalErrorCount) {
+                Write-Verbose 'Send e-mail to admin only with errors'
+
+                $mailParams.To = $ScriptAdmin
+                Send-MailHC @mailParams
+            }
+        }
         #endregion
     }
     catch {

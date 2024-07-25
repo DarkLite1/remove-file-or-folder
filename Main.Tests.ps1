@@ -47,6 +47,41 @@ BeforeAll {
         Encoding = 'utf8'
     }
 
+    $testData = @(
+        @{
+            ComputerName = $testInputFile.Remove.File[0].ComputerName
+            Type         = 'File'
+            FullName     = 'z:\file1.txt'
+            CreationTime = Get-Date
+            Action       = 'Removed'
+            Error        = $null
+        }
+        @{
+            ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
+            Type         = 'File'
+            FullName     = 'z:\file2.txt'
+            CreationTime = Get-Date
+            Action       = $null
+            Error        = 'File in use'
+        }
+        @{
+            ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
+            Type         = 'File'
+            FullName     = 'z:\file3.txt'
+            CreationTime = Get-Date
+            Action       = 'Removed'
+            Error        = $null
+        }
+        @{
+            ComputerName = $testInputFile.Remove.EmptyFolders[0].ComputerName
+            Type         = 'EmptyFolder'
+            FullName     = 'z:\folder'
+            CreationTime = Get-Date
+            Action       = 'Removed'
+            Error        = $null
+        }
+    )
+
     $testScript = $PSCommandPath.Replace('.Tests.ps1', '.ps1')
     $testParams = @{
         ScriptName  = 'Test (Brecht)'
@@ -547,41 +582,6 @@ Describe 'execute script' {
 }
 Describe 'create an Excel file' {
     BeforeAll {
-        $testData = @(
-            @{
-                ComputerName = $testInputFile.Remove.File[0].ComputerName
-                Type         = 'File'
-                FullName     = 'z:\file1.txt'
-                CreationTime = Get-Date
-                Action       = 'Removed'
-                Error        = $null
-            }
-            @{
-                ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
-                Type         = 'File'
-                FullName     = 'z:\file2.txt'
-                CreationTime = Get-Date
-                Action       = $null
-                Error        = 'File in use'
-            }
-            @{
-                ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
-                Type         = 'File'
-                FullName     = 'z:\file3.txt'
-                CreationTime = Get-Date
-                Action       = 'Removed'
-                Error        = $null
-            }
-            @{
-                ComputerName = $testInputFile.Remove.EmptyFolders[0].ComputerName
-                Type         = 'EmptyFolder'
-                FullName     = 'z:\folder'
-                CreationTime = Get-Date
-                Action       = 'Removed'
-                Error        = $null
-            }
-        )
-
         Mock Invoke-Command {
             $testData[0]
         } -ParameterFilter {
@@ -708,6 +708,142 @@ Describe 'create an Excel file' {
             $actual.Type | Should -Be $testRow.Type
             $actual.OlderThan | Should -Be $testRow.OlderThan
             $actual.Error | Should -Be $testRow.Error
+        }
+    }
+}
+Describe 'SendMail.When' {
+    BeforeAll {
+        $testParamFilter = @{
+            ParameterFilter = { $To -eq $testInputFile.SendMail.To }
+        }
+    }
+    BeforeEach {
+        $error.Clear()
+    }
+    Context 'send no e-mail to the user' {
+        BeforeAll {
+            Mock Invoke-Command
+        }
+        It "'Never'" {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.SendMail.When = 'Never'
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Not -Invoke Send-MailHC @testParamFilter
+        }
+        It "'OnlyOnError' and no errors are found" {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.SendMail.When = 'OnlyOnError'
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Not -Invoke Send-MailHC
+        }
+        It "'OnlyOnErrorOrAction' and there are no errors and no actions" {
+            Mock Invoke-Command {
+            } -ParameterFilter {
+                $FilePath -eq $testParams.MoveScript
+            }
+
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.SendMail.When = 'OnlyOnErrorOrAction'
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Not -Invoke Send-MailHC
+        }
+    }
+    Context 'send an e-mail to the user' {
+        It "'OnlyOnError' and there are errors" {
+            Mock Invoke-Command {
+                $testData[1]
+            }
+
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.SendMail.When = 'OnlyOnError'
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Invoke Send-MailHC @testParamFilter
+        }
+        It "'OnlyOnErrorOrAction' and there are actions but no errors" {
+            Mock Invoke-Command {
+                $testData[0]
+            }
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.SendMail.When = 'OnlyOnErrorOrAction'
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Invoke Send-MailHC @testParamFilter
+        }
+        It "'OnlyOnErrorOrAction' and there are errors but no actions" {
+            Mock Invoke-Command {
+                $testData[1]
+            }
+
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.SendMail.When = 'OnlyOnErrorOrAction'
+
+            $testNewInputFile | ConvertTo-Json -Depth 7 |
+            Out-File @testOutParams
+
+            .$testScript @testParams
+
+            Should -Invoke Send-MailHC @testParamFilter
+        }
+    }
+}
+Describe 'send an e-mail' {
+    BeforeAll {
+        $error.Clear()
+
+        Mock Invoke-Command {
+            $testData[0]
+            $testData[1]
+        }
+
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Remove = @{
+            File = $testNewInputFile.Remove.File
+        }
+
+        $testNewInputFile | ConvertTo-Json -Depth 5 |
+        Out-File @testOutParams
+
+        . $testScript @testParams
+    }
+    It 'to the user' {
+        Should -Invoke Send-MailHC -Exactly 1 -Scope Describe -ParameterFilter {
+            ($To -eq $testNewInputFile.SendMail.To) -and
+            ($Bcc -eq $testParams.ScriptAdmin) -and
+            ($Priority -eq 'High') -and
+            ($Subject -eq '1 removed, 1 error') -and
+            ($Attachments -like '*log.xlsx') -and
+            ($Message -like (
+                "*<a href=`"{0}`">{1}</a><br>Remove file older than 1 day<br>Removed: 1, <b style=`"color:red;`">errors: 1*" -f $(
+                    "\\$($testNewInputFile.Remove.File[0].ComputerName)\z$\$($testNewInputFile.Remove.File[0].Path.Substring(3))"
+                ),
+                $(
+                    $testNewInputFile.Remove.File[0].Name
+                )
+            ))
         }
     }
 }
