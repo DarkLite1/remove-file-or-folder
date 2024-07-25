@@ -461,7 +461,13 @@ Process {
         }
         #endregion
 
-        $tasksToExecute | ForEach-Object @foreachParams
+        $tasksToExecute.Where(
+            { $_.Type -ne 'RemoveEmptyFolders' }
+        ) | ForEach-Object @foreachParams
+
+        $tasksToExecute.Where(
+            { $_.Type -eq 'RemoveEmptyFolders' }
+        ) | ForEach-Object @foreachParams
     }
     Catch {
         Write-Warning $_
