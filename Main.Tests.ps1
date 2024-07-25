@@ -545,3 +545,166 @@ Describe 'execute script' {
         }
     }
 }
+Describe 'create an Excel file' {
+    BeforeAll {
+        $testData = @(
+            @{
+                ComputerName = $testInputFile.Remove.File[0].ComputerName
+                Type         = 'File'
+                FullName     = 'z:\file1.txt'
+                CreationTime = Get-Date
+                Action       = 'Removed'
+                Error        = $null
+            }
+            @{
+                ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
+                Type         = 'File'
+                FullName     = 'z:\file2.txt'
+                CreationTime = Get-Date
+                Action       = $null
+                Error        = 'File in use'
+            }
+            @{
+                ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
+                Type         = 'File'
+                FullName     = 'z:\file3.txt'
+                CreationTime = Get-Date
+                Action       = 'Removed'
+                Error        = $null
+            }
+            @{
+                ComputerName = $testInputFile.Remove.EmptyFolders[0].ComputerName
+                Type         = 'EmptyFolder'
+                FullName     = 'z:\folder'
+                CreationTime = Get-Date
+                Action       = 'Removed'
+                Error        = $null
+            }
+        )
+
+        Mock Invoke-Command {
+            $testData[0]
+        } -ParameterFilter {
+            $FilePath -eq $testParams.Path.RemoveFileScript
+        }
+
+        Mock Invoke-Command {
+            $testData[1]
+            $testData[2]
+        } -ParameterFilter {
+            $FilePath -eq $testParams.Path.RemoveFilesInFolderScript
+        }
+
+        Mock Invoke-Command {
+            $testData[3]
+        } -ParameterFilter {
+            $FilePath -eq $testParams.Path.RemoveEmptyFoldersScript
+        }
+
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+
+        $testNewInputFile | ConvertTo-Json -Depth 5 |
+        Out-File @testOutParams
+
+        . $testScript @testParams
+
+        $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
+    }
+    It 'in the log folder' {
+        $testExcelLogFile | Should -Not -BeNullOrEmpty
+    }
+    Context "with sheet 'Overview'" {
+        BeforeAll {
+            $testExportedExcelRows = @(
+                @{
+                    ComputerName = $testData[0].ComputerName
+                    Type         = $testData[0].Type
+                    Path         = $testData[0].FullName
+                    CreationTime = $testData[0].CreationTime
+                    OlderThan    = "$($testInputFile.Remove.File[0].OlderThan.Quantity) $($testInputFile.Remove.File[0].OlderThan.Unit)"
+                    Action       = $testData[0].Action
+                    Error        = $testData[0].Error
+                }
+                @{
+                    ComputerName = $testData[1].ComputerName
+                    Type         = $testData[1].Type
+                    Path         = $testData[1].FullName
+                    CreationTime = $testData[1].CreationTime
+                    OlderThan    = "$($testInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) $($testInputFile.Remove.FilesInFolder[0].OlderThan.Unit)"
+                    Action       = $testData[1].Action
+                    Error        = $testData[1].Error
+                }
+                @{
+                    ComputerName = $testData[2].ComputerName
+                    Type         = $testData[2].Type
+                    Path         = $testData[2].FullName
+                    CreationTime = $testData[2].CreationTime
+                    OlderThan    = "$($testInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) $($testInputFile.Remove.FilesInFolder[0].OlderThan.Unit)"
+                    Action       = $testData[2].Action
+                    Error        = $testData[2].Error
+                }
+                @{
+                    ComputerName = $testData[3].ComputerName
+                    Type         = $testData[3].Type
+                    Path         = $testData[3].FullName
+                    CreationTime = $testData[3].CreationTime
+                    OlderThan    = $null
+                    Action       = $testData[3].Action
+                    Error        = $testData[3].Error
+                }
+            )
+
+            $actual = Import-Excel -Path $testExcelLogFile.FullName -WorksheetName 'Overview'
+        }
+        It 'with the correct total rows' {
+            $actual | Should -HaveCount $testExportedExcelRows.Count
+        }
+        It 'with the correct data in the rows' {
+            foreach ($testRow in $testExportedExcelRows) {
+                $actualRow = $actual | Where-Object {
+                    $_.Path -eq $testRow.Path
+                }
+                $actualRow.ComputerName | Should -Be $testRow.ComputerName
+                $actualRow.Type | Should -Be $testRow.Type
+                $actualRow.CreationTime.ToString('yyyyMMdd HHmmss') |
+                Should -Be $testRow.CreationTime.ToString('yyyyMMdd HHmmss')
+                $actualRow.OlderThan | Should -Be $testRow.OlderThan
+                $actualRow.Action | Should -Be $testRow.Action
+                $actualRow.Error | Should -Be $testRow.Error
+            }
+        }
+    } -Tag test
+    Context "with sheet 'Errors'" {
+        BeforeAll {
+            Remove-Item -Path $testParams.LogFolder -Recurse -Force
+
+            Mock Invoke-Command {
+                throw 'Oops'
+            } -ParameterFilter {
+                $FilePath -eq $testParams.MoveScript
+            }
+
+            . $testScript @testParams
+
+            $testExportedExcelRows = @(
+                @{
+                    ComputerName = $testInputFile.Tasks[0].ComputerName
+                    SourceFolder = $testInputFile.Tasks[0].Source.Folder
+                    Error        = 'Oops'
+                }
+            )
+
+            $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
+
+            $actual = Import-Excel -Path $testExcelLogFile.FullName -WorksheetName 'Errors'
+        }
+        It 'with the correct total rows' {
+            $actual | Should -HaveCount $testExportedExcelRows.Count
+        }
+        It 'with the correct data in the rows' {
+            $actualRow.ComputerName | Should -Be $testRow.ComputerName
+            $actualRow.SourceFolder | Should -Be $testRow.SourceFolder
+            $actualRow.Error | Should -Be $testRow.Error
+        }
+    }
+}

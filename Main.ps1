@@ -297,10 +297,6 @@ Begin {
             }
             #endregion
         }
-
-        # $file.Remove.File.foreach({ & $convertScriptBlock })
-        # $file.Remove.FilesInFolder.foreach({ & $convertScriptBlock })
-        # $file.Remove.EmptyFolders.foreach({ & $convertScriptBlock })
         #endregion
 
         #region Create tasks to execute
@@ -363,6 +359,7 @@ Process {
 
                 #region Declare variables for parallel execution
                 if (-not $MaxConcurrentJobs) {
+                    $pathItem = $using:pathItem
                     $PSSessionConfiguration = $using:PSSessionConfiguration
                     $EventVerboseParams = $using:EventVerboseParams
                     $EventErrorParams = $using:EventErrorParams
@@ -492,18 +489,25 @@ End {
         #region Create Excel worksheet Overview
         $excelSheet.Overview += foreach (
             $task in
-            $Tasks
+            $tasksToExecute
         ) {
             $task.Job.Results | Select-Object -Property 'ComputerName',
             'Type',
             @{
-                Name       = 'Path';
+                Name       = 'Path'
                 Expression = { $_.FullName }
             },
-            'CreationTime', @{
-                Name       = 'OlderThanDays';
-                Expression = { $task.OlderThanDays }
-            }, 'Action', 'Error'
+            'CreationTime',
+            @{
+                Name       = 'OlderThan'
+                Expression = {
+                    if ($task.OlderThan.Unit) {
+                        '{0} {1}' -f
+                        $task.OlderThan.Quantity, $task.OlderThan.Unit
+                    }
+                }
+            },
+            'Action', 'Error'
         }
 
         if ($excelSheet.Overview) {
@@ -521,7 +525,7 @@ End {
         #region Create Excel worksheet Errors
         $excelSheet.Errors += foreach (
             $task in
-            $Tasks
+            $tasksToExecute
         ) {
             $task.Job.Errors | Where-Object { $_ } | Select-Object -Property @{
                 Name       = 'ComputerName';
@@ -569,15 +573,15 @@ End {
         #region Error counters
         $counter = @{
             removedItems  = (
-                $Tasks.Job.Results |
+                $tasksToExecute.Job.Results |
                 Where-Object { ($_.Action -eq 'Removed') } |
                 Measure-Object
             ).Count
             removalErrors = (
-                $Tasks.Job.Results.Error | Measure-Object
+                $tasksToExecute.Job.Results.Error | Measure-Object
             ).Count
             jobErrors     = (
-                $Tasks.Job.Errors | Measure-Object
+                $tasksToExecute.Job.Errors | Measure-Object
             ).Count
             systemErrors  = (
                 $Error.Exception.Message | Measure-Object
@@ -614,7 +618,7 @@ End {
 
         $jobResultsHtmlListItems = foreach (
             $task in
-            $Tasks | Sort-Object -Property 'Name', 'Path', 'ComputerName'
+            $tasksToExecute | Sort-Object -Property 'Name', 'Path', 'ComputerName'
         ) {
             "{0}<br>{1}<br>Removed: {2}{3}" -f
             $(
@@ -715,7 +719,7 @@ End {
         Write-EventLog @EventErrorParams -Message "FAILURE:`n`n- $_"
         Exit 1
     }
-    Finally {
+    finally {
         Write-EventLog @EventEndParams
     }
 }
