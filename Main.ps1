@@ -371,7 +371,7 @@ Process {
                 switch ($task.Type) {
                     'RemoveFile' {
                         $invokeParams = @{
-                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
+                            ArgumentList = , $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
                             FilePath     = $pathItem.RemoveFileScript
                         }
 
@@ -385,7 +385,7 @@ Process {
                     }
                     'RemoveFilesInFolder' {
                         $invokeParams = @{
-                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
+                            ArgumentList = , $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
                             FilePath     = $pathItem.RemoveFilesInFolderScript
                         }
 
@@ -400,7 +400,7 @@ Process {
                     }
                     'RemoveEmptyFolders' {
                         $invokeParams = @{
-                            ArgumentList = $task.Path
+                            ArgumentList = , $task.Path
                             FilePath     = $pathItem.RemoveEmptyFoldersScript
                         }
 
@@ -424,7 +424,7 @@ Process {
                 $task.Job.Results += if (
                     $computerName -eq $ENV:COMPUTERNAME
                 ) {
-                    $params = , $invokeParams.ArgumentList
+                    $params = $invokeParams.ArgumentList
                     & $invokeParams.FilePath @params
                 }
                 else {
