@@ -1,5 +1,6 @@
-#Requires -Modules Pester
 #Requires -Version 7
+#Requires -Modules Pester
+#Requires -Modules ImportExcel
 
 BeforeAll {
     $testInputFile = @{
