@@ -601,9 +601,7 @@ Describe 'create an Excel file' {
             $FilePath -eq $testParams.Path.RemoveEmptyFoldersScript
         }
 
-        $testNewInputFile = Copy-ObjectHC $testInputFile
-
-        $testNewInputFile | ConvertTo-Json -Depth 5 |
+        $testInputFile | ConvertTo-Json -Depth 5 |
         Out-File @testOutParams
 
         . $testScript @testParams
@@ -673,7 +671,7 @@ Describe 'create an Excel file' {
                 $actualRow.Error | Should -Be $testRow.Error
             }
         }
-    } -Tag test
+    }
     Context "with sheet 'Errors'" {
         BeforeAll {
             Remove-Item -Path $testParams.LogFolder -Recurse -Force
@@ -681,15 +679,17 @@ Describe 'create an Excel file' {
             Mock Invoke-Command {
                 throw 'Oops'
             } -ParameterFilter {
-                $FilePath -eq $testParams.MoveScript
+                $FilePath -eq $testParams.Path.RemoveFileScript
             }
 
             . $testScript @testParams
 
             $testExportedExcelRows = @(
                 @{
-                    ComputerName = $testInputFile.Tasks[0].ComputerName
-                    SourceFolder = $testInputFile.Tasks[0].Source.Folder
+                    ComputerName = $testInputFile.Remove.File[0].ComputerName
+                    Path         = $testInputFile.Remove.File[0].Path
+                    Type         = 'RemoveFile'
+                    OlderThan    = "$($testInputFile.Remove.File[0].OlderThan.Quantity) $($testInputFile.Remove.File[0].OlderThan.Unit)"
                     Error        = 'Oops'
                 }
             )
@@ -702,9 +702,12 @@ Describe 'create an Excel file' {
             $actual | Should -HaveCount $testExportedExcelRows.Count
         }
         It 'with the correct data in the rows' {
-            $actualRow.ComputerName | Should -Be $testRow.ComputerName
-            $actualRow.SourceFolder | Should -Be $testRow.SourceFolder
-            $actualRow.Error | Should -Be $testRow.Error
+            $testRow = $testExportedExcelRows[0]
+            $actual.ComputerName | Should -Be $testRow.ComputerName
+            $actual.Path | Should -Be $testRow.Path
+            $actual.Type | Should -Be $testRow.Type
+            $actual.OlderThan | Should -Be $testRow.OlderThan
+            $actual.Error | Should -Be $testRow.Error
         }
     }
 }

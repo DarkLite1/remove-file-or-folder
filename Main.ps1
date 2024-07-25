@@ -440,7 +440,7 @@ Process {
             catch {
                 $task.Job.Errors += $_
 
-                $M = "'{0}' Error for $M : {6}" -f $_
+                $M = "Error for $M : $_"
                 Write-Warning $M; Write-EventLog @EventErrorParams -Message $M
 
                 $Error.RemoveAt(0)
@@ -514,8 +514,8 @@ End {
             $M = "Export $($excelSheet.Overview.Count) rows to Excel"
             Write-Verbose $M; Write-EventLog @EventOutParams -Message $M
 
-            $excelParams.WorksheetName = 'Overview'
-            $excelParams.TableName = 'Overview'
+            $excelParams.WorksheetName = $excelParams.TableName = 'Overview'
+
             $excelSheet.Overview | Export-Excel @excelParams
 
             $mailParams.Attachments = $excelParams.Path
@@ -525,9 +525,9 @@ End {
         #region Create Excel worksheet Errors
         $excelSheet.Errors += foreach (
             $task in
-            $tasksToExecute
+            $tasksToExecute.where({ $_.Job.Errors })
         ) {
-            $task.Job.Errors | Where-Object { $_ } | Select-Object -Property @{
+            $task.Job.Errors | Select-Object -Property @{
                 Name       = 'ComputerName';
                 Expression = { $task.ComputerName }
             },
@@ -536,26 +536,26 @@ End {
                 Expression = { $task.Path }
             },
             @{
-                Name       = 'Remove';
-                Expression = { $task.Remove }
+                Name       = 'Type';
+                Expression = { $task.Type }
             },
             @{
-                Name       = 'OlderThanDays';
-                Expression = { $task.OlderThanDays }
+                Name       = 'OlderThan'
+                Expression = {
+                    if ($task.OlderThan.Unit) {
+                        '{0} {1}' -f
+                        $task.OlderThan.Quantity, $task.OlderThan.Unit
+                    }
+                }
             },
             @{
-                Name       = 'RemoveEmptyFolders';
-                Expression = { $task.RemoveEmptyFolders }
-            },
-            @{
-                Name       = 'Error';
+                Name       = 'Error'
                 Expression = { $_ -join ', ' }
             }
         }
 
         if ($excelSheet.Errors) {
-            $excelParams.WorksheetName = 'Errors'
-            $excelParams.TableName = 'Errors'
+            $excelParams.WorksheetName = $excelParams.TableName = 'Errors'
 
             $M = "Export {0} rows to sheet '{1}' in Excel file '{2}'" -f
             $excelSheet.Errors.Count,
