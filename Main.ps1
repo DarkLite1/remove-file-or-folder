@@ -424,7 +424,7 @@ Process {
                 $task.Job.Results += if (
                     $computerName -eq $ENV:COMPUTERNAME
                 ) {
-                    $params = $invokeParams.ArgumentList
+                    $params = , $invokeParams.ArgumentList
                     & $invokeParams.FilePath @params
                 }
                 else {
