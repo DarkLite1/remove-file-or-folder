@@ -371,7 +371,7 @@ Process {
                 switch ($task.Type) {
                     'RemoveFile' {
                         $invokeParams = @{
-                            ArgumentList = , $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
+                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
                             FilePath     = $pathItem.RemoveFileScript
                         }
 
@@ -385,7 +385,7 @@ Process {
                     }
                     'RemoveFilesInFolder' {
                         $invokeParams = @{
-                            ArgumentList = , $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
+                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
                             FilePath     = $pathItem.RemoveFilesInFolderScript
                         }
 
