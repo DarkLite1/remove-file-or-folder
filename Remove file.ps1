@@ -13,7 +13,7 @@ if (-not (Test-Path -LiteralPath $Path -PathType 'Leaf')) {
     return [PSCustomObject]@{
         ComputerName = $env:COMPUTERNAME
         Type         = 'File'
-        FullName     = $null
+        FullName     = $Path
         CreationTime = $null
         Action       = $null
         Error        = 'Path not found'
