@@ -12,6 +12,7 @@
 #region Test if folder exists
 if (-not (Test-Path -LiteralPath $Path -PathType 'Container')) {
     return [PSCustomObject]@{
+        DateTime     = Get-Date
         ComputerName = $env:COMPUTERNAME
         Type         = 'FilesInFolder'
         FullName     = $Path

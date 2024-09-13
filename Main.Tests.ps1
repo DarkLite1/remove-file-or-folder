@@ -50,6 +50,7 @@ BeforeAll {
 
     $testData = @(
         @{
+            DateTime     = Get-Date
             ComputerName = $testInputFile.Remove.File[0].ComputerName
             Type         = 'File'
             FullName     = 'z:\file1.txt'
@@ -58,6 +59,7 @@ BeforeAll {
             Error        = $null
         }
         @{
+            DateTime     = Get-Date
             ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
             Type         = 'File'
             FullName     = 'z:\file2.txt'
@@ -66,6 +68,7 @@ BeforeAll {
             Error        = 'File in use'
         }
         @{
+            DateTime     = Get-Date
             ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
             Type         = 'File'
             FullName     = 'z:\file3.txt'
@@ -74,6 +77,7 @@ BeforeAll {
             Error        = $null
         }
         @{
+            DateTime     = Get-Date
             ComputerName = $testInputFile.Remove.EmptyFolders[0].ComputerName
             Type         = 'EmptyFolder'
             FullName     = 'z:\folder'
@@ -616,6 +620,7 @@ Describe 'create an Excel file' {
         BeforeAll {
             $testExportedExcelRows = @(
                 @{
+                    DateTime     = Get-Date
                     ComputerName = $testData[0].ComputerName
                     Type         = $testData[0].Type
                     Path         = $testData[0].FullName
@@ -625,6 +630,7 @@ Describe 'create an Excel file' {
                     Error        = $testData[0].Error
                 }
                 @{
+                    DateTime     = Get-Date
                     ComputerName = $testData[1].ComputerName
                     Type         = $testData[1].Type
                     Path         = $testData[1].FullName
@@ -634,6 +640,7 @@ Describe 'create an Excel file' {
                     Error        = $testData[1].Error
                 }
                 @{
+                    DateTime     = Get-Date
                     ComputerName = $testData[2].ComputerName
                     Type         = $testData[2].Type
                     Path         = $testData[2].FullName
@@ -643,6 +650,7 @@ Describe 'create an Excel file' {
                     Error        = $testData[2].Error
                 }
                 @{
+                    DateTime     = Get-Date
                     ComputerName = $testData[3].ComputerName
                     Type         = $testData[3].Type
                     Path         = $testData[3].FullName
@@ -665,6 +673,8 @@ Describe 'create an Excel file' {
                 }
                 $actualRow.ComputerName | Should -Be $testRow.ComputerName
                 $actualRow.Type | Should -Be $testRow.Type
+                $actualRow.DateTime.ToString('yyyyMMdd') |
+                Should -Be $testRow.DateTime.ToString('yyyyMMdd')
                 $actualRow.CreationTime.ToString('yyyyMMdd HHmmss') |
                 Should -Be $testRow.CreationTime.ToString('yyyyMMdd HHmmss')
                 $actualRow.OlderThan | Should -Be $testRow.OlderThan

@@ -17,6 +17,7 @@ while (
             Write-Verbose "Remove empty folder '$emptyFolder'"
 
             $result = [PSCustomObject]@{
+                DateTime     = Get-Date
                 ComputerName = $env:COMPUTERNAME
                 Type         = 'EmptyFolder'
                 FullName     = $emptyFolder.FullName

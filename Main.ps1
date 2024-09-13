@@ -497,7 +497,8 @@ End {
             $task in
             $tasksToExecute
         ) {
-            $task.Job.Results | Select-Object -Property 'ComputerName',
+            $task.Job.Results | Select-Object -Property 'DateTime',
+            'ComputerName',
             'Type',
             @{
                 Name       = 'Path'

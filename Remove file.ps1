@@ -11,6 +11,7 @@
 #region Test file exists
 if (-not (Test-Path -LiteralPath $Path -PathType 'Leaf')) {
     return [PSCustomObject]@{
+        DateTime     = Get-Date
         ComputerName = $env:COMPUTERNAME
         Type         = 'File'
         FullName     = $Path
