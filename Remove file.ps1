@@ -79,6 +79,7 @@ Get-Item -LiteralPath $Path -ErrorAction Stop | Select-FileHC | ForEach-Object {
         Write-Verbose "Remove file '$Path'"
 
         $result = [PSCustomObject]@{
+            DateTime     = Get-Date
             ComputerName = $env:COMPUTERNAME
             Type         = 'File'
             FullName     = $_.FullName
