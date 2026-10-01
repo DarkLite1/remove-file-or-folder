@@ -76,11 +76,12 @@ else {
 #endregion
 
 $getParams = @{
-    LiteralPath = $Path
-    Recurse     = $Recurse
-    File        = $true
-    Force       = $true
-    ErrorAction = 'Stop'
+    LiteralPath   = $Path
+    Recurse       = $Recurse
+    File          = $true
+    Force         = $true
+    ErrorAction   = 'SilentlyContinue'
+    ErrorVariable = 'getErrors'
 }
 
 Get-ChildItem @getParams | Select-FileHC | ForEach-Object {
@@ -114,5 +115,19 @@ Get-ChildItem @getParams | Select-FileHC | ForEach-Object {
     }
     finally {
         $result
+    }
+}
+
+foreach ($getError in $getErrors) {
+    Write-Warning "Failed to read '$($getError.TargetObject)': $getError"
+
+    [PSCustomObject]@{
+        DateTime     = Get-Date
+        ComputerName = $env:COMPUTERNAME
+        Type         = 'FilesInFolder'
+        FullName     = "$($getError.TargetObject)"
+        CreationTime = $null
+        Action       = $null
+        Error        = "$getError"
     }
 }

@@ -113,3 +113,41 @@ Describe 'a file that cannot be removed' {
         $testWarnings | Should -BeLike "*Failed to remove file '$($testFile.FullName)'*"
     }
 }
+Describe 'a subfolder that cannot be read' {
+    BeforeAll {
+        $testRoot = (New-Item 'TestDrive:/unreadable' -ItemType Directory).FullName
+        $testDenied = (New-Item "$testRoot\denied" -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot\readable\file.txt" -ItemType File -Force
+
+        $testUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $testDenyRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $testUser, 'ListDirectory', 'Deny'
+        )
+        $testAcl = Get-Acl -LiteralPath $testDenied
+        $testAcl.AddAccessRule($testDenyRule)
+        Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+
+        $testNewParams = @{
+            Path              = $testRoot
+            OlderThanUnit     = 'Day'
+            OlderThanQuantity = 0
+            Recurse           = $true
+        }
+
+        try {
+            $actual = . $testScript @testNewParams -WarningAction SilentlyContinue
+        }
+        finally {
+            $testAcl = Get-Acl -LiteralPath $testDenied
+            $testAcl.RemoveAccessRule($testDenyRule) | Out-Null
+            Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+        }
+    }
+    It 'does not stop the removal of other files' {
+        $testFile.FullName | Should -Not -Exist
+    }
+    It 'is reported as an error' {
+        ($actual | Where-Object FullName -EQ $testDenied).Error |
+        Should -Not -BeNullOrEmpty
+    }
+}
