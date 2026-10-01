@@ -42,7 +42,8 @@
     - Year
 
 .PARAMETER MaxConcurrentJobs
-    Determines how many jobs to run at the same time
+    Determines how many jobs to run at the same time. A value of 1 runs all
+    jobs sequentially on the main thread.
 
 .PARAMETER SendMail.To
     List of e-mail addresses where to send the e-mail too.
@@ -81,6 +82,54 @@ Param (
 )
 
 Begin {
+    function Invoke-WithOptionalParallelismHC {
+        <#
+        .SYNOPSIS
+            Run a scriptblock for each input object, sequentially or in
+            parallel.
+
+        .DESCRIPTION
+            With a ThrottleLimit of 1 or less the scriptblock runs in a plain
+            foreach loop on the main thread. Otherwise it runs with
+            ForEach-Object -Parallel.
+
+            The input object is passed as the first positional argument,
+            followed by the values in ArgumentList.
+
+            The scriptblock is rehydrated from its text inside each parallel
+            runspace, so '$using:' does not work inside it. Pass everything it
+            needs through the input object (DTO) or ArgumentList, and return
+            results instead of changing shared objects.
+        #>
+
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)]
+            [AllowEmptyCollection()]
+            [array]$InputObject,
+            [Parameter(Mandatory)]
+            [scriptblock]$ScriptBlock,
+            [Parameter(Mandatory)]
+            [int]$ThrottleLimit,
+            [object[]]$ArgumentList = @()
+        )
+
+        if ($ThrottleLimit -le 1) {
+            foreach ($item in $InputObject) {
+                & $ScriptBlock $item @ArgumentList
+            }
+        }
+        else {
+            $scriptBlockString = $ScriptBlock.ToString()
+
+            $InputObject | ForEach-Object -Parallel {
+                $rehydratedBlock = [scriptblock]::Create($using:scriptBlockString)
+                $splatArgs = $using:ArgumentList
+                & $rehydratedBlock $_ @splatArgs
+            } -ThrottleLimit $ThrottleLimit
+        }
+    }
+
     Try {
         Import-EventLogParamsHC -Source $ScriptName
         Write-EventLog @EventStartParams
@@ -353,121 +402,133 @@ Begin {
 
 Process {
     Try {
-        $scriptBlock = {
-            try {
-                $task = $_
+        #region Create DTOs
+        $taskDtos = for ($i = 0; $i -lt $tasksToExecute.Count; $i++) {
+            $task = $tasksToExecute[$i]
 
-                #region Declare variables for parallel execution
-                if (-not $MaxConcurrentJobs) {
-                    $pathItem = $using:pathItem
-                    $PSSessionConfiguration = $using:PSSessionConfiguration
-                    $EventVerboseParams = $using:EventVerboseParams
-                    $EventErrorParams = $using:EventErrorParams
-                    $VerbosePreference = $using:VerbosePreference
+            switch ($task.Type) {
+                'RemoveFile' {
+                    $filePath = $pathItem.RemoveFileScript
+                    $argumentList = @(
+                        $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
+                    )
+
+                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
+                    $task.ComputerName,
+                    $argumentList[0], $argumentList[1], $argumentList[2]
+
+                    break
                 }
-                #endregion
+                'RemoveFilesInFolder' {
+                    $filePath = $pathItem.RemoveFilesInFolderScript
+                    $argumentList = @(
+                        $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
+                    )
 
-                #region Create script arguments
-                switch ($task.Type) {
-                    'RemoveFile' {
-                        $invokeParams = @{
-                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
-                            FilePath     = $pathItem.RemoveFileScript
-                        }
+                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}'" -f
+                    $task.ComputerName,
+                    $argumentList[0], $argumentList[1], $argumentList[2],
+                    $argumentList[3]
 
-                        $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
-                        $task.ComputerName,
-                        $invokeParams.ArgumentList[0],
-                        $invokeParams.ArgumentList[1],
-                        $invokeParams.ArgumentList[2]
-
-                        break
-                    }
-                    'RemoveFilesInFolder' {
-                        $invokeParams = @{
-                            ArgumentList = $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
-                            FilePath     = $pathItem.RemoveFilesInFolderScript
-                        }
-
-                        $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}'" -f
-                        $task.ComputerName,
-                        $invokeParams.ArgumentList[0],
-                        $invokeParams.ArgumentList[1],
-                        $invokeParams.ArgumentList[2],
-                        $invokeParams.ArgumentList[3]
-
-                        break
-                    }
-                    'RemoveEmptyFolders' {
-                        $invokeParams = @{
-                            ArgumentList = , $task.Path
-                            FilePath     = $pathItem.RemoveEmptyFoldersScript
-                        }
-
-                        $M = "Start job '$_' on '{0}' with Path '{1}'" -f
-                        $task.ComputerName,
-                        $invokeParams.ArgumentList[0]
-
-                        break
-                    }
-                    Default {
-                        throw "Type '$_' not supported"
-                    }
+                    break
                 }
+                'RemoveEmptyFolders' {
+                    $filePath = $pathItem.RemoveEmptyFoldersScript
+                    $argumentList = @($task.Path)
 
-                Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
-                #endregion
+                    $M = "Start job '$_' on '{0}' with Path '{1}'" -f
+                    $task.ComputerName, $argumentList[0]
 
-                #region Start job
-                $computerName = $task.ComputerName
-
-                $task.Job.Results += if (
-                    $computerName -eq $ENV:COMPUTERNAME
-                ) {
-                    $params = $invokeParams.ArgumentList
-                    & $invokeParams.FilePath @params
+                    break
                 }
-                else {
-                    $invokeParams += @{
-                        ConfigurationName = $PSSessionConfiguration
-                        ComputerName      = $computerName
-                        ErrorAction       = 'Stop'
-                    }
-                    Invoke-Command @invokeParams
+                Default {
+                    throw "Type '$_' not supported"
                 }
-                #endregion
             }
-            catch {
-                $task.Job.Errors += $_
 
-                $M = "Error for $M : $_"
-                Write-Warning $M; Write-EventLog @EventErrorParams -Message $M
+            Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
 
-                $Error.RemoveAt(0)
-            }
-        }
-
-        #region Run code serial or parallel
-        $foreachParams = if ($MaxConcurrentJobs -eq 1) {
-            @{
-                Process = $scriptBlock
-            }
-        }
-        else {
-            @{
-                Parallel      = $scriptBlock
-                ThrottleLimit = $MaxConcurrentJobs
+            [PSCustomObject]@{
+                ID           = $i
+                Type         = $task.Type
+                ComputerName = $task.ComputerName
+                FilePath     = $filePath
+                ArgumentList = $argumentList
+                StartMessage = $M
             }
         }
         #endregion
 
-        $tasksToExecute.Where(
-            { $_.Type -ne 'RemoveEmptyFolders' }
-        ) | ForEach-Object @foreachParams
+        $taskScriptBlock = {
+            param (
+                [Parameter(Mandatory)]
+                [PSCustomObject]$Dto,
+                [Parameter(Mandatory)]
+                [String]$SessionConfiguration
+            )
 
-        $tasksToExecute.Where(
-            { $_.Type -eq 'RemoveEmptyFolders' }
-        ) | ForEach-Object @foreachParams
+            $result = [PSCustomObject]@{
+                ID      = $Dto.ID
+                Results = @()
+                Errors  = @()
+            }
+
+            try {
+                $result.Results = @(
+                    if ($Dto.ComputerName -eq $env:COMPUTERNAME) {
+                        $arguments = $Dto.ArgumentList
+                        & $Dto.FilePath @arguments
+                    }
+                    else {
+                        $invokeParams = @{
+                            FilePath          = $Dto.FilePath
+                            ArgumentList      = $Dto.ArgumentList
+                            ConfigurationName = $SessionConfiguration
+                            ComputerName      = $Dto.ComputerName
+                            ErrorAction       = 'Stop'
+                        }
+                        Invoke-Command @invokeParams
+                    }
+                )
+            }
+            catch {
+                $result.Errors = @($_)
+                $Error.RemoveAt(0)
+            }
+
+            $result
+        }
+
+        $params = @{
+            ScriptBlock   = $taskScriptBlock
+            ThrottleLimit = $MaxConcurrentJobs
+            ArgumentList  = $PSSessionConfiguration
+        }
+
+        # empty folders can only be removed after the files are removed
+        $jobResults = @(
+            Invoke-WithOptionalParallelismHC @params -InputObject @(
+                $taskDtos.Where({ $_.Type -ne 'RemoveEmptyFolders' })
+            )
+            Invoke-WithOptionalParallelismHC @params -InputObject @(
+                $taskDtos.Where({ $_.Type -eq 'RemoveEmptyFolders' })
+            )
+        )
+
+        #region Apply job results to tasks
+        foreach ($jobResult in $jobResults) {
+            $task = $tasksToExecute[$jobResult.ID]
+            $task.Job.Results += $jobResult.Results
+
+            foreach ($jobError in $jobResult.Errors) {
+                $task.Job.Errors += $jobError
+
+                $M = "Error for {0} : {1}" -f
+                @($taskDtos)[$jobResult.ID].StartMessage, $jobError
+                Write-Warning $M; Write-EventLog @EventErrorParams -Message $M
+            }
+        }
+        #endregion
     }
     Catch {
         Write-Warning $_
