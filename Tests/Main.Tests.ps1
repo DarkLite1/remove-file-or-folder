@@ -125,11 +125,7 @@ BeforeAll {
     )
     $testParams = @{
         ConfigurationJsonFile = $testOutParams.FilePath
-        Path                  = @{
-            RemoveFileScript          = (New-Item 'TestDrive:/b.ps1' -ItemType File).FullName
-            RemoveEmptyFoldersScript  = (New-Item 'TestDrive:/a.ps1' -ItemType File).FullName
-            RemoveFilesInFolderScript = (New-Item 'TestDrive:/c.ps1' -ItemType File).FullName
-        }
+        RemoveItemsScript     = (New-Item 'TestDrive:/removeItems.ps1' -ItemType File).FullName
     }
 
     function Copy-ObjectHC {
@@ -231,20 +227,17 @@ Describe 'an incorrect input file' {
         ($testWarnings -join "`n") | Should -BeLike '*nonExisting.json*'
         Should -Not -Invoke Invoke-Command -Scope It
     }
-    It 'Path.<_> not found' -ForEach @(
-        'RemoveEmptyFoldersScript', 'RemoveFileScript', 'RemoveFilesInFolderScript'
-    ) {
+    It 'RemoveItemsScript not found' {
         Test-NewJsonFileHC $testInputFile
 
         $testNewParams = $testParams.Clone()
-        $testNewParams.Path = $testParams.Path.Clone()
-        $testNewParams.Path.$_ = 'c:\NotExisting.ps1'
+        $testNewParams.RemoveItemsScript = 'c:\NotExisting.ps1'
 
         .$testScript @testNewParams
 
         $LASTEXITCODE | Should -Be 1
         ((Get-TestSystemErrorsHC).Message -join "`n") |
-        Should -BeLike "*Path.$_ 'c:\NotExisting.ps1' not found*"
+        Should -BeLike "*RemoveItemsScript 'c:\NotExisting.ps1' not found*"
         Should -Not -Invoke Invoke-Command -Scope It
     }
     It '<Description>' -ForEach @(
@@ -477,10 +470,11 @@ Describe 'execute script' {
             }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
-                ($FilePath -eq $testParams.Path.RemoveFileScript) -and
-                ($ArgumentList[0] -eq $testNewInputFile.Remove.File[0].Path) -and
-                ($ArgumentList[1] -eq $testNewInputFile.Remove.File[0].OlderThan.Unit) -and
-                ($ArgumentList[2] -eq $testNewInputFile.Remove.File[0].OlderThan.Quantity)
+                ($FilePath -eq $testParams.RemoveItemsScript) -and
+                ($ArgumentList[0] -eq 'File') -and
+                ($ArgumentList[1] -eq $testNewInputFile.Remove.File[0].Path) -and
+                ($ArgumentList[2] -eq $testNewInputFile.Remove.File[0].OlderThan.Unit) -and
+                ($ArgumentList[3] -eq $testNewInputFile.Remove.File[0].OlderThan.Quantity)
             }
         }
     }
@@ -501,11 +495,12 @@ Describe 'execute script' {
             }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
-                ($FilePath -eq $testParams.Path.RemoveFilesInFolderScript) -and
-                ($ArgumentList[0] -eq $testNewInputFile.Remove.FilesInFolder[0].Path) -and
-                ($ArgumentList[1] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Unit) -and
-                ($ArgumentList[2] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) -and
-                ($ArgumentList[3] -eq $testNewInputFile.Remove.FilesInFolder[0].Recurse)
+                ($FilePath -eq $testParams.RemoveItemsScript) -and
+                ($ArgumentList[0] -eq 'FilesInFolder') -and
+                ($ArgumentList[1] -eq $testNewInputFile.Remove.FilesInFolder[0].Path) -and
+                ($ArgumentList[2] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Unit) -and
+                ($ArgumentList[3] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) -and
+                ($ArgumentList[4] -eq $testNewInputFile.Remove.FilesInFolder[0].Recurse)
             }
         }
     }
@@ -526,8 +521,9 @@ Describe 'execute script' {
             }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
-                ($FilePath -eq $testParams.Path.RemoveEmptyFoldersScript) -and
-                ($ArgumentList[0] -eq $testNewInputFile.Remove.EmptyFolders[0].Path)
+                ($FilePath -eq $testParams.RemoveItemsScript) -and
+                ($ArgumentList[0] -eq 'EmptyFolders') -and
+                ($ArgumentList[1] -eq $testNewInputFile.Remove.EmptyFolders[0].Path)
             }
         }
         It 'and close the session' {
@@ -613,7 +609,7 @@ Describe 'MaxConcurrent' {
 
         $testJobScript = (New-Item 'TestDrive:/job.ps1' -ItemType File).FullName
         Set-Content -LiteralPath $testJobScript -Value @"
-param(`$Path, `$Unit, `$Quantity)
+param(`$Type, `$Path, `$Unit, `$Quantity)
 `$start = [DateTime]::UtcNow.Ticks
 Start-Sleep -Milliseconds 1500
 `$end = [DateTime]::UtcNow.Ticks
@@ -621,8 +617,7 @@ Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Va
 "@
 
         $testNewParams = $testParams.Clone()
-        $testNewParams.Path = $testParams.Path.Clone()
-        $testNewParams.Path.RemoveFileScript = $testJobScript
+        $testNewParams.RemoveItemsScript = $testJobScript
 
         function Get-MaxOverlapHC {
             $jobs = Get-ChildItem -LiteralPath $testJobLogFolder -File |
@@ -672,6 +667,75 @@ Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Va
         Get-MaxOverlapHC | Should -Be 3
     }
 }
+Describe 'with the real Remove items script on the local computer' {
+    BeforeAll {
+        Clear-TestLogFolderHC
+
+        $testRoot = (New-Item 'TestDrive:/e2e' -ItemType Directory).FullName
+        $testSingleFile = New-Item "$testRoot\single.txt" -ItemType File
+        $testFolderFile = New-Item "$testRoot\folder\sub\file.txt" -ItemType File -Force
+        $testNewFile = New-Item "$testRoot\folder\new.txt" -ItemType File
+        $testOldFile = New-Item "$testRoot\folder\old.txt" -ItemType File
+        $testOldFile.CreationTime = (Get-Date).AddDays(-10)
+
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Remove = [PSCustomObject]@{
+            File          = @(
+                [PSCustomObject]@{
+                    ComputerName = 'localhost'
+                    Path         = $testSingleFile.FullName
+                    OlderThan    = @{ Quantity = 0; Unit = 'Day' }
+                }
+            )
+            FilesInFolder = @(
+                [PSCustomObject]@{
+                    ComputerName = 'localhost'
+                    Path         = "$testRoot\folder"
+                    Recurse      = $true
+                    OlderThan    = @{ Quantity = 5; Unit = 'Day' }
+                }
+            )
+            EmptyFolders  = @(
+                [PSCustomObject]@{
+                    ComputerName = 'localhost'
+                    Path         = $testRoot
+                }
+            )
+        }
+        $testFolderFile.CreationTime = (Get-Date).AddDays(-10)
+
+        Test-NewJsonFileHC $testNewInputFile
+
+        $testNewParams = $testParams.Clone()
+        $testNewParams.Remove('RemoveItemsScript')
+
+        $global:LASTEXITCODE = 0
+
+        . $testScript @testNewParams
+    }
+    It 'removes the file' {
+        $testSingleFile.FullName | Should -Not -Exist
+    }
+    It 'removes the old files in the folder and its subfolders' {
+        $testOldFile.FullName | Should -Not -Exist
+        $testFolderFile.FullName | Should -Not -Exist
+    }
+    It 'keeps the new files' {
+        $testNewFile.FullName | Should -Exist
+    }
+    It 'removes the folders that became empty' {
+        "$testRoot\folder\sub" | Should -Not -Exist
+    }
+    It 'exports every removed item to Excel' {
+        $actual = Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName 'Overview'
+
+        $actual | Should -HaveCount 4
+        $actual.Action | Sort-Object -Unique | Should -Be 'Removed'
+    }
+    It 'exits without error' {
+        $LASTEXITCODE | Should -Be 0
+    }
+}
 Describe 'create an Excel file' {
     BeforeAll {
         Clear-TestLogFolderHC
@@ -679,20 +743,20 @@ Describe 'create an Excel file' {
         Mock Invoke-Command {
             $testData[0]
         } -ParameterFilter {
-            $FilePath -eq $testParams.Path.RemoveFileScript
+            $ArgumentList[0] -eq 'File'
         }
 
         Mock Invoke-Command {
             $testData[1]
             $testData[2]
         } -ParameterFilter {
-            $FilePath -eq $testParams.Path.RemoveFilesInFolderScript
+            $ArgumentList[0] -eq 'FilesInFolder'
         }
 
         Mock Invoke-Command {
             $testData[3]
         } -ParameterFilter {
-            $FilePath -eq $testParams.Path.RemoveEmptyFoldersScript
+            $ArgumentList[0] -eq 'EmptyFolders'
         }
 
         Test-NewJsonFileHC $testInputFile
@@ -778,7 +842,7 @@ Describe 'create an Excel file' {
             Mock Invoke-Command {
                 throw 'Oops'
             } -ParameterFilter {
-                $FilePath -eq $testParams.Path.RemoveFileScript
+                $ArgumentList[0] -eq 'File'
             }
 
             . $testScript @testParams

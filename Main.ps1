@@ -17,19 +17,15 @@
 .PARAMETER ConfigurationJsonFile
     The path to the .JSON file containing the configuration.
 
-.PARAMETER Path
-    The paths to the scripts that execute the removal actions.
+.PARAMETER RemoveItemsScript
+    The path to the script that executes the removal actions.
 #>
 
 [CmdLetBinding()]
 Param (
     [Parameter(Mandatory)]
     [String]$ConfigurationJsonFile,
-    [HashTable]$Path = @{
-        RemoveFileScript          = "$PSScriptRoot\Remove file.ps1"
-        RemoveEmptyFoldersScript  = "$PSScriptRoot\Remove empty folders.ps1"
-        RemoveFilesInFolderScript = "$PSScriptRoot\Remove files in folder.ps1"
-    }
+    [String]$RemoveItemsScript = "$PSScriptRoot\Remove items.ps1"
 )
 
 Begin {
@@ -280,25 +276,14 @@ Begin {
         #endregion
 
         #region Test path exists
-        $pathItem = @{}
-
-        $Path.GetEnumerator().ForEach(
-            {
-                try {
-                    $key = $_.Key
-                    $value = $_.Value
-
-                    $params = @{
-                        Path        = $value
-                        ErrorAction = 'Stop'
-                    }
-                    $pathItem[$key] = (Get-Item @params).FullName
-                }
-                catch {
-                    throw "Path.$key '$value' not found"
-                }
-            }
-        )
+        try {
+            $removeItemsScriptPath = (
+                Get-Item -LiteralPath $RemoveItemsScript -ErrorAction Stop
+            ).FullName
+        }
+        catch {
+            throw "RemoveItemsScript '$RemoveItemsScript' not found"
+        }
         #endregion
 
         #region Convert .json file
@@ -398,36 +383,36 @@ Process {
 
             switch ($task.Type) {
                 'RemoveFile' {
-                    $filePath = $pathItem.RemoveFileScript
                     $argumentList = @(
-                        $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity
+                        'File', $task.Path,
+                        $task.OlderThan.Unit, $task.OlderThan.Quantity
                     )
 
                     $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
                     $task.ComputerName,
-                    $argumentList[0], $argumentList[1], $argumentList[2]
+                    $argumentList[1], $argumentList[2], $argumentList[3]
 
                     break
                 }
                 'RemoveFilesInFolder' {
-                    $filePath = $pathItem.RemoveFilesInFolderScript
                     $argumentList = @(
-                        $task.Path, $task.OlderThan.Unit, $task.OlderThan.Quantity, $task.Recurse
+                        'FilesInFolder', $task.Path,
+                        $task.OlderThan.Unit, $task.OlderThan.Quantity,
+                        $task.Recurse
                     )
 
                     $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}'" -f
                     $task.ComputerName,
-                    $argumentList[0], $argumentList[1], $argumentList[2],
-                    $argumentList[3]
+                    $argumentList[1], $argumentList[2], $argumentList[3],
+                    $argumentList[4]
 
                     break
                 }
                 'RemoveEmptyFolders' {
-                    $filePath = $pathItem.RemoveEmptyFoldersScript
-                    $argumentList = @($task.Path)
+                    $argumentList = @('EmptyFolders', $task.Path)
 
                     $M = "Start job '$_' on '{0}' with Path '{1}'" -f
-                    $task.ComputerName, $argumentList[0]
+                    $task.ComputerName, $argumentList[1]
 
                     break
                 }
@@ -463,7 +448,7 @@ Process {
                 Type         = $task.Type
                 ComputerName = $task.ComputerName
                 Target       = $target
-                FilePath     = $filePath
+                FilePath     = $removeItemsScriptPath
                 ArgumentList = $argumentList
                 StartMessage = $M
             }
