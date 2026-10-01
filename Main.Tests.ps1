@@ -4,12 +4,15 @@
 
 BeforeAll {
     $testInputFile = @{
-        SendMail          = @{
+        SendMail      = @{
             To   = 'bob@contoso.com'
             When = 'Always'
         }
-        MaxConcurrentJobs = 1
-        Remove            = @{
+        MaxConcurrent = @{
+            JobsTotal       = 1
+            JobsPerComputer = 1
+        }
+        Remove        = @{
             File          = @(
                 @{
                     Name         = 'FTP log file'
@@ -101,6 +104,11 @@ BeforeAll {
     }
 
     Mock Invoke-Command
+    Mock New-PSSession {
+        New-MockObject -Type 'System.Management.Automation.Runspaces.PSSession'
+    }
+    Mock Remove-PSSession
+    Mock Start-Sleep
     Mock Send-MailHC
     Mock Write-EventLog
 }
@@ -164,7 +172,7 @@ Describe 'send an e-mail to the admin when' {
         }
         Context 'property' {
             It '<_> not found' -ForEach @(
-                'SendMail', 'MaxConcurrentJobs', 'Remove'
+                'SendMail', 'MaxConcurrent', 'Remove'
             ) {
                 $testNewInputFile = Copy-ObjectHC $testInputFile
                 $testNewInputFile.$_ = $null
@@ -180,6 +188,41 @@ Describe 'send an e-mail to the admin when' {
                 }
                 Should -Invoke Write-EventLog -Exactly 1 -ParameterFilter {
                     $EntryType -eq 'Error'
+                }
+            }
+            It 'MaxConcurrent.<_> not found' -ForEach @(
+                'JobsTotal', 'JobsPerComputer'
+            ) {
+                $testNewInputFile = Copy-ObjectHC $testInputFile
+                $testNewInputFile.MaxConcurrent.$_ = $null
+
+                $testNewInputFile | ConvertTo-Json -Depth 7 |
+                Out-File @testOutParams
+
+                .$testScript @testParams
+
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and
+                    ($Message -like "*$ImportFile*Property 'MaxConcurrent.$_' not found*")
+                }
+            }
+            It "MaxConcurrent.<Property> is '<Value>'" -ForEach @(
+                @{ Property = 'JobsTotal'; Value = 'a' }
+                @{ Property = 'JobsTotal'; Value = 0 }
+                @{ Property = 'JobsPerComputer'; Value = 'a' }
+                @{ Property = 'JobsPerComputer'; Value = 0 }
+            ) {
+                $testNewInputFile = Copy-ObjectHC $testInputFile
+                $testNewInputFile.MaxConcurrent.$Property = $Value
+
+                $testNewInputFile | ConvertTo-Json -Depth 7 |
+                Out-File @testOutParams
+
+                .$testScript @testParams
+
+                Should -Invoke Send-MailHC -Exactly 1 -ParameterFilter {
+                    (&$MailAdminParams) -and
+                    ($Message -like "*$ImportFile*Property 'MaxConcurrent.$Property' needs to be a number of 1 or higher, the value '$Value' is not supported*")
                 }
             }
             It 'SendMail.<_> not found' -ForEach @(
@@ -530,8 +573,12 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'with the correct arguments' {
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($ComputerName -eq $testNewInputFile.Remove.File[0].ComputerName) -and
+                ($ConfigurationName -eq 'PowerShell.7')
+            }
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                ($Session) -and
                 ($FilePath -eq $testParams.Path.RemoveFileScript) -and
                 ($ArgumentList[0] -eq $testNewInputFile.Remove.File[0].Path) -and
                 ($ArgumentList[1] -eq $testNewInputFile.Remove.File[0].OlderThan.Unit) -and
@@ -553,8 +600,11 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'with the correct arguments' {
+            Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
+                $ComputerName -eq $testNewInputFile.Remove.FilesInFolder[0].ComputerName
+            }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
-                ($ComputerName -eq $testNewInputFile.Remove.FilesInFolder[0].ComputerName) -and
+                ($Session) -and
                 ($FilePath -eq $testParams.Path.RemoveFilesInFolderScript) -and
                 ($ArgumentList[0] -eq $testNewInputFile.Remove.FilesInFolder[0].Path) -and
                 ($ArgumentList[1] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Unit) -and
@@ -577,12 +627,139 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'with the correct arguments' {
+            Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
+                $ComputerName -eq $testNewInputFile.Remove.EmptyFolders[0].ComputerName
+            }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
-                ($ComputerName -eq $testNewInputFile.Remove.EmptyFolders[0].ComputerName) -and
+                ($Session) -and
                 ($FilePath -eq $testParams.Path.RemoveEmptyFoldersScript) -and
                 ($ArgumentList[0] -eq $testNewInputFile.Remove.EmptyFolders[0].Path)
             }
         }
+        It 'and close the session' {
+            Should -Invoke Remove-PSSession -Times 1 -Exactly -Scope Context
+        }
+    }
+}
+Describe 'retry a remote job' {
+    BeforeAll {
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Remove = @{
+            File = $testNewInputFile.Remove.File
+        }
+
+        $testNewInputFile | ConvertTo-Json -Depth 7 |
+        Out-File @testOutParams
+
+        $testTransientError = 'Processing data from remote server PC1 failed: The I/O operation has been aborted because of either a thread exit or an application request.'
+    }
+    BeforeEach {
+        Remove-Item -Path "$($testParams.LogFolder)\*" -Recurse -Force -ErrorAction Ignore
+    }
+    It 'up to 3 times on a transient WinRM abort and report the last error' {
+        Mock Invoke-Command { throw $testTransientError }
+
+        .$testScript @testParams
+
+        Should -Invoke Invoke-Command -Times 3 -Exactly
+        Should -Invoke New-PSSession -Times 3 -Exactly
+        Should -Invoke Remove-PSSession -Times 3 -Exactly
+        Should -Invoke Start-Sleep -Times 2 -Exactly
+
+        $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
+        $actual = Import-Excel -Path $testExcelLogFile.FullName -WorksheetName 'Errors'
+        $actual.Error | Should -BeLike '*I/O operation has been aborted*'
+    }
+    It 'and keep the result when a retry succeeds' {
+        $script:testAttempt = 0
+        Mock Invoke-Command {
+            $script:testAttempt++
+            if ($script:testAttempt -eq 1) { throw $testTransientError }
+            $testData[0]
+        }
+
+        .$testScript @testParams
+
+        Should -Invoke Invoke-Command -Times 2 -Exactly
+
+        $testExcelLogFile = Get-ChildItem $testParams.LogFolder -File -Recurse -Filter '*.xlsx'
+        $actual = Import-Excel -Path $testExcelLogFile.FullName -WorksheetName 'Overview'
+        $actual.Path | Should -Be $testData[0].FullName
+        Get-ExcelSheetInfo -Path $testExcelLogFile.FullName |
+        Where-Object Name -EQ 'Errors' | Should -BeNullOrEmpty
+    }
+    It 'not on other errors' {
+        Mock Invoke-Command { throw 'Oops' }
+
+        .$testScript @testParams
+
+        Should -Invoke Invoke-Command -Times 1 -Exactly
+        Should -Invoke Remove-PSSession -Times 1 -Exactly
+        Should -Not -Invoke Start-Sleep
+    }
+}
+Describe 'MaxConcurrent' {
+    BeforeAll {
+        $testJobLogFolder = (New-Item 'TestDrive:/jobLog' -ItemType Directory).FullName
+
+        $testJobScript = (New-Item 'TestDrive:/job.ps1' -ItemType File).FullName
+        Set-Content -LiteralPath $testJobScript -Value @"
+param(`$Path, `$Unit, `$Quantity)
+`$start = [DateTime]::UtcNow.Ticks
+Start-Sleep -Milliseconds 1500
+`$end = [DateTime]::UtcNow.Ticks
+Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Value "`$start;`$end"
+"@
+
+        $testNewParams = Copy-ObjectHC $testParams
+        $testNewParams.Path.RemoveFileScript = $testJobScript
+
+        function Get-MaxOverlapHC {
+            $jobs = Get-ChildItem -LiteralPath $testJobLogFolder -File |
+            ForEach-Object {
+                $start, $end = (Get-Content -LiteralPath $_.FullName) -split ';'
+                [PSCustomObject]@{ Start = [long]$start; End = [long]$end }
+            }
+
+            ($jobs | ForEach-Object {
+                $job = $_
+                @($jobs | Where-Object {
+                        ($_.Start -le $job.Start) -and ($_.End -gt $job.Start)
+                    }).Count
+            } | Measure-Object -Maximum).Maximum
+        }
+
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Remove = @{
+            File = @(1..4).ForEach({
+                    @{
+                        ComputerName = 'localhost'
+                        Path         = "c:\file$_.txt"
+                        OlderThan    = @{ Quantity = 1; Unit = 'Day' }
+                    }
+                })
+        }
+    }
+    BeforeEach {
+        Remove-Item -Path "$testJobLogFolder\*" -Force
+    }
+    It 'JobsPerComputer limits the jobs running at once on one computer' {
+        $testNewInputFile.MaxConcurrent = @{ JobsTotal = 4; JobsPerComputer = 2 }
+        $testNewInputFile | ConvertTo-Json -Depth 7 | Out-File @testOutParams
+
+        .$testScript @testNewParams
+
+        @(Get-ChildItem -LiteralPath $testJobLogFolder -File) | Should -HaveCount 4
+        Get-MaxOverlapHC | Should -Be 2
+    }
+    It 'JobsTotal limits the jobs running at once over all computers' {
+        $testNewInputFile.MaxConcurrent = @{ JobsTotal = 3; JobsPerComputer = 4 }
+        $testNewInputFile | ConvertTo-Json -Depth 7 | Out-File @testOutParams
+
+        .$testScript @testNewParams
+
+        @(Get-ChildItem -LiteralPath $testJobLogFolder -File) | Should -HaveCount 4
+        Get-MaxOverlapHC | Should -Be 3
     }
 }
 Describe 'create an Excel file' {

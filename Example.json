@@ -3,7 +3,10 @@
     "To": ["bob@contoso.com"],
     "When": "Always"
   },
-  "MaxConcurrentJobs": 4,
+  "MaxConcurrent": {
+    "JobsTotal": 4,
+    "JobsPerComputer": 2
+  },
   "Remove": {
     "File": [
       {

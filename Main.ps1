@@ -41,9 +41,14 @@
     - Month
     - Year
 
-.PARAMETER MaxConcurrentJobs
-    Determines how many jobs to run at the same time. A value of 1 runs all
-    jobs sequentially on the main thread.
+.PARAMETER MaxConcurrent.JobsTotal
+    The most jobs that may run at the same time across all computers. A value
+    of 1 runs all jobs sequentially on the main thread.
+
+.PARAMETER MaxConcurrent.JobsPerComputer
+    The most jobs that may run at the same time against one computer. For a
+    UNC path executed on the local computer, the server in the UNC path counts
+    as the computer.
 
 .PARAMETER SendMail.To
     List of e-mail addresses where to send the e-mail too.
@@ -182,7 +187,7 @@ Begin {
         #region Test .json file properties
         try {
             @(
-                'SendMail', 'MaxConcurrentJobs', 'Remove'
+                'SendMail', 'MaxConcurrent', 'Remove'
             ).where(
                 { -not $file.$_ }
             ).foreach(
@@ -201,13 +206,22 @@ Begin {
                 throw "Value '$($file.SendMail.When)' for 'SendMail.When' is not supported. Supported values are 'Never, OnlyOnError, OnlyOnErrorOrAction or Always'"
             }
 
-            $MaxConcurrentJobs = $file.MaxConcurrentJobs
-            try {
-                $null = $MaxConcurrentJobs.ToInt16($null)
+            foreach ($property in 'JobsTotal', 'JobsPerComputer') {
+                $value = $file.MaxConcurrent.$property
+
+                if ($null -eq $value) {
+                    throw "Property 'MaxConcurrent.$property' not found"
+                }
+
+                if (
+                    ("$value" -notMatch '^\d+$') -or ([int]"$value" -lt 1)
+                ) {
+                    throw "Property 'MaxConcurrent.$property' needs to be a number of 1 or higher, the value '$value' is not supported."
+                }
             }
-            catch {
-                throw "Property 'MaxConcurrentJobs' needs to be a number, the value '$MaxConcurrentJobs' is not supported."
-            }
+
+            $maxConcurrentJobsTotal = [int]$file.MaxConcurrent.JobsTotal
+            $maxConcurrentJobsPerComputer = [int]$file.MaxConcurrent.JobsPerComputer
 
             foreach ($fileToRemove in $file.Remove.File) {
                 @(
@@ -448,10 +462,22 @@ Process {
 
             Write-Verbose $M; Write-EventLog @EventVerboseParams -Message $M
 
+            # local jobs on a UNC path load the file server, not this computer
+            $target = if (
+                ($task.ComputerName -eq $env:COMPUTERNAME) -and
+                ($task.Path -match '^\\\\([^\\]+)')
+            ) {
+                $Matches[1]
+            }
+            else {
+                $task.ComputerName
+            }
+
             [PSCustomObject]@{
                 ID           = $i
                 Type         = $task.Type
                 ComputerName = $task.ComputerName
+                Target       = $target
                 FilePath     = $filePath
                 ArgumentList = $argumentList
                 StartMessage = $M
@@ -459,61 +485,133 @@ Process {
         }
         #endregion
 
-        $taskScriptBlock = {
+        $workerScriptBlock = {
             param (
                 [Parameter(Mandatory)]
-                [PSCustomObject]$Dto,
+                [PSCustomObject]$Worker,
                 [Parameter(Mandatory)]
-                [String]$SessionConfiguration
+                [String]$SessionConfiguration,
+                [Parameter(Mandatory)]
+                [Int]$MaxAttempts,
+                [Parameter(Mandatory)]
+                [Int]$RetryDelaySeconds
             )
 
-            $result = [PSCustomObject]@{
-                ID      = $Dto.ID
-                Results = @()
-                Errors  = @()
-            }
+            $sessionOption = New-PSSessionOption -MaximumReceivedObjectSize ([Int32]::MaxValue)
 
-            try {
-                $result.Results = @(
-                    if ($Dto.ComputerName -eq $env:COMPUTERNAME) {
-                        $arguments = $Dto.ArgumentList
-                        & $Dto.FilePath @arguments
-                    }
-                    else {
-                        $invokeParams = @{
-                            FilePath          = $Dto.FilePath
-                            ArgumentList      = $Dto.ArgumentList
-                            ConfigurationName = $SessionConfiguration
-                            ComputerName      = $Dto.ComputerName
-                            ErrorAction       = 'Stop'
+            # TryDequeue is atomic, so workers of the same computer share one queue
+            $dto = $null
+
+            while ($Worker.JobQueue.TryDequeue([ref]$dto)) {
+                $result = [PSCustomObject]@{
+                    ID      = $dto.ID
+                    Results = @()
+                    Errors  = @()
+                }
+
+                $attempt = 0
+
+                while ($true) {
+                    $attempt++
+                    $session = $null
+                    $needsRetry = $false
+
+                    try {
+                        if ($dto.ComputerName -eq $env:COMPUTERNAME) {
+                            $arguments = $dto.ArgumentList
+                            $result.Results = @(& $dto.FilePath @arguments)
                         }
-                        Invoke-Command @invokeParams
-                    }
-                )
-            }
-            catch {
-                $result.Errors = @($_)
-                $Error.RemoveAt(0)
-            }
+                        else {
+                            $sessionParams = @{
+                                ComputerName      = $dto.ComputerName
+                                ConfigurationName = $SessionConfiguration
+                                SessionOption     = $sessionOption
+                                ErrorAction       = 'Stop'
+                            }
+                            $session = New-PSSession @sessionParams
 
-            $result
+                            $invokeParams = @{
+                                Session      = $session
+                                FilePath     = $dto.FilePath
+                                ArgumentList = $dto.ArgumentList
+                                ErrorAction  = 'Stop'
+                            }
+                            $result.Results = @(Invoke-Command @invokeParams)
+                        }
+                    }
+                    catch {
+                        # Win32 995: client-side WinRM abort, not a removal failure
+                        $isTransientAbort = (
+                            ("$($_.Exception.Message)" -match 'I/O operation has been aborted') -or
+                            (($_.Exception.HResult -band 0xFFFF) -eq 995)
+                        )
+
+                        if ($isTransientAbort -and ($attempt -lt $MaxAttempts)) {
+                            $needsRetry = $true
+                        }
+                        else {
+                            $result.Errors = @($_)
+                        }
+
+                        $Error.RemoveAt(0)
+                    }
+                    finally {
+                        # closing the session stops an orphaned remote command before a retry
+                        if ($session) {
+                            Remove-PSSession -Session $session -ErrorAction SilentlyContinue
+                        }
+                    }
+
+                    if ($needsRetry) {
+                        Start-Sleep -Seconds $RetryDelaySeconds
+                        continue
+                    }
+
+                    break
+                }
+
+                $result
+            }
         }
 
         $params = @{
-            ScriptBlock   = $taskScriptBlock
-            ThrottleLimit = $MaxConcurrentJobs
-            ArgumentList  = $PSSessionConfiguration
+            ScriptBlock   = $workerScriptBlock
+            ThrottleLimit = $maxConcurrentJobsTotal
+            ArgumentList  = $PSSessionConfiguration, 3, 5
         }
 
         # empty folders can only be removed after the files are removed
-        $jobResults = @(
-            Invoke-WithOptionalParallelismHC @params -InputObject @(
-                $taskDtos.Where({ $_.Type -ne 'RemoveEmptyFolders' })
-            )
-            Invoke-WithOptionalParallelismHC @params -InputObject @(
-                $taskDtos.Where({ $_.Type -eq 'RemoveEmptyFolders' })
-            )
-        )
+        $jobResults = foreach ($emptyFoldersPhase in $false, $true) {
+            $workers = $taskDtos.Where(
+                { ($_.Type -eq 'RemoveEmptyFolders') -eq $emptyFoldersPhase }
+            ) | Group-Object -Property 'Target' | ForEach-Object {
+                $group = $_
+                $jobQueue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
+
+                foreach ($dto in $group.Group) {
+                    $jobQueue.Enqueue($dto)
+                }
+
+                $workerCount = [math]::Min(
+                    $maxConcurrentJobsPerComputer, $jobQueue.Count
+                )
+
+                for ($w = 0; $w -lt $workerCount; $w++) {
+                    [PSCustomObject]@{
+                        Target     = $group.Name
+                        JobQueue   = $jobQueue
+                        QueueDepth = $jobQueue.Count
+                    }
+                }
+            }
+
+            if ($workers) {
+                # busiest computers first so they don't become the critical path
+                $workers = @($workers | Sort-Object -Property 'QueueDepth' -Descending)
+
+                Invoke-WithOptionalParallelismHC @params -InputObject $workers
+            }
+        }
 
         #region Apply job results to tasks
         foreach ($jobResult in $jobResults) {
