@@ -26,13 +26,9 @@ while (
                 Error        = $null
             }
 
-            $params = @{
-                LiteralPath = $emptyFolder.FullName
-                Recurse     = $true
-                Force       = $true
-                ErrorAction = 'Stop'
-            }
-            Remove-Item @params
+            # non-recursive delete fails when the folder is no longer empty
+            $emptyFolder.Attributes = $emptyFolder.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+            $emptyFolder.Delete()
             $result.Action = 'Removed'
         }
         catch {
