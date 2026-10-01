@@ -120,7 +120,9 @@ BeforeAll {
         }
     )
 
-    $testScript = $PSCommandPath.Replace('.Tests.ps1', '.ps1')
+    $testScript = Join-Path (Split-Path $PSScriptRoot) (
+        (Split-Path $PSCommandPath -Leaf).Replace('.Tests.ps1', '.ps1')
+    )
     $testParams = @{
         ConfigurationJsonFile = $testOutParams.FilePath
         Path                  = @{
