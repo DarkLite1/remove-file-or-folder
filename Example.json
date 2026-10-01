@@ -1,8 +1,4 @@
 {
-  "SendMail": {
-    "To": ["bob@contoso.com"],
-    "When": "Always"
-  },
   "MaxConcurrent": {
     "JobsTotal": 4,
     "JobsPerComputer": 2
@@ -39,13 +35,114 @@
       }
     ]
   },
+  "PSSessionConfiguration": "PowerShell.7",
+  "Settings": {
+    "ScriptName": "Remove file or folder",
+    "SendMail": {
+      "When": "Always",
+      "From": "no-reply-bnl-automation@example.com",
+      "FromDisplayName": "Remove file or folder",
+      "To": ["bob@example.com"],
+      "Bcc": [],
+      "Subject": "",
+      "Body": "Remove files or folders.",
+      "Smtp": {
+        "ServerName": "SERVER1.EXAMPLE.COM",
+        "Port": 25,
+        "ConnectionType": "None",
+        "UserName": "",
+        "Password": ""
+      },
+      "AssemblyPath": {
+        "MailKit": "C:\\Program Files\\PackageManagement\\NuGet\\Packages\\MailKit.4.13.0\\lib\\net8.0\\MailKit.dll",
+        "MimeKit": "C:\\Program Files\\PackageManagement\\NuGet\\Packages\\MimeKit.4.13.0\\lib\\net8.0\\MimeKit.dll"
+      }
+    },
+    "SaveLogFiles": {
+      "Where": {
+        "Folder": "C:\\Log\\File or folder\\Remove file or folder"
+      },
+      "DeleteLogsAfterDays": 30
+    },
+    "SaveInEventLog": {
+      "Save": true,
+      "LogName": "Scripts"
+    }
+  },
   "?": {
-    "OlderThan.Unit": "Day | Month | Year",
-    "SendMail.When": "Never | OnlyOnError | OnlyOnErrorOrAction | Always",
+    "MaxConcurrent": {
+      "JobsTotal": "(Mandatory) Maximum quantity of jobs to run at the same time across ALL computers. This is the overall concurrency budget and is applied directly as the throttle limit. Value 1 runs all jobs one after the other.",
+      "JobsPerComputer": "(Mandatory) Maximum quantity of jobs to run at the same time on a SINGLE computer. A remote job holds exactly one PSSession for its lifetime, so this is also the maximum quantity of WinRM shells opened on one machine at once. Keep it below the 'MaxShellsPerUser' setting of the remote computers (check with 'winrm get winrm/config/winrs'). For a UNC path without 'ComputerName' the server in the UNC path counts as the computer."
+    },
     "Remove": {
-      "File": "Remove the specified file",
-      "FilesInFolder": "Remove files in a folder",
-      "EmptyFolders": "Remove all empty folders in a folder"
+      "File": [
+        {
+          "?": "Remove the specified file.",
+          "Name": "(Optional) The name to display in the email instead of the full path.",
+          "ComputerName": "(Mandatory when 'Path' is a local path) The computer where the removal is executed. Defaults to the local computer.",
+          "Path": "(Mandatory) A local path when 'ComputerName' is used, or a UNC path.",
+          "OlderThan": {
+            "Quantity": "(Mandatory) Number of units. Value 0 removes the file regardless of its creation date.",
+            "Unit": "(Mandatory) Possible values: 'Day', 'Month' or 'Year'."
+          }
+        }
+      ],
+      "FilesInFolder": [
+        {
+          "?": "Remove the files in a folder.",
+          "Name": "(Optional) The name to display in the email instead of the full path.",
+          "ComputerName": "(Mandatory when 'Path' is a local path) The computer where the removal is executed. Defaults to the local computer.",
+          "Path": "(Mandatory) A local path when 'ComputerName' is used, or a UNC path.",
+          "Recurse": "(Mandatory) Also remove the files in the subfolders. Possible values: true or false.",
+          "OlderThan": {
+            "Quantity": "(Mandatory) Number of units. Value 0 removes all files regardless of their creation date.",
+            "Unit": "(Mandatory) Possible values: 'Day', 'Month' or 'Year'."
+          }
+        }
+      ],
+      "EmptyFolders": [
+        {
+          "?": "Remove all empty folders in a folder. Executed after all other removal actions.",
+          "Name": "(Optional) The name to display in the email instead of the full path.",
+          "ComputerName": "(Mandatory when 'Path' is a local path) The computer where the removal is executed. Defaults to the local computer.",
+          "Path": "(Mandatory) A local path when 'ComputerName' is used, or a UNC path."
+        }
+      ]
+    },
+    "PSSessionConfiguration": "(Optional) The PowerShell version of the remote endpoint. This value corresponds to the output of the Get-PSSessionConfiguration cmdlet. The minimum supported version is 'PowerShell.7'. Defaults to 'PowerShell.7' if not specified.",
+    "Settings": {
+      "ScriptName": "(Mandatory) Name of the script, used in the log files and in the event logs.",
+      "SendMail": {
+        "When": "(Mandatory) Specifies when to send an email notification. Possible values: 'OnError' - Send email only when an error occurs; 'OnErrorOrAction' - Send email when items were removed or when errors occurred; 'Always' - Send email when the script is finished, regardless of success or failure; 'Never' - Do not send email.",
+        "From": "(Mandatory) The sender's email address. Supports environment variables (e.g., 'ENV:MAIL_FROM_ADDRESS').",
+        "FromDisplayName": "(Optional) The display name to show for the sender. Email clients may display this differently. It is most likely to be shown if the sender's email address is not recognized (e.g., not in the address book). Supports environment variables (e.g., 'ENV:MAIL_FROM_DISPLAY_NAME').",
+        "To": "(Mandatory 'To' or 'Bcc') An array of recipient email addresses. The script will send an email to all addresses in the array.",
+        "Bcc": "(Mandatory 'To' or 'Bcc') An array of BCC email addresses.",
+        "Subject": "(Optional) Text added to the subject line of the email. Default value: 'N removed, N errors'",
+        "Body": "(Optional) The HTML text shown at the top of the email. Default value: A summary table with action and error count.",
+        "Smtp": {
+          "ServerName": "(Mandatory) The hostname or IP address of the SMTP server. Supports environment variables (e.g., 'ENV:SMTP_SERVER').",
+          "Port": "(Mandatory) The port number of the SMTP server. Possible values: 25, 465, 587, 2525. Supports environment variables (e.g., 'ENV:SMTP_PORT').",
+          "ConnectionType": "(Optional) The connection type for the SMTP server. Possible values: 'None' - No encryption; 'Auto' - Attempt TLS, fall back to unencrypted; 'SslOnConnect' - Use SSL from the beginning; 'StartTls' - Start with unencrypted, then upgrade to TLS; 'StartTlsWhenAvailable' - Start with unencrypted, upgrade to TLS if supported. Default value: 'None'. Supports environment variables (e.g., 'ENV:SMTP_CONNECTION_TYPE').",
+          "UserName": "(Optional) The username for authenticating with the SMTP server. If undefined or NULL, no authentication is attempted. Supports environment variables (e.g., 'ENV:SMTP_USERNAME').",
+          "Password": "(Optional) The password for authenticating with the SMTP server. If undefined or NULL, no authentication is attempted. Supports environment variables (e.g., 'ENV:SMTP_PASSWORD')."
+        },
+        "AssemblyPath": {
+          "?": "To use email functionality, install the following packages: 'Install-Package -Name 'MailKit' -Source 'https://www.nuget.org/api/v2' -Scope 'AllUsers' -SkipDependencies' and 'Install-Package -Name 'MimeKit' -Source 'https://www.nuget.org/api/v2' -Scope 'AllUsers' -SkipDependencies'",
+          "MailKit": "(Mandatory) Path to the MailKit.dll assembly. Supports environment variables (e.g., 'ENV:MAILKIT_ASSEMBLY').",
+          "MimeKit": "(Mandatory) Path to the MimeKit.dll assembly. Supports environment variables (e.g., 'ENV:MIMEKIT_ASSEMBLY')."
+        }
+      },
+      "SaveLogFiles": {
+        "Where": {
+          "Folder": "(Mandatory) The path to the folder where log files will be created. Value '..\\\\Logs': Path relative to the script. Value 'C:\\\\MyApp\\\\Logs': An absolute path. If not specified or NULL, no log files will be created. Supports environment variables (e.g., 'ENV:LOG_FOLDER')."
+        },
+        "DeleteLogsAfterDays": "(Optional) The number of days to keep log files. Log files older than this value (based on their last write time) will be removed from the log folder specified in 'SaveLogFiles.Where.Folder'. If not specified or 0, logs will be kept indefinitely. CAUTION: Ensure the 'SaveLogFiles.Where.Folder' is specifically designated for log files to avoid unintended deletion of other files."
+      },
+      "SaveInEventLog": {
+        "Save": "(Mandatory) Whether to log messages to the Windows event log. Possible values: true or false.",
+        "LogName": "(Mandatory) The name of the event log to write to (e.g., 'Application', 'System', or a custom log name like 'Scripts'). Supports environment variables (e.g., 'ENV:EVENT_LOG_NAME')."
+      }
     }
   }
 }
