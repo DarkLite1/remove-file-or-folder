@@ -90,3 +90,26 @@ Describe 'a file is' {
         }
     }
 }
+Describe 'a file that cannot be removed' {
+    BeforeAll {
+        $testNewParams = Copy-ObjectHC $testParams
+        $testNewParams.OlderThanQuantity = 0
+
+        $testFile = New-Item -Path "$($testNewParams.Path)\locked.txt" -ItemType File -Force
+        $testLock = [System.IO.File]::Open(
+            $testFile.FullName, 'Open', 'Read', 'None'
+        )
+
+        try {
+            $actual = . $testScript @testNewParams -WarningVariable testWarnings -WarningAction SilentlyContinue
+        }
+        finally {
+            $testLock.Dispose()
+        }
+    }
+    It 'is reported with the file path, not the folder path' {
+        ($actual | Where-Object FullName -EQ $testFile.FullName).Error |
+        Should -Not -BeNullOrEmpty
+        $testWarnings | Should -BeLike "*Failed to remove file '$($testFile.FullName)'*"
+    }
+}

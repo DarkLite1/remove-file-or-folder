@@ -85,7 +85,7 @@ $getParams = @{
 
 Get-ChildItem @getParams | Select-FileHC | ForEach-Object {
     try {
-        Write-Verbose "Remove file '$Path'"
+        Write-Verbose "Remove file '$($_.FullName)'"
 
         $result = [PSCustomObject]@{
             DateTime     = Get-Date
@@ -107,7 +107,7 @@ Get-ChildItem @getParams | Select-FileHC | ForEach-Object {
         $result.Action = 'Removed'
     }
     catch {
-        Write-Warning "Failed to remove file '$Path': $_"
+        Write-Warning "Failed to remove file '$($result.FullName)': $_"
 
         $result.Error = $_
         $Error.RemoveAt(0)
