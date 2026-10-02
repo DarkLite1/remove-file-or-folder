@@ -67,8 +67,9 @@ function Get-NormalizedPathHC {
 $excludedPaths = @(
     $ExcludeFolder | Where-Object { $_ } | ForEach-Object { (Get-NormalizedPathHC $_).TrimEnd('\') }
 )
-$excludedFiles = @(
-    $ExcludeFile | Where-Object { $_ } | ForEach-Object { Get-NormalizedPathHC $_ }
+$excludedFiles = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@($ExcludeFile | Where-Object { $_ } | ForEach-Object { Get-NormalizedPathHC $_ }),
+    [StringComparer]::OrdinalIgnoreCase
 )
 
 function Test-IsExcludedHC {
@@ -124,13 +125,18 @@ if ($Type -eq 'EmptyFolders') {
     function Test-IsEmptyFolderHC {
         param ([System.IO.DirectoryInfo]$Folder)
 
+        $iterator = $null
         try {
-            $Folder.GetFileSystemInfos().Count -eq 0
+            $iterator = $Folder.EnumerateFileSystemInfos().GetEnumerator()
+            -not $iterator.MoveNext()
         }
         catch {
             $unreadableFolders[$Folder.FullName] = $_.Exception.InnerException.Message
             $Error.RemoveAt(0)
             $false
+        }
+        finally {
+            if ($null -ne $iterator) { $iterator.Dispose() }
         }
     }
 
@@ -157,7 +163,7 @@ if ($Type -eq 'EmptyFolders') {
             Write-Verbose "Remove empty folder '$emptyFolder'"
 
             $result = [PSCustomObject]@{
-                DateTime     = Get-Date
+                DateTime     = [datetime]::Now
                 ComputerName = $env:COMPUTERNAME
                 Type         = 'EmptyFolder'
                 FullName     = $emptyFolder.FullName
@@ -167,7 +173,9 @@ if ($Type -eq 'EmptyFolders') {
             }
 
             # non-recursive delete fails when the folder is no longer empty
-            $emptyFolder.Attributes = $emptyFolder.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+            if ($emptyFolder.Attributes -band [System.IO.FileAttributes]::ReadOnly) {
+                $emptyFolder.Attributes = $emptyFolder.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+            }
             $emptyFolder.Delete()
             $result.Action = 'Removed'
         }
@@ -237,68 +245,54 @@ if (-not (Test-Path -LiteralPath $Path -PathType $pathType)) {
 }
 #endregion
 
-#region Get files
-$getErrors = [System.Collections.Generic.List[object]]::new()
-
-$files = if ($Type -eq 'File') {
-    Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue -ErrorVariable getErrors
-}
-elseif ($excludedPaths) {
-    Get-IncludedChildItemHC -Root $Path -Recursive $Recurse -ReadErrors $getErrors
-}
-else {
-    $getParams = @{
-        LiteralPath   = $Path
-        Recurse       = $Recurse
-        File          = $true
-        Force         = $true
-        ErrorAction   = 'SilentlyContinue'
-        ErrorVariable = 'getErrors'
-    }
-    Get-ChildItem @getParams
-}
-
-if ($excludedPaths -and ($Type -eq 'File')) {
-    $files = $files.Where({ -not (Test-IsExcludedHC $_.FullName) })
-    $getErrors = $getErrors.Where({ -not (Test-IsExcludedHC "$($_.TargetObject)") })
-}
-
-if ($excludedFiles) {
-    $files = $files.Where({
-            $fullName = $_.FullName
-            -not $excludedFiles.Where({
-                    $_.Equals($fullName, [StringComparison]::OrdinalIgnoreCase)
-                })
-        })
-}
-#endregion
-
 #region Select files older than
 Write-Verbose "Select files with a $OlderThanBasedOn older than '$OlderThanQuantity $OlderThanUnit'"
 
 if ($OlderThanQuantity -ne 0) {
     $today = Get-Date
 
-    # compares calendar periods: 'older than 1 month' is any earlier month
-    $dateFormat, $cutoffDate = switch ($OlderThanUnit) {
-        'Day' { 'yyyyMMdd', $today.AddDays(-$OlderThanQuantity) }
-        'Month' { 'yyyyMM', $today.AddMonths(-$OlderThanQuantity) }
-        'Year' { 'yyyy', $today.AddYears(-$OlderThanQuantity) }
+    try {
+        $cutoffExclusive = switch ($OlderThanUnit) {
+            'Day' { $today.AddDays(-$OlderThanQuantity).Date.AddDays(1) }
+            'Month' {
+                $cutoffDate = $today.AddMonths(-$OlderThanQuantity)
+                [datetime]::new($cutoffDate.Year, $cutoffDate.Month, 1).AddMonths(1)
+            }
+            'Year' {
+                $cutoffDate = $today.AddYears(-$OlderThanQuantity)
+                [datetime]::new($cutoffDate.Year, 1, 1).AddYears(1)
+            }
+        }
     }
-    $cutoff = $cutoffDate.ToString($dateFormat)
-
-    $files = $files.Where(
-        { $_.$OlderThanBasedOn.ToString($dateFormat) -le $cutoff }
-    )
+    catch { throw "Invalid retention period '$OlderThanQuantity $OlderThanUnit': $_" }
 }
 #endregion
 
-foreach ($fileToRemove in $files) {
+$getErrors = [System.Collections.Generic.List[object]]::new()
+
+& {
+    $fileReadErrors = @()
+    if ($Type -eq 'File') {
+        Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue -ErrorVariable fileReadErrors
+    }
+    elseif ($excludedPaths) {
+        Get-IncludedChildItemHC -Root $Path -Recursive $Recurse -ReadErrors $getErrors
+    }
+    else {
+        Get-ChildItem -LiteralPath $Path -File -Recurse:$Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable fileReadErrors
+    }
+    foreach ($readError in $fileReadErrors) { $getErrors.Add($readError) }
+} | ForEach-Object {
+    $fileToRemove = $_
+    if ($excludedFiles.Contains($fileToRemove.FullName)) { return }
+    if (($Type -eq 'File') -and $excludedPaths -and (Test-IsExcludedHC $fileToRemove.FullName)) { return }
+    if (($OlderThanQuantity -ne 0) -and ($fileToRemove.$OlderThanBasedOn -ge $cutoffExclusive)) { return }
+
     try {
         Write-Verbose "Remove file '$($fileToRemove.FullName)'"
 
         $result = [PSCustomObject]@{
-            DateTime      = Get-Date
+            DateTime      = [datetime]::Now
             ComputerName  = $env:COMPUTERNAME
             Type          = 'File'
             FullName      = $fileToRemove.FullName
@@ -308,12 +302,20 @@ foreach ($fileToRemove in $files) {
             Error         = $null
         }
 
-        $params = @{
-            LiteralPath = $fileToRemove.FullName
-            Force       = $true
-            ErrorAction = 'Stop'
+        $fileToRemove.Refresh()
+        if (-not $fileToRemove.Exists) {
+            throw [System.IO.FileNotFoundException]::new('File no longer exists', $fileToRemove.FullName)
         }
-        Remove-Item @params
+        if (($OlderThanQuantity -ne 0) -and ($fileToRemove.$OlderThanBasedOn -ge $cutoffExclusive)) {
+            $result = $null
+            return
+        }
+        $result.CreationTime = $fileToRemove.CreationTime
+        $result.LastWriteTime = $fileToRemove.LastWriteTime
+        if ($fileToRemove.Attributes -band [System.IO.FileAttributes]::ReadOnly) {
+            $fileToRemove.Attributes = $fileToRemove.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+        }
+        $fileToRemove.Delete()
 
         $result.Action = 'Removed'
     }
@@ -324,11 +326,12 @@ foreach ($fileToRemove in $files) {
         $Error.RemoveAt(0)
     }
     finally {
-        $result
+        if ($null -ne $result) { $result }
     }
 }
 
 foreach ($getError in $getErrors) {
+    if ($excludedPaths -and (Test-IsExcludedHC "$($getError.TargetObject)")) { continue }
     Write-Warning "Failed to read '$($getError.TargetObject)': $getError"
 
     [PSCustomObject]@{

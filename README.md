@@ -162,3 +162,25 @@ The Pester tests are in the `Tests` folder:
 ```powershell
 Invoke-Pester -Path '.\Tests' -Output Detailed
 ```
+
+## Performance and safety
+
+- Empty folders are enumerated once and processed deepest first. The root is preserved, and nonrecursive deletion refuses folders that gain content during cleanup.
+- Excluded folder trees are skipped before descent. Paths are normalized before comparison, and file exclusions use case-insensitive exact matching.
+- File candidates are streamed instead of collecting the entire tree. Eligible files have their metadata refreshed before deletion, including another age check. This narrows, but cannot eliminate, races with concurrent writers.
+- Hidden and read-only items are included. Directory junctions and symbolic links encountered during traversal are not followed into other trees.
+- The worker still holds directory candidates for bottom-up sorting. The main script retains removal/error results for reporting, so total job memory is not constant.
+
+Run the repeatable local benchmark from the repository root:
+
+```powershell
+& '.\Tools\Measure-RemovalPerformance.ps1' -FileCount 10000
+```
+
+It compares the working worker with commit `3712337` (before the performance changes), uses only newly created temporary fixtures, and removes them afterward. Each scenario has an unreported warmup followed by three measured runs. Fixture preparation and verification are outside the measured interval. Every run verifies removal counts and retained file counts.
+
+Scenarios cover deep trees, excluded trees, file filtering, wide directories, and bulk file deletion. `AllocatedMB` is total managed allocation during a run, not peak memory. Results depend on filesystem caching, storage, antivirus, and network latency; local results are not an SMB performance guarantee.
+
+```powershell
+& '.\Tools\Measure-RemovalPerformance.ps1' -Scenario FileFiltering -FileCount 100000 -Iterations 1
+```

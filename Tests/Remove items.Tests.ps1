@@ -470,6 +470,144 @@ Describe 'ExcludeFile' {
         $testRemoveTopFile.FullName | Should -Not -Exist
     }
 }
+Describe 'streamed file processing' {
+    It 'removes read-only hidden files for <_>' -ForEach @('File', 'FilesInFolder') {
+        $testRoot = (New-Item "TestDrive:/readonly_$([guid]::NewGuid())" -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot/readonly.txt" -ItemType File
+        $testFile.Attributes = [System.IO.FileAttributes]::ReadOnly -bor [System.IO.FileAttributes]::Hidden
+        $testPath = if ($_ -eq 'File') { $testFile.FullName } else { $testRoot }
+
+        $actual = . $testScript -Type $_ -Path $testPath -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+
+        $actual.Action | Should -Be 'Removed'
+        $testFile.FullName | Should -Not -Exist
+    }
+
+    It 'reports a file that disappears after enumeration' {
+        $testRoot = (New-Item 'TestDrive:/disappearing' -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot/gone.txt" -ItemType File
+        Mock Get-ChildItem {
+            Remove-Item -LiteralPath $testFile.FullName
+            $testFile
+        }
+
+        $actual = @(. $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -WarningAction SilentlyContinue)
+
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testFile.FullName
+        $actual[0].Error | Should -Not -BeNullOrEmpty
+        $actual[0].Action | Should -BeNullOrEmpty
+    }
+
+    It 'preserves a file updated after its cached timestamp was selected' {
+        $testRoot = (New-Item 'TestDrive:/updated-during-cleanup' -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot/active.txt" -ItemType File
+        $testFile.LastWriteTime = [datetime]::Now.AddDays(-100)
+        $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace(
+            'Write-Verbose "Remove file ''$($fileToRemove.FullName)''"',
+            '[System.IO.File]::SetLastWriteTime($fileToRemove.FullName, [datetime]::Now)'
+        )
+        $testScriptText | Should -BeLike '*SetLastWriteTime*'
+
+        $actual = @(& ([scriptblock]::Create($testScriptText)) -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 30 -OlderThanBasedOn LastWriteTime)
+
+        $actual | Should -HaveCount 0
+        $testFile.FullName | Should -Exist
+    }
+
+    It 'removes a file before enumeration produces the next file' {
+        $testRoot = (New-Item 'TestDrive:/streamed' -ItemType Directory).FullName
+        $testFirst = New-Item "$testRoot/first.txt" -ItemType File
+        $testSecond = New-Item "$testRoot/second.txt" -ItemType File
+        Mock Get-ChildItem {
+            $testFirst
+            $testFirst.FullName | Should -Not -Exist
+            $testSecond
+        }
+
+        $actual = @(. $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime)
+
+        $actual | Should -HaveCount 2
+        $testSecond.FullName | Should -Not -Exist
+    }
+
+    It 'handles duplicate case-insensitive exclusions and similar file names' {
+        $testRoot = (New-Item 'TestDrive:/hash-exclusions' -ItemType Directory).FullName
+        $testKeep = New-Item "$testRoot/state.txt" -ItemType File
+        $testRemove = New-Item "$testRoot/state.txt.old" -ItemType File
+
+        . $testScript -Type FilesInFolder -Path $testRoot -ExcludeFile @($testKeep.FullName, $testKeep.FullName.ToUpperInvariant()) -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+
+        $testKeep.FullName | Should -Exist
+        $testRemove.FullName | Should -Not -Exist
+    }
+}
+Describe 'calendar cutoff boundaries' {
+    It 'preserves <Unit> boundaries for <Today> based on <BasedOn>' -ForEach @(
+        @{ Unit = 'Day'; Today = '2026-10-02T15:30:00'; Cutoff = '2026-10-02'; BasedOn = 'CreationTime' }
+        @{ Unit = 'Day'; Today = '2026-10-02T15:30:00'; Cutoff = '2026-10-02'; BasedOn = 'LastWriteTime' }
+        @{ Unit = 'Month'; Today = '2024-03-31T15:30:00'; Cutoff = '2024-03-01'; BasedOn = 'CreationTime' }
+        @{ Unit = 'Month'; Today = '2024-03-31T15:30:00'; Cutoff = '2024-03-01'; BasedOn = 'LastWriteTime' }
+        @{ Unit = 'Month'; Today = '2026-01-01T15:30:00'; Cutoff = '2026-01-01'; BasedOn = 'LastWriteTime' }
+        @{ Unit = 'Year'; Today = '2026-10-02T15:30:00'; Cutoff = '2026-01-01'; BasedOn = 'CreationTime' }
+        @{ Unit = 'Year'; Today = '2026-10-02T15:30:00'; Cutoff = '2026-01-01'; BasedOn = 'LastWriteTime' }
+    ) {
+        $testRoot = (New-Item "TestDrive:/cutoff_$([guid]::NewGuid())" -ItemType Directory).FullName
+        $testBefore = New-Item "$testRoot/before.txt" -ItemType File
+        $testAt = New-Item "$testRoot/at.txt" -ItemType File
+        $testAfter = New-Item "$testRoot/after.txt" -ItemType File
+        $testBefore.$BasedOn = ([datetime]$Cutoff).AddTicks(-1)
+        $testAt.$BasedOn = [datetime]$Cutoff
+        $testAfter.$BasedOn = ([datetime]$Cutoff).AddTicks(1)
+        Mock Get-Date { [datetime]$Today }
+
+        $actual = @(. $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit $Unit -OlderThanQuantity 1 -OlderThanBasedOn $BasedOn)
+
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testBefore.FullName
+        $testBefore.FullName | Should -Not -Exist
+        $testAt.FullName | Should -Exist
+        $testAfter.FullName | Should -Exist
+    }
+
+    It 'rejects an overflowing <_> cutoff before deleting anything' -ForEach @('Day', 'Month', 'Year') {
+        $testFile = New-Item "TestDrive:/overflow_$_.txt" -ItemType File
+
+        { . $testScript -Type File -Path $testFile.FullName -OlderThanUnit $_ -OlderThanQuantity ([int]::MaxValue) -OlderThanBasedOn CreationTime } |
+        Should -Throw '*Invalid retention period*'
+
+        $testFile.FullName | Should -Exist
+    }
+}
+Describe 'lazy emptiness checks' {
+    It 'checks one entry and disposes the iterator, including failure: <_>' -ForEach @($false, $true) {
+        $testRoot = (New-Item "TestDrive:/lazy_$_" -ItemType Directory).FullName
+        $testFolder = New-Item "$testRoot/child" -ItemType Directory
+        $testIterator = [pscustomobject]@{ Calls = 0; Disposed = $false; Fail = $_ }
+        $testIterator | Add-Member ScriptMethod MoveNext {
+            $this.Calls++
+            if ($this.Fail -or ($this.Calls -gt 1)) { throw 'Enumeration failed' }
+            $true
+        }
+        $testIterator | Add-Member ScriptMethod Dispose { $this.Disposed = $true }
+        $testEnumerable = [pscustomobject]@{ Iterator = $testIterator }
+        $testEnumerable | Add-Member ScriptMethod GetEnumerator { $this.Iterator }
+        $testFolder | Add-Member NoteProperty TestEnumerable $testEnumerable
+        $testFolder | Add-Member ScriptMethod EnumerateFileSystemInfos { $this.TestEnumerable } -Force
+        Mock Get-ChildItem { $testFolder }
+
+        $actual = @(. $testScript -Type EmptyFolders -Path $testRoot -WarningAction SilentlyContinue)
+
+        $testIterator.Calls | Should -Be 1
+        $testIterator.Disposed | Should -BeTrue
+        $testFolder.FullName | Should -Exist
+        if ($testIterator.Fail) {
+            $actual | Should -HaveCount 1
+            $actual[0].Error | Should -BeLike '*Enumeration failed*'
+        }
+        else { $actual | Should -HaveCount 0 }
+    }
+}
 Describe 'excluded subtree traversal' {
     It 'does not enumerate excluded subtrees for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
         $testType = $_
