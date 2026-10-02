@@ -1,5 +1,63 @@
 #Requires -Version 7
 
+<#
+.SYNOPSIS
+    Compare a historical removal worker with the current worker on test data.
+
+.DESCRIPTION
+    Requires Git and a local checkout containing the baseline commit. Runs
+    both workers against newly created fixtures under a unique temporary
+    folder. Deletes that folder afterward, including when a run fails.
+    Does not use Example.json or any configured production paths.
+
+    Each worker gets one unreported warmup per scenario, followed by the
+    requested measured iterations. Fixture preparation and result checks
+    are outside the measured interval. Unexpected errors, removal counts
+    or retained-file counts stop the benchmark.
+
+    Results measure local filesystem behavior, not remote execution or SMB.
+
+.PARAMETER BaselineRef
+    Git revision containing 'Remove items.ps1'. Defaults to 3712337, before
+    the performance changes. The worker must accept the benchmark arguments.
+
+.PARAMETER Iterations
+    Measured runs per worker and scenario, from 1 to 10. Defaults to 3.
+    The additional warmup is not included in this count.
+
+.PARAMETER Depth
+    Nested levels below each branch in DeepTree, from 1 to 200. Defaults to 80.
+
+.PARAMETER Branches
+    Number of independent DeepTree branches, from 1 to 100. Defaults to 4.
+
+.PARAMETER Scenario
+    One or more scenarios; by default all six run. DeepTree removes nested
+    empty folders. ExcludedTree skips a populated tree. FileFiltering tests
+    age and exact-file exclusions. WideDirectory checks a populated folder
+    for emptiness. PrunedWideDirectory checks the same with exclusion-aware
+    traversal. FileDeletion removes all fixture files.
+
+.PARAMETER FileCount
+    Number of fixture files for every scenario except DeepTree, from 1 to
+    1000000. Defaults to 10000.
+
+.PARAMETER ExcludeFileCount
+    Maximum number of old files protected by exact exclusions in FileFiltering.
+    From 0 to 1000000; defaults to 250. Limited by FileCount. Remaining files
+    are recent enough to be kept by the age filter.
+
+.OUTPUTS
+    PSCustomObject with Scenario, Version, Iteration, Removed, Milliseconds
+    and AllocatedMB. AllocatedMB is cumulative managed allocation during the
+    run, not peak memory usage.
+
+.EXAMPLE
+    & '.\Tools\Measure-RemovalPerformance.ps1' -Scenario FileFiltering -FileCount 10000 -Iterations 1
+
+    Measures file filtering once per worker after their warmup runs.
+#>
+
 [CmdletBinding()]
 param (
     [string]$BaselineRef = '3712337',

@@ -10,21 +10,29 @@
     becomes 'RemoveEmptyFolders: true' on that folder; the other empty folders
     get a task without 'OlderThan'.
 
+    Sets OlderThan.BasedOn to CreationTime to preserve the old date filter.
+
     'Settings' and 'PSSessionConfiguration' are copied from the template file.
     Only 'Settings.ScriptName' (the file name) and 'Settings.SendMail.To' and
     'When' (from the old file) are filled in, so check the other settings.
 
     'MaxConcurrentJobs' becomes both 'JobsTotal' and 'JobsPerComputer', which
-    keeps the old behavior.
+    keeps the old behavior. If omitted or zero, both limits become 1.
+
+    Writes the converted configuration only; it does not run removal tasks.
+    Review the settings and paths before using the result with Main.ps1.
 
 .PARAMETER Path
     The input file in the old format.
 
 .PARAMETER Destination
-    The file to create in the new format.
+    Output JSON file. An existing file is overwritten. Its parent folder
+    must already exist.
 
 .PARAMETER TemplateFile
-    The file to copy 'Settings' and 'PSSessionConfiguration' from.
+    File to copy 'Settings' and 'PSSessionConfiguration' from. Defaults to
+    Example.json in the repository root. Mail recipients and send policy
+    remain from this template when the old file does not supply them.
 
 .EXAMPLE
     & '.\Tools\Convert-InputFile.ps1' -Path 'C:\old\BNL CL.json' -Destination 'C:\new\BNL CL.json'
@@ -49,11 +57,21 @@ if (-not $old.Remove) {
 }
 
 function Get-KeyHC {
+    <#
+    .SYNOPSIS
+        Build a case-insensitive lookup key from a computer name and path.
+        Path separators and trailing slashes are not normalized.
+    #>
     param ([String]$ComputerName, [String]$Path)
     '{0}|{1}' -f "$ComputerName".ToLower(), $Path.ToLower()
 }
 
 function ConvertTo-PathEntryHC {
+    <#
+    .SYNOPSIS
+        Return a Name/Path object when a friendly name is supplied;
+        otherwise return the path string.
+    #>
     param ([String]$Name, [String]$Path)
 
     if ($Name) {
@@ -78,6 +96,15 @@ $emptyFoldersUsed = @{}
 $groups = [ordered]@{}
 
 function Add-PathHC {
+    <#
+    .SYNOPSIS
+        Add a path entry to the shared conversion group for its settings.
+
+    .DESCRIPTION
+        Uses the converter's groups dictionary. Creates the group from Task
+        when needed, then adds PathEntry to the Files or Folders list named
+        by Task.ListName.
+    #>
     param ([String]$GroupKey, [hashtable]$Task, $PathEntry)
 
     if (-not $groups.Contains($GroupKey)) {

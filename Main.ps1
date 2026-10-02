@@ -3,22 +3,45 @@
 
 <#
 .SYNOPSIS
-    Remove files, folders or folder content on local or remote machines.
+    Remove selected files and empty subfolders using a JSON configuration.
 
 .DESCRIPTION
-    This script reads a .JSON file containing the paths where files or folders
-    need to be removed. When 'OlderThan.Quantity' is '0' all files or folders
-    will be removed, depending on the chosen 'Remove' type, regardless their
-    creation date.
+    Reads the 'Tasks' array in a JSON file. Each task selects either specific
+    'Files' or the files and empty subfolders below 'Folders'. Tasks can run
+    on this computer, on remote computers, or against UNC shares.
 
-    All properties of the .JSON file are explained in the '?' section of
-    'Example.json'.
+    'OlderThan.BasedOn' selects CreationTime or LastWriteTime. Day, Month and
+    Year use calendar cutoffs, not elapsed time. Quantity 0 disables the age
+    filter; exclusions and the task's Recurse setting still apply.
+
+    Empty-folder cleanup runs after all file-removal jobs finish. It checks
+    subfolders at every depth, preserves each root folder, and only deletes
+    folders that are empty. Age settings do not apply to folders.
+
+    'MaxConcurrent' limits total jobs and jobs per target computer. WinRM
+    abort error 995, or its matching message, allows up to three attempts
+    with five seconds between attempts. Other errors are not retried.
+
+    'Settings' controls optional email, log files and Windows event logging.
+    See README.md for setup and Example.json's '?' section for each setting.
+    This script deletes items; it has no preview or WhatIf mode.
+
+    Exits with code 1 for job or script errors. On success it returns normally.
 
 .PARAMETER ConfigurationJsonFile
-    The path to the .JSON file containing the configuration.
+    Path to the JSON configuration file. Relative paths are resolved from
+    the current working directory.
 
 .PARAMETER RemoveItemsScript
-    The path to the script that executes the removal actions.
+    Path to the worker script. Defaults to 'Remove items.ps1' beside this
+    script. A replacement must accept the same positional parameters and
+    return the same removal/error objects; it must also work independently
+    when sent to a remote computer with Invoke-Command -FilePath.
+
+.EXAMPLE
+    & '.\Main.ps1' -ConfigurationJsonFile '.\MyConfig.json'
+
+    Runs the removal tasks and reporting configured in MyConfig.json.
 #>
 
 [CmdLetBinding()]

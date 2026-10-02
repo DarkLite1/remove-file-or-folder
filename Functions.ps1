@@ -1,3 +1,18 @@
+<#
+.SYNOPSIS
+    Shared email, logging and execution helpers for Main.ps1.
+
+.DESCRIPTION
+    Dot-source this file to load its functions. Loading it does not run
+    removal tasks, send email or create log files.
+
+.EXAMPLE
+    . '.\Functions.ps1'
+
+    Makes the helpers available in the current scope.
+#>
+
+
 function Get-MailThemeHC {
     <#
     .SYNOPSIS
@@ -76,7 +91,18 @@ function Get-TaskDescriptionHC {
         A readable description of what a task does, for the e-mail.
 
     .EXAMPLE
-        Remove files older than 3 months (last write time), including subfolders
+        Get-TaskDescriptionHC -Task ([pscustomobject]@{
+            Type = 'RemoveFilesInFolder'
+            OlderThan = @{ Quantity = 3; Unit = 'Month'; BasedOn = 'LastWriteTime' }
+            Recurse = $true
+        })
+
+        Returns 'Remove files older than 3 months (last write time), including subfolders'.
+
+    .PARAMETER Task
+        An internal task created by Main.ps1, not a raw JSON task. Type is
+        RemoveFile, RemoveFilesInFolder or RemoveEmptyFolders. Optional
+        ExcludeFolders and ExcludeFiles lists add exclusion counts.
     #>
     param (
         [Parameter(Mandatory)]
@@ -232,6 +258,11 @@ function Build-MailJobRowHC {
     <#
     .SYNOPSIS
         One row per path in a computer card: what was done and the result.
+
+    .PARAMETER Job
+        Object containing Name, Path, LinkPath, Description, Removed and
+        Errors. Name is optional and appears above Path, not in place of it.
+        Removed and Errors are counts. Text is HTML-encoded before rendering.
     #>
     param (
         [Parameter(Mandatory)]
@@ -379,6 +410,11 @@ function Get-MailBodyHtmlHC {
     .PARAMETER Job
         Objects with: ComputerName, Name, Path, LinkPath, Description, Removed
         and Errors.
+
+    .PARAMETER Body
+        Optional HTML shown below the title. Used as supplied, without HTML
+        encoding. Summary counts and task results are rendered separately,
+        even when Body is empty.
     #>
     param (
         [Parameter(Mandatory)]
@@ -636,7 +672,37 @@ function Invoke-WithOptionalParallelismHC {
 function Out-LogFileHC {
     <#
     .SYNOPSIS
-        Export objects to a .json or .txt log file.
+        Write log records to JSON or text files and return their paths.
+
+    .DESCRIPTION
+        JSON output keeps only DateTime and Message from each record;
+        Message is converted to a string and all other properties are
+        discarded. Text output formats all properties as a list.
+
+        A failed export writes a warning instead of throwing. Only paths
+        from completed exports are returned. The parent folder must exist.
+
+    .PARAMETER DataToExport
+        Records to write. For JSON, supply DateTime and Message properties.
+
+    .PARAMETER PartialPath
+        Output path without an extension, for example C:\Logs\Errors.
+
+    .PARAMETER FileExtensions
+        One or both of '.json' and '.txt'. Duplicate extensions are ignored.
+
+    .PARAMETER Append
+        Preserve existing content. For JSON, new records are placed before
+        existing records and the file is rewritten. For text, new records
+        are appended at the end. Without this switch, the file is replaced.
+
+    .OUTPUTS
+        String. Paths of successfully written log files.
+
+    .EXAMPLE
+        Out-LogFileHC -DataToExport ([pscustomobject]@{ DateTime = Get-Date; Message = 'Run completed' }) -PartialPath 'C:\Logs\Run' -FileExtensions '.json'
+
+        Writes the record to C:\Logs\Run.json. C:\Logs must already exist.
     #>
 
     [CmdletBinding()]
@@ -731,6 +797,60 @@ function Send-MailKitMessageHC {
         }
         Install-Package @params -Name 'MailKit'
         Install-Package @params -Name 'MimeKit'
+
+        Supply paths to assemblies compatible with the installed PowerShell
+        runtime. At least one To or Bcc recipient is required. A connection,
+        authentication or sending failure throws an error.
+
+    .PARAMETER MailKitAssemblyPath
+        Path to MailKit.dll. Used if MailKit is not already loaded.
+
+    .PARAMETER MimeKitAssemblyPath
+        Path to MimeKit.dll. Used if MimeKit is not already loaded.
+
+    .PARAMETER SmtpServerName
+        SMTP server hostname or IP address.
+
+    .PARAMETER SmtpPort
+        SMTP port: 25, 465, 587 or 2525.
+
+    .PARAMETER Body
+        Email body as HTML.
+
+    .PARAMETER Subject
+        Complete subject line. This helper does not add counts or a prefix.
+
+    .PARAMETER From
+        Sender email address.
+
+    .PARAMETER FromDisplayName
+        Optional friendly name for the sender.
+
+    .PARAMETER To
+        Recipient addresses. To or Bcc must contain at least one address.
+
+    .PARAMETER Bcc
+        Blind-copy recipient addresses.
+
+    .PARAMETER MaxAttachmentSize
+        Combined source-file size limit in bytes. Defaults to 20 MB. At or
+        above the limit, no attachments are added and a notice is appended
+        to the body. This is not the size of the encoded email.
+
+    .PARAMETER SmtpConnectionType
+        MailKit SecureSocketOptions value. Defaults to None (no encryption).
+        Use the mode required by your SMTP server, such as StartTls or
+        SslOnConnect.
+
+    .PARAMETER Priority
+        Normal (default), Low or High. Sets the X-Priority header.
+
+    .PARAMETER Attachments
+        File paths to attach. Duplicates are removed. Missing files, folders
+        and attachment failures produce warnings; sending can still proceed.
+
+    .PARAMETER Credential
+        Optional SMTP credential. If omitted, authentication is not attempted.
     #>
 
     [CmdletBinding()]
@@ -767,6 +887,11 @@ function Send-MailKitMessageHC {
 
     begin {
         function Test-IsAssemblyLoaded {
+            <#
+            .SYNOPSIS
+                Check whether an assembly with the given name is already
+                loaded in this process, regardless of its version.
+            #>
             param (
                 [String]$Name
             )
@@ -779,6 +904,16 @@ function Send-MailKitMessageHC {
         }
 
         function Add-Attachments {
+            <#
+            .SYNOPSIS
+                Add readable files to a MIME body within the attachment limit.
+
+            .DESCRIPTION
+                Uses the enclosing function's MaxAttachmentSize. If the
+                combined size reaches the limit, returns an object with
+                AttachmentLimitExceededMessage and adds no attachments.
+                Other attachment problems are warnings.
+            #>
             param (
                 [string[]]$Attachments,
                 [MimeKit.Multipart]$BodyMultiPart
