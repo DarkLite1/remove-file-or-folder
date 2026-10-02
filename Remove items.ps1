@@ -106,6 +106,7 @@ if ($Type -eq 'EmptyFolders') {
         LiteralPath   = $Path
         Directory     = $true
         Recurse       = $true
+        Force         = $true
         ErrorAction   = 'SilentlyContinue'
         ErrorVariable = '+getErrors'
     }
@@ -209,7 +210,7 @@ if (-not (Test-Path -LiteralPath $Path -PathType $pathType)) {
 $getErrors = @()
 
 $files = if ($Type -eq 'File') {
-    Get-Item -LiteralPath $Path -ErrorAction Stop
+    Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue -ErrorVariable getErrors
 }
 else {
     $getParams = @{

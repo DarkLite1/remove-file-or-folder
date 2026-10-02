@@ -451,6 +451,47 @@ Describe 'ExcludeFile' {
         $testRemoveTopFile.FullName | Should -Not -Exist
     }
 }
+Describe 'hidden items and retrieval errors' {
+    It 'removes an explicitly targeted hidden file' {
+        $testFile = New-Item 'TestDrive:/hidden-target.txt' -ItemType File
+        $testFile.Attributes = $testFile.Attributes -bor [System.IO.FileAttributes]::Hidden
+
+        $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+
+        $testFile.FullName | Should -Not -Exist
+        $actual.Action | Should -Be 'Removed'
+    }
+
+    It 'removes nested hidden empty folders but preserves hidden content' {
+        $testRoot = (New-Item 'TestDrive:/hidden-folders' -ItemType Directory).FullName
+        $testEmpty = New-Item "$testRoot/empty/child" -ItemType Directory -Force
+        $testEmpty.Parent.Attributes = $testEmpty.Parent.Attributes -bor [System.IO.FileAttributes]::Hidden
+        $testKeep = New-Item "$testRoot/keep/hidden.txt" -ItemType File -Force
+        $testKeep.Attributes = $testKeep.Attributes -bor [System.IO.FileAttributes]::Hidden
+        $testKeep.Directory.Attributes = $testKeep.Directory.Attributes -bor [System.IO.FileAttributes]::Hidden
+
+        . $testScript -Type EmptyFolders -Path $testRoot
+
+        "$testRoot/empty" | Should -Not -Exist
+        $testKeep.FullName | Should -Exist
+        $testRoot | Should -Exist
+    }
+
+    It 'returns a retrieval error when a file becomes unreadable after validation' {
+        $testFile = New-Item 'TestDrive:/read-error.txt' -ItemType File
+        Mock Get-Item { Write-Error 'Read failed' -TargetObject $LiteralPath } -ParameterFilter {
+            $LiteralPath -eq $testFile.FullName
+        }
+
+        $actual = @(. $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -WarningAction SilentlyContinue)
+
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testFile.FullName
+        $actual[0].Error | Should -BeLike '*Read failed*'
+        $actual[0].Action | Should -BeNullOrEmpty
+        $testFile.FullName | Should -Exist
+    }
+}
 Describe 'normalized exclusions' {
     It 'protects a folder using <Suffix> for <Type>' -ForEach @(
         @{ Suffix = 'Keep\.'; Type = 'FilesInFolder' }
