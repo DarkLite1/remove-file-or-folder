@@ -95,6 +95,16 @@ A path in `Files` or `Folders` is a plain string, or an object `{ "Name": "...",
 
 Every path is processed as a separate job, so `MaxConcurrent` applies per path. Empty folders are always removed after all file removals have finished.
 
+### 🔄 Converting input files from the old format
+
+Input files with a `Remove` section (`File`, `FilesInFolder`, `EmptyFolders`) are no longer supported. Convert them with:
+
+```powershell
+& '.\Tools\Convert-InputFile.ps1' -Path 'C:\old\BNL CL.json' -Destination 'C:\new\BNL CL.json'
+```
+
+The converter groups the paths with the same computer and settings in one task, and turns an `EmptyFolders` entry for a folder that is also in `FilesInFolder` into `RemoveEmptyFolders: true`. `Settings` are copied from `Example.json` with the old `SendMail.To` and `SendMail.When`, so check the mail server, log folder and event log settings afterwards.
+
 ### ⏳ How `OlderThan` works
 
 Files are selected on their **creation date**. `Quantity` `0` removes all files, regardless of their age.
