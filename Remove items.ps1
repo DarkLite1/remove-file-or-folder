@@ -37,7 +37,7 @@
     'OlderThan': CreationTime or LastWriteTime.
 #>
 
-Param (
+param (
     [Parameter(Mandatory)]
     [ValidateSet('File', 'FilesInFolder', 'EmptyFolders')]
     [String]$Type,
