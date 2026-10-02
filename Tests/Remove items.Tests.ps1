@@ -470,6 +470,26 @@ Describe 'ExcludeFile' {
         $testRemoveTopFile.FullName | Should -Not -Exist
     }
 }
+Describe 'single-pass empty-folder cleanup' {
+    It 'enumerates a deep tree once and removes every child before its parent' {
+        $testRoot = (New-Item 'TestDrive:/deep-tree' -ItemType Directory).FullName
+        $testNested = $testRoot
+        foreach ($level in 1..40) { $testNested = Join-Path $testNested 'd' }
+        $null = New-Item $testNested -ItemType Directory -Force
+        $testGetChildItem = Get-Command Get-ChildItem -CommandType Cmdlet
+        Mock Get-ChildItem { & $testGetChildItem -LiteralPath $LiteralPath -Directory -Recurse -Force }
+
+        $actual = @(. $testScript -Type EmptyFolders -Path $testRoot)
+
+        $actual | Should -HaveCount 40
+        @($actual.FullName | Select-Object -Unique) | Should -HaveCount 40
+        $actual[0].FullName | Should -Be $testNested
+        $actual[-1].FullName | Should -Be (Join-Path $testRoot 'd')
+        $actual.Error | Where-Object { $_ } | Should -BeNullOrEmpty
+        $testRoot | Should -Exist
+        Should -Invoke Get-ChildItem -Times 1 -Exactly -Scope It
+    }
+}
 Describe 'hidden items and retrieval errors' {
     It 'removes an explicitly targeted hidden file' {
         $testFile = New-Item 'TestDrive:/hidden-target.txt' -ItemType File

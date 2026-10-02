@@ -86,7 +86,6 @@ function Test-IsExcludedHC {
 }
 
 if ($Type -eq 'EmptyFolders') {
-    $failedFolderRemoval = @()
     $getErrors = @()
     $unreadableFolders = @{}
 
@@ -112,43 +111,38 @@ if ($Type -eq 'EmptyFolders') {
         ErrorVariable = '+getErrors'
     }
 
-    while (
-        $emptyFolders = Get-ChildItem @getParams |
-        Where-Object {
-            (-not (Test-IsExcludedHC $_.FullName)) -and
-            ($failedFolderRemoval -notContains $_.FullName) -and
-            (Test-IsEmptyFolderHC $_)
+    $emptyFolders = Get-ChildItem @getParams |
+    Where-Object { -not (Test-IsExcludedHC $_.FullName) } |
+    Sort-Object { $_.FullName.Length } -Descending
+
+    $emptyFolders | Where-Object { Test-IsEmptyFolderHC $_ } | ForEach-Object {
+        $emptyFolder = $_
+        try {
+            Write-Verbose "Remove empty folder '$emptyFolder'"
+
+            $result = [PSCustomObject]@{
+                DateTime     = Get-Date
+                ComputerName = $env:COMPUTERNAME
+                Type         = 'EmptyFolder'
+                FullName     = $emptyFolder.FullName
+                CreationTime = $emptyFolder.CreationTime
+                Action       = $null
+                Error        = $null
+            }
+
+            # non-recursive delete fails when the folder is no longer empty
+            $emptyFolder.Attributes = $emptyFolder.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+            $emptyFolder.Delete()
+            $result.Action = 'Removed'
         }
-    ) {
-        foreach ($emptyFolder in $emptyFolders) {
-            try {
-                Write-Verbose "Remove empty folder '$emptyFolder'"
+        catch {
+            Write-Verbose "Failed to remove empty folder '$emptyFolder': $_"
 
-                $result = [PSCustomObject]@{
-                    DateTime     = Get-Date
-                    ComputerName = $env:COMPUTERNAME
-                    Type         = 'EmptyFolder'
-                    FullName     = $emptyFolder.FullName
-                    CreationTime = $emptyFolder.CreationTime
-                    Action       = $null
-                    Error        = $null
-                }
-
-                # non-recursive delete fails when the folder is no longer empty
-                $emptyFolder.Attributes = $emptyFolder.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
-                $emptyFolder.Delete()
-                $result.Action = 'Removed'
-            }
-            catch {
-                Write-Verbose "Failed to remove empty folder '$emptyFolder': $_"
-
-                $result.Error = $_
-                $Error.RemoveAt(0)
-                $failedFolderRemoval += $emptyFolder.FullName
-            }
-            finally {
-                $result
-            }
+            $result.Error = $_
+            $Error.RemoveAt(0)
+        }
+        finally {
+            $result
         }
     }
 
