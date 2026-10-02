@@ -483,6 +483,11 @@ Describe 'an incorrect input file' {
             Message     = "Property 'Tasks[1].ExcludeFolders' contains 'z:\folder', which is not a subfolder of a path in 'Tasks[1].Folders'"
         }
         @{
+            Description = 'Tasks[1].ExcludeFolders escapes the folder with dot segments'
+            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\folder\..\other') }
+            Message     = "Property 'Tasks[1].ExcludeFolders' contains 'z:\other', which is not a subfolder of a path in 'Tasks[1].Folders'"
+        }
+        @{
             Description = 'Tasks[0].ExcludeFiles used with Files'
             Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\a.txt') }
             Message     = "Property 'Tasks[0].ExcludeFiles' can only be used with 'Tasks[0].Folders'"
@@ -731,6 +736,30 @@ Describe 'execute script' {
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($ArgumentList[0] -eq 'FilesInFolder') -and
                 ($ArgumentList[1] -eq 'z:\b') -and
+                (@($ArgumentList[6]).Count -eq 0)
+            }
+        }
+    }
+    Context 'normalized exclusion routing' {
+        It 'normalizes roots and routes dot-segment exclusions to the correct job' {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
+            $testNewInputFile.Tasks[0].Folders = @('z:/a/.', 'z:/b')
+            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:/b/../a/keep')
+            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:/a/sub/../state.json')
+
+            Test-NewJsonFileHC $testNewInputFile
+            .$testScript @testParams
+
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope It -ParameterFilter {
+                ($ArgumentList[0] -eq 'FilesInFolder') -and
+                ($ArgumentList[1].TrimEnd('\') -eq 'z:\a') -and
+                (($ArgumentList[2] -join '|') -eq 'z:\a\keep') -and
+                (($ArgumentList[6] -join '|') -eq 'z:\a\state.json')
+            }
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope It -ParameterFilter {
+                ($ArgumentList[1] -eq 'z:\b') -and
+                (@($ArgumentList[2]).Count -eq 0) -and
                 (@($ArgumentList[6]).Count -eq 0)
             }
         }

@@ -302,6 +302,15 @@ Begin {
                             throw "Property '$prefix.$excludeName' needs to be an array of $kind paths, the value '$excludePath' is not supported."
                         }
                     }
+                    $excludes[$excludeName] = @(
+                        foreach ($excludePath in $excludes[$excludeName]) {
+                            $excludePath = $excludePath.Replace('/', '\')
+                            if ([System.IO.Path]::IsPathFullyQualified($excludePath)) {
+                                [System.IO.Path]::GetFullPath($excludePath)
+                            }
+                            else { $excludePath }
+                        }
+                    )
                 }
                 #endregion
 
@@ -328,6 +337,11 @@ Begin {
                         throw "Property '$entryPrefix' needs a path"
                     }
 
+                    $path = $path.Replace('/', '\')
+                    if ([System.IO.Path]::IsPathFullyQualified($path)) {
+                        $path = [System.IO.Path]::GetFullPath($path)
+                    }
+
                     if (($path -notMatch '^\\\\') -and (-not $task.ComputerName)) {
                         throw "Property '$prefix.ComputerName' not found, it is required for the local path '$path'"
                     }
@@ -347,7 +361,7 @@ Begin {
                     foreach ($excludeName in 'ExcludeFolders', 'ExcludeFiles') {
                         $pathExcludes[$excludeName] = @(
                             $excludes[$excludeName].Where({
-                                    $_.StartsWith($pathPrefix, [StringComparison]::OrdinalIgnoreCase)
+                                    $_.TrimEnd('\').StartsWith($pathPrefix, [StringComparison]::OrdinalIgnoreCase)
                                 })
                         )
                     }
@@ -373,7 +387,7 @@ Begin {
                 foreach ($excludeName in 'ExcludeFolders', 'ExcludeFiles') {
                     foreach ($excludePath in $excludes[$excludeName]) {
                         $isBelowFolder = $folderPaths.Where({
-                                $excludePath.StartsWith("$_\", [StringComparison]::OrdinalIgnoreCase)
+                                $excludePath.TrimEnd('\').StartsWith("$_\", [StringComparison]::OrdinalIgnoreCase)
                             })
 
                         if (-not $isBelowFolder) {

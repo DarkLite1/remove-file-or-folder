@@ -451,6 +451,59 @@ Describe 'ExcludeFile' {
         $testRemoveTopFile.FullName | Should -Not -Exist
     }
 }
+Describe 'normalized exclusions' {
+    It 'protects a folder using <Suffix> for <Type>' -ForEach @(
+        @{ Suffix = 'Keep\.'; Type = 'FilesInFolder' }
+        @{ Suffix = 'Keep/sub/..'; Type = 'FilesInFolder' }
+        @{ Suffix = 'Keep\.'; Type = 'EmptyFolders' }
+        @{ Suffix = 'Keep/sub/..'; Type = 'EmptyFolders' }
+    ) {
+        $testRoot = (New-Item "TestDrive:/normalized_$([guid]::NewGuid())" -ItemType Directory).FullName
+        $testKeep = New-Item "$testRoot/Keep/empty" -ItemType Directory -Force
+        $testFile = New-Item "$testRoot/Keep/protected.txt" -ItemType File
+        $testOther = New-Item "$testRoot/Other/empty" -ItemType Directory -Force
+        $testParams = @{
+            Type = $Type
+            Path = $testRoot
+            ExcludeFolder = @("$testRoot/$Suffix")
+            OlderThanUnit = 'Day'
+            OlderThanQuantity = 0
+            OlderThanBasedOn = 'CreationTime'
+            Recurse = $true
+        }
+
+        . $testScript @testParams
+
+        $testKeep.FullName | Should -Exist
+        $testFile.FullName | Should -Exist
+        if ($Type -eq 'EmptyFolders') { $testOther.FullName | Should -Not -Exist }
+    }
+
+    It 'protects a file using <_>' -ForEach @(
+        'Keep/protected.txt', 'Keep\sub\..\protected.txt', 'Keep\.\protected.txt'
+    ) {
+        $testRoot = (New-Item "TestDrive:/normalizedFile_$([guid]::NewGuid())" -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot/Keep/protected.txt" -ItemType File -Force
+        $testOther = New-Item "$testRoot/remove.txt" -ItemType File
+
+        . $testScript -Type FilesInFolder -Path $testRoot -ExcludeFile "$testRoot/$_" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+
+        $testFile.FullName | Should -Exist
+        $testOther.FullName | Should -Not -Exist
+    }
+
+    It 'resolves relative exclusions in the worker location' {
+        $testRoot = (New-Item 'TestDrive:/relative' -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot/Keep/protected.txt" -ItemType File -Force
+        Push-Location $testRoot
+        try {
+            . $testScript -Type FilesInFolder -Path . -ExcludeFolder './Keep' -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+        }
+        finally { Pop-Location }
+
+        $testFile.FullName | Should -Exist
+    }
+}
 Describe 'OlderThanBasedOn <BasedOn>' -ForEach @(
     @{ BasedOn = 'CreationTime'; RemovesDailyWrittenFile = $true; RemovesCopiedFile = $false }
     @{ BasedOn = 'LastWriteTime'; RemovesDailyWrittenFile = $false; RemovesCopiedFile = $true }

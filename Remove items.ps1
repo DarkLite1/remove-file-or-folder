@@ -55,8 +55,19 @@ Param (
     [String]$OlderThanBasedOn
 )
 
+function Get-NormalizedPathHC {
+    param ([String]$Value)
+
+    [System.IO.Path]::GetFullPath(
+        $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Value)
+    ).TrimEnd('\')
+}
+
 $excludedPaths = @(
-    $ExcludeFolder | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+    $ExcludeFolder | Where-Object { $_ } | ForEach-Object { Get-NormalizedPathHC $_ }
+)
+$excludedFiles = @(
+    $ExcludeFile | Where-Object { $_ } | ForEach-Object { Get-NormalizedPathHC $_ }
 )
 
 function Test-IsExcludedHC {
@@ -216,8 +227,6 @@ if ($excludedPaths) {
     $files = $files.Where({ -not (Test-IsExcludedHC $_.FullName) })
     $getErrors = $getErrors.Where({ -not (Test-IsExcludedHC "$($_.TargetObject)") })
 }
-
-$excludedFiles = @($ExcludeFile | Where-Object { $_ })
 
 if ($excludedFiles) {
     $files = $files.Where({
