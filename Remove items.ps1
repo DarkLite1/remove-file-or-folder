@@ -61,11 +61,11 @@ function Get-NormalizedPathHC {
 
     [System.IO.Path]::GetFullPath(
         $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Value)
-    ).TrimEnd('\')
+    )
 }
 
 $excludedPaths = @(
-    $ExcludeFolder | Where-Object { $_ } | ForEach-Object { Get-NormalizedPathHC $_ }
+    $ExcludeFolder | Where-Object { $_ } | ForEach-Object { (Get-NormalizedPathHC $_).TrimEnd('\') }
 )
 $excludedFiles = @(
     $ExcludeFile | Where-Object { $_ } | ForEach-Object { Get-NormalizedPathHC $_ }
@@ -85,8 +85,40 @@ function Test-IsExcludedHC {
     $false
 }
 
+function Get-IncludedChildItemHC {
+    param (
+        [string]$Root,
+        [bool]$Recursive,
+        [switch]$Directories,
+        [System.Collections.Generic.List[object]]$ReadErrors
+    )
+
+    $pending = [System.Collections.Generic.Stack[string]]::new()
+    $rootPath = Get-NormalizedPathHC $Root
+    if (Test-IsExcludedHC $rootPath) { return }
+    $pending.Push($rootPath)
+
+    while ($pending.Count) {
+        $directoryPath = $pending.Pop()
+        $enumerationErrors = @()
+        Get-ChildItem -LiteralPath $directoryPath -Force -ErrorAction SilentlyContinue -ErrorVariable enumerationErrors |
+        ForEach-Object {
+            if ($_.PSIsContainer) {
+                if (-not (Test-IsExcludedHC $_.FullName)) {
+                    if ($Recursive -and -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                        $pending.Push($_.FullName)
+                    }
+                    if ($Directories) { $_ }
+                }
+            }
+            elseif (-not $Directories) { $_ }
+        }
+        foreach ($readError in $enumerationErrors) { $ReadErrors.Add($readError) }
+    }
+}
+
 if ($Type -eq 'EmptyFolders') {
-    $getErrors = @()
+    $getErrors = [System.Collections.Generic.List[object]]::new()
     $unreadableFolders = @{}
 
     function Test-IsEmptyFolderHC {
@@ -111,9 +143,13 @@ if ($Type -eq 'EmptyFolders') {
         ErrorVariable = '+getErrors'
     }
 
-    $emptyFolders = Get-ChildItem @getParams |
-    Where-Object { -not (Test-IsExcludedHC $_.FullName) } |
-    Sort-Object { $_.FullName.Length } -Descending
+    $emptyFolders = if ($excludedPaths) {
+        Get-IncludedChildItemHC -Root $Path -Recursive $true -Directories -ReadErrors $getErrors |
+        Sort-Object { $_.FullName.Length } -Descending
+    }
+    else {
+        Get-ChildItem @getParams | Sort-Object { $_.FullName.Length } -Descending
+    }
 
     $emptyFolders | Where-Object { Test-IsEmptyFolderHC $_ } | ForEach-Object {
         $emptyFolder = $_
@@ -202,10 +238,13 @@ if (-not (Test-Path -LiteralPath $Path -PathType $pathType)) {
 #endregion
 
 #region Get files
-$getErrors = @()
+$getErrors = [System.Collections.Generic.List[object]]::new()
 
 $files = if ($Type -eq 'File') {
     Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue -ErrorVariable getErrors
+}
+elseif ($excludedPaths) {
+    Get-IncludedChildItemHC -Root $Path -Recursive $Recurse -ReadErrors $getErrors
 }
 else {
     $getParams = @{
@@ -219,7 +258,7 @@ else {
     Get-ChildItem @getParams
 }
 
-if ($excludedPaths) {
+if ($excludedPaths -and ($Type -eq 'File')) {
     $files = $files.Where({ -not (Test-IsExcludedHC $_.FullName) })
     $getErrors = $getErrors.Where({ -not (Test-IsExcludedHC "$($_.TargetObject)") })
 }

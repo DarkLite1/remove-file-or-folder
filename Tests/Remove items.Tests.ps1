@@ -470,6 +470,70 @@ Describe 'ExcludeFile' {
         $testRemoveTopFile.FullName | Should -Not -Exist
     }
 }
+Describe 'excluded subtree traversal' {
+    It 'does not enumerate excluded subtrees for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
+        $testType = $_
+        $testRoot = (New-Item "TestDrive:/pruned_$testType" -ItemType Directory).FullName
+        $testKeep = New-Item "$testRoot/Keep/deep/protected.txt" -ItemType File -Force
+        $testEmpty = New-Item "$testRoot/Other/empty" -ItemType Directory -Force
+        $testRemove = New-Item "$testRoot/Other/remove.txt" -ItemType File
+        $testGetChildItem = Get-Command Get-ChildItem -CommandType Cmdlet
+        Mock Get-ChildItem {
+            $testEnumeration = @{ LiteralPath = $LiteralPath; Force = $true }
+            if ($PesterBoundParameters['File']) { $testEnumeration.File = $true }
+            if ($PesterBoundParameters['Directory']) { $testEnumeration.Directory = $true }
+            if ($PesterBoundParameters['Recurse']) { $testEnumeration.Recurse = $true }
+            & $testGetChildItem @testEnumeration
+        }
+
+        . $testScript -Type $testType -Path $testRoot -ExcludeFolder "$testRoot/Keep" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+
+        $testKeep.FullName | Should -Exist
+        if ($testType -eq 'FilesInFolder') { $testRemove.FullName | Should -Not -Exist }
+        else { $testEmpty.FullName | Should -Not -Exist }
+        Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter { $PesterBoundParameters['Recurse'] }
+        Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
+            $LiteralPath -like "$testRoot\Keep*"
+        }
+        Should -Invoke Get-ChildItem -Times 1 -Exactly -Scope It -ParameterFilter {
+            $LiteralPath -eq "$testRoot\Other"
+        }
+    }
+
+    It 'does not follow a junction outside the tree' {
+        $testRoot = (New-Item 'TestDrive:/junction-root' -ItemType Directory).FullName
+        $testOutside = New-Item 'TestDrive:/junction-outside/protected.txt' -ItemType File -Force
+        $testLink = New-Item "$testRoot/link" -ItemType Junction -Value $testOutside.Directory.FullName
+        try {
+            . $testScript -Type FilesInFolder -Path $testRoot -ExcludeFolder "$testRoot/unused" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
+
+            $testOutside.FullName | Should -Exist
+        }
+        finally { $testLink.Delete() }
+    }
+
+    It 'reports an unreadable included sibling for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
+        $testType = $_
+        $testRoot = (New-Item "TestDrive:/pruned-denied_$testType" -ItemType Directory).FullName
+        $testDenied = (New-Item "$testRoot/denied" -ItemType Directory).FullName
+        $testUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $testRule = [System.Security.AccessControl.FileSystemAccessRule]::new($testUser, 'ListDirectory', 'Deny')
+        $testAcl = Get-Acl -LiteralPath $testDenied
+        $testAcl.AddAccessRule($testRule)
+        Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+        try {
+            $actual = @(. $testScript -Type $testType -Path $testRoot -ExcludeFolder "$testRoot/unused" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -WarningAction SilentlyContinue)
+        }
+        finally {
+            $testAcl.RemoveAccessRule($testRule) | Out-Null
+            Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+        }
+
+        @($actual | Where-Object FullName -EQ $testDenied) | Should -HaveCount 1
+        ($actual | Where-Object FullName -EQ $testDenied).Error | Should -Not -BeNullOrEmpty
+        $testDenied | Should -Exist
+    }
+}
 Describe 'single-pass empty-folder cleanup' {
     It 'enumerates a deep tree once and removes every child before its parent' {
         $testRoot = (New-Item 'TestDrive:/deep-tree' -ItemType Directory).FullName
