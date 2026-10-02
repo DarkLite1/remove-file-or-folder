@@ -86,6 +86,21 @@ Copy `Example.json` to `MyConfig.json` and adjust it. Every property is explaine
 
 The mail server, log folder and event log settings are left out above for brevity; they are required, see `Example.json`.
 
+### ⏳ How `OlderThan` works
+
+Files are selected on their **creation date**. `Quantity` `0` removes all files, regardless of their age.
+
+`Month` and `Year` compare **calendar periods** by design, not an exact number of days. Only the month or year of the creation date counts, the day is ignored:
+
+| `OlderThan`         | Run on 1 October 2026 removes files created |
+| ------------------- | ------------------------------------------- |
+| `1 Day`             | on or before 30 September 2026              |
+| `30 Day`            | on or before 1 September 2026               |
+| `1 Month`           | in September 2026 or earlier                |
+| `1 Year`            | in 2025 or earlier                          |
+
+So `1 Month` removes a file created on 30 September, even though it is only one day old. When you need an exact age, like 30 days, use `Day` with `30` instead of `Month` with `1`.
+
 ## 💻 Usage
 
 ```powershell
