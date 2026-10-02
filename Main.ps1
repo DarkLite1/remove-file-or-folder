@@ -175,7 +175,7 @@ Begin {
                 $taskProperties = $task.PSObject.Properties.Name
 
                 foreach ($name in $taskProperties) {
-                    if ($name -notin 'ComputerName', 'Files', 'Folders', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
+                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
                         throw "Property '$prefix.$name' is not supported"
                     }
                 }

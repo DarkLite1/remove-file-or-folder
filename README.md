@@ -8,8 +8,9 @@ This PowerShell script removes old files, the content of folders and empty folde
 
 ## ✨ Why use this?
 
-- 🗑️ **Three removal types:** Remove a single file, the files in a folder (optionally recursive) or all empty folders below a path.
-- ⏳ **Age based:** Only remove items older than a number of days, months or years, based on their creation date. Use `0` to remove everything.
+- 🗑️ **Flexible removal:** Remove specific files, the files in folders (optionally recursive), the empty folders below a path, or files and empty folders in one go.
+- 📋 **Compact configuration:** One task holds a list of paths that share the same computer and settings.
+- ⏳ **Age based:** Only remove files older than a number of days, months or years, based on their creation date. Use `0` to remove everything.
 - ⚡ **Parallel execution:** Limit the total number of jobs (`JobsTotal`) and the number of jobs per computer (`JobsPerComputer`), so busy servers are never overloaded.
 - 🔁 **Resilient:** Remote jobs that fail because of a dropped WinRM connection are retried automatically.
 - 🌍 **Remote ready:** Use local paths with a `ComputerName` (PowerShell remoting) or plain UNC paths.
@@ -43,7 +44,7 @@ cd remove-file-or-folder
 
 ### 3. Configuration
 
-Copy `Example.json` to `MyConfig.json` and adjust it. Every property is explained in the `?` section of `Example.json`. A minimal example:
+Copy `Example.json` to `MyConfig.json` and adjust it. `Example.json` contains a task for every use case, and every property is explained in its `?` section. A minimal example:
 
 ```json
 {
@@ -51,27 +52,20 @@ Copy `Example.json` to `MyConfig.json` and adjust it. Every property is explaine
     "JobsTotal": 4,
     "JobsPerComputer": 2
   },
-  "Remove": {
-    "FilesInFolder": [
-      {
-        "Name": "Application logs",
-        "ComputerName": "SERVER1",
-        "Path": "D:\\Logs",
-        "Recurse": true,
-        "OlderThan": {
-          "Quantity": 30,
-          "Unit": "Day"
-        }
-      }
-    ],
-    "EmptyFolders": [
-      {
-        "Name": "Drop zone",
-        "ComputerName": null,
-        "Path": "\\\\contoso\\share\\dropzone"
-      }
-    ]
-  },
+  "Tasks": [
+    {
+      "ComputerName": "SERVER1",
+      "Folders": ["D:\\Application\\Logs", "D:\\Application\\Archive"],
+      "OlderThan": { "Quantity": 30, "Unit": "Day" },
+      "Recurse": true,
+      "RemoveEmptyFolders": true
+    },
+    {
+      "ComputerName": null,
+      "Files": [{ "Name": "Upload log", "Path": "\\\\contoso\\sftp\\upload.log" }],
+      "OlderThan": { "Quantity": 0, "Unit": "Day" }
+    }
+  ],
   "Settings": {
     "ScriptName": "Remove old logs",
     "SendMail": {
@@ -82,9 +76,24 @@ Copy `Example.json` to `MyConfig.json` and adjust it. Every property is explaine
 }
 ```
 
-`EmptyFolders` jobs always run after all other removal jobs, so folders emptied by those jobs are removed in the same run.
-
 The mail server, log folder and event log settings are left out above for brevity; they are required, see `Example.json`.
+
+### 📋 Tasks
+
+Every task targets one computer and applies the same settings to a list of paths. Use as many tasks as needed, for example one per computer and retention period.
+
+| Property             | Description                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `ComputerName`       | The computer that executes the removal. Required for local paths like `D:\Logs`, use `null` for UNC paths and `localhost` for this computer. |
+| `Files`              | The files to remove. Requires `OlderThan`.                                                                                                |
+| `Folders`            | The folders to clean up. Requires `RemoveEmptyFolders`, and `Recurse` when `OlderThan` is used.                                          |
+| `OlderThan`          | Remove the files older than this. Leave it out for `Folders` to only remove empty folders.                                               |
+| `Recurse`            | `true` also removes the files in the subfolders.                                                                                         |
+| `RemoveEmptyFolders` | `true` removes the empty folders below each folder, after all files are removed. The folder itself is never removed.                     |
+
+A path in `Files` or `Folders` is a plain string, or an object `{ "Name": "...", "Path": "..." }` when the e-mail should show a friendly name instead of the path.
+
+Every path is processed as a separate job, so `MaxConcurrent` applies per path. Empty folders are always removed after all file removals have finished.
 
 ### ⏳ How `OlderThan` works
 

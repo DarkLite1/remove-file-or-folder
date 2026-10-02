@@ -487,6 +487,32 @@ Describe 'an incorrect input file' {
         Should -Not -Invoke Send-MailKitMessageHC -Scope It
     }
 }
+Describe 'Example.json' {
+    It 'is a valid input file' {
+        Clear-TestLogFolderHC
+
+        $testExample = Get-Content -LiteralPath (
+            Join-Path (Split-Path $PSScriptRoot) 'Example.json'
+        ) -Raw | ConvertFrom-Json
+
+        # keep the examples, but avoid real mail, event log and log folder
+        $testExample.Settings.SendMail.When = 'Never'
+        $testExample.Settings.SaveInEventLog.Save = $false
+        $testExample.Settings.SaveLogFiles.Where.Folder = $testLogFolder
+        # mocks only work in sequential mode
+        $testExample.MaxConcurrent.JobsTotal = 1
+
+        Test-NewJsonFileHC $testExample
+
+        $global:LASTEXITCODE = 0
+
+        .$testScript @testParams -WarningVariable testWarnings -WarningAction SilentlyContinue
+
+        $testWarnings | Should -BeNullOrEmpty
+        $LASTEXITCODE | Should -Be 0
+        Should -Invoke Invoke-Command -Scope It
+    }
+}
 Describe 'execute script' {
     Context 'Files' {
         BeforeAll {
