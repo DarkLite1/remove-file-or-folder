@@ -5,6 +5,18 @@ BeforeAll {
     $testScript = Join-Path (Split-Path $PSScriptRoot) (
         (Split-Path $PSCommandPath -Leaf).Replace('.Tests.ps1', '.ps1')
     )
+    $testTokens = $null
+    $testParseErrors = $null
+    $testAst = [System.Management.Automation.Language.Parser]::ParseFile($testScript, [ref]$testTokens, [ref]$testParseErrors)
+    $testParseErrors | Should -BeNullOrEmpty
+    foreach ($testFunctionName in 'Get-ExclusiveCutoffHC', 'New-ReadErrorResultHC') {
+        $testFunction = $testAst.Find({
+                param($node)
+                $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq $testFunctionName
+            }, $true)
+        . ([scriptblock]::Create($testFunction.Extent.Text))
+    }
 }
 Describe 'the mandatory parameters are' {
     It '<_>' -ForEach @('Type', 'Path') {
@@ -543,19 +555,6 @@ Describe 'streamed file processing' {
     }
 }
 Describe 'exclusive cutoff helper' {
-    BeforeAll {
-        $testTokens = $null
-        $testParseErrors = $null
-        $testAst = [System.Management.Automation.Language.Parser]::ParseFile($testScript, [ref]$testTokens, [ref]$testParseErrors)
-        $testParseErrors | Should -BeNullOrEmpty
-        $testFunction = $testAst.Find({
-                param($node)
-                $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-                $node.Name -eq 'Get-ExclusiveCutoffHC'
-            }, $true)
-        . ([scriptblock]::Create($testFunction.Extent.Text))
-    }
-
     It 'returns the exclusive <Unit> boundary for quantity <Quantity>' -ForEach @(
         @{ Unit = 'Day'; Quantity = 30; ReferenceDate = '2026-10-02T15:30:00'; Expected = '2026-09-03' }
         @{ Unit = 'Day'; Quantity = 1; ReferenceDate = '2024-03-01T15:30:00'; Expected = '2024-03-01' }
@@ -578,6 +577,31 @@ Describe 'exclusive cutoff helper' {
     It 'preserves the overflow error for <_>' -ForEach @('Day', 'Month', 'Year') {
         { Get-ExclusiveCutoffHC -ReferenceDate ([datetime]'2026-10-02') -Unit $_ -Quantity ([int]::MaxValue) } |
         Should -Throw '*Invalid retention period*'
+    }
+}
+Describe 'read-error result helper' {
+    It 'preserves the result schema for <_>' -ForEach @('File', 'FilesInFolder', 'EmptyFolders') {
+        $actual = @(New-ReadErrorResultHC -FullName 'z:\folder\[item]' -ItemType $_ -Message 'Access denied')
+
+        $actual | Should -HaveCount 1
+        ($actual[0].PSObject.Properties.Name -join ',') |
+        Should -Be 'DateTime,ComputerName,Type,FullName,CreationTime,Action,Error'
+        $actual[0].DateTime | Should -BeOfType ([datetime])
+        $actual[0].ComputerName | Should -Be $env:COMPUTERNAME
+        $actual[0].Type | Should -Be $_
+        $actual[0].FullName | Should -Be 'z:\folder\[item]'
+        $actual[0].CreationTime | Should -BeNullOrEmpty
+        $actual[0].Action | Should -BeNullOrEmpty
+        $actual[0].Error | Should -BeOfType ([string])
+        $actual[0].Error | Should -Be 'Access denied'
+    }
+
+    It 'allows an enumeration error without a target path and emits no warning itself' {
+        $actual = New-ReadErrorResultHC -FullName '' -ItemType FilesInFolder -Message 'Read failed' 3>&1
+
+        @($actual) | Should -HaveCount 1
+        $actual.FullName | Should -Be ''
+        $actual.Error | Should -Be 'Read failed'
     }
 }
 Describe 'calendar cutoff boundaries' {

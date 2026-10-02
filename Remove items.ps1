@@ -114,6 +114,24 @@ function Get-ExclusiveCutoffHC {
     catch { throw "Invalid retention period '$Quantity $Unit': $_" }
 }
 
+function New-ReadErrorResultHC {
+    param (
+        [string]$FullName,
+        [string]$ItemType,
+        [string]$Message
+    )
+
+    [PSCustomObject]@{
+        DateTime     = Get-Date
+        ComputerName = $env:COMPUTERNAME
+        Type         = $ItemType
+        FullName     = $FullName
+        CreationTime = $null
+        Action       = $null
+        Error        = $Message
+    }
+}
+
 function Get-IncludedChildItemHC {
     param (
         [string]$Root,
@@ -234,15 +252,7 @@ if ($Type -eq 'EmptyFolders') {
     ForEach-Object {
         Write-Warning "Failed to read '$($_.Key)': $($_.Value)"
 
-        [PSCustomObject]@{
-            DateTime     = Get-Date
-            ComputerName = $env:COMPUTERNAME
-            Type         = $Type
-            FullName     = $_.Key
-            CreationTime = $null
-            Action       = $null
-            Error        = $_.Value
-        }
+        New-ReadErrorResultHC -FullName $_.Key -ItemType $Type -Message $_.Value
     }
 
     return
@@ -262,15 +272,7 @@ if (
 $pathType = if ($Type -eq 'File') { 'Leaf' } else { 'Container' }
 
 if (-not (Test-Path -LiteralPath $Path -PathType $pathType)) {
-    return [PSCustomObject]@{
-        DateTime     = Get-Date
-        ComputerName = $env:COMPUTERNAME
-        Type         = $Type
-        FullName     = $Path
-        CreationTime = $null
-        Action       = $null
-        Error        = 'Path not found'
-    }
+    return New-ReadErrorResultHC -FullName $Path -ItemType $Type -Message 'Path not found'
 }
 #endregion
 
@@ -348,13 +350,5 @@ foreach ($getError in $getErrors) {
     if ($excludedPaths -and (Test-IsExcludedHC "$($getError.TargetObject)")) { continue }
     Write-Warning "Failed to read '$($getError.TargetObject)': $getError"
 
-    [PSCustomObject]@{
-        DateTime     = Get-Date
-        ComputerName = $env:COMPUTERNAME
-        Type         = $Type
-        FullName     = "$($getError.TargetObject)"
-        CreationTime = $null
-        Action       = $null
-        Error        = "$getError"
-    }
+    New-ReadErrorResultHC -FullName "$($getError.TargetObject)" -ItemType $Type -Message "$getError"
 }
