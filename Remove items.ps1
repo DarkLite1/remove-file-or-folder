@@ -31,6 +31,10 @@
 
 .PARAMETER ExcludeFile
     Files below 'Path' that are never removed, for 'FilesInFolder' only.
+
+.PARAMETER OlderThanBasedOn
+    Mandatory for 'File' and 'FilesInFolder'. The file date compared with
+    'OlderThan': CreationTime or LastWriteTime.
 #>
 
 Param (
@@ -46,7 +50,9 @@ Param (
     [Int]$OlderThanQuantity,
     [Boolean]$Recurse,
     [AllowEmptyCollection()]
-    [String[]]$ExcludeFile = @()
+    [String[]]$ExcludeFile = @(),
+    [ValidateSet('CreationTime', 'LastWriteTime')]
+    [String]$OlderThanBasedOn
 )
 
 $excludedPaths = @(
@@ -165,10 +171,11 @@ if ($Type -eq 'EmptyFolders') {
 if (
     -not (
         $PSBoundParameters.ContainsKey('OlderThanUnit') -and
-        $PSBoundParameters.ContainsKey('OlderThanQuantity')
+        $PSBoundParameters.ContainsKey('OlderThanQuantity') -and
+        $PSBoundParameters.ContainsKey('OlderThanBasedOn')
     )
 ) {
-    throw "Parameters 'OlderThanUnit' and 'OlderThanQuantity' are mandatory for type '$Type'"
+    throw "Parameters 'OlderThanUnit', 'OlderThanQuantity' and 'OlderThanBasedOn' are mandatory for type '$Type'"
 }
 
 #region Test path exists
@@ -223,7 +230,7 @@ if ($excludedFiles) {
 #endregion
 
 #region Select files older than
-Write-Verbose "Select files with a creation date older than '$OlderThanQuantity $OlderThanUnit'"
+Write-Verbose "Select files with a $OlderThanBasedOn older than '$OlderThanQuantity $OlderThanUnit'"
 
 if ($OlderThanQuantity -ne 0) {
     $today = Get-Date
@@ -237,7 +244,7 @@ if ($OlderThanQuantity -ne 0) {
     $cutoff = $cutoffDate.ToString($dateFormat)
 
     $files = $files.Where(
-        { $_.CreationTime.ToString($dateFormat) -le $cutoff }
+        { $_.$OlderThanBasedOn.ToString($dateFormat) -le $cutoff }
     )
 }
 #endregion
@@ -247,13 +254,14 @@ foreach ($fileToRemove in $files) {
         Write-Verbose "Remove file '$($fileToRemove.FullName)'"
 
         $result = [PSCustomObject]@{
-            DateTime     = Get-Date
-            ComputerName = $env:COMPUTERNAME
-            Type         = 'File'
-            FullName     = $fileToRemove.FullName
-            CreationTime = $fileToRemove.CreationTime
-            Action       = $null
-            Error        = $null
+            DateTime      = Get-Date
+            ComputerName  = $env:COMPUTERNAME
+            Type          = 'File'
+            FullName      = $fileToRemove.FullName
+            CreationTime  = $fileToRemove.CreationTime
+            LastWriteTime = $fileToRemove.LastWriteTime
+            Action        = $null
+            Error         = $null
         }
 
         $params = @{

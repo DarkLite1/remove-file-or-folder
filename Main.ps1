@@ -246,6 +246,20 @@ Begin {
                     if ("$($task.OlderThan.Quantity)" -notMatch '^\d+$') {
                         throw "Property '$prefix.OlderThan.Quantity' needs to be a positive number, the value '$($task.OlderThan.Quantity)' is not supported. Use value 0 to remove all files."
                     }
+
+                    if (-not $task.OlderThan.BasedOn) {
+                        throw "Property '$prefix.OlderThan.BasedOn' not found. Use 'CreationTime' or 'LastWriteTime'."
+                    }
+
+                    if ($task.OlderThan.BasedOn -notin 'CreationTime', 'LastWriteTime') {
+                        throw "Property '$prefix.OlderThan.BasedOn' with value '$($task.OlderThan.BasedOn)' is not supported. Supported values are 'CreationTime' or 'LastWriteTime'."
+                    }
+
+                    foreach ($name in $task.OlderThan.PSObject.Properties.Name) {
+                        if ($name -notin 'Quantity', 'Unit', 'BasedOn') {
+                            throw "Property '$prefix.OlderThan.$name' is not supported"
+                        }
+                    }
                 }
                 #endregion
 
@@ -425,12 +439,14 @@ Process {
                 'RemoveFile' {
                     $argumentList = @(
                         'File', $task.Path, @(),
-                        $task.OlderThan.Unit, $task.OlderThan.Quantity
+                        $task.OlderThan.Unit, $task.OlderThan.Quantity,
+                        $false, @(), $task.OlderThan.BasedOn
                     )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
+                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{4}'" -f
                     $task.ComputerName,
-                    $argumentList[1], $argumentList[3], $argumentList[4]
+                    $argumentList[1], $argumentList[3], $argumentList[4],
+                    $argumentList[7]
 
                     break
                 }
@@ -438,14 +454,14 @@ Process {
                     $argumentList = @(
                         'FilesInFolder', $task.Path, $task.ExcludeFolders,
                         $task.OlderThan.Unit, $task.OlderThan.Quantity,
-                        $task.Recurse, $task.ExcludeFiles
+                        $task.Recurse, $task.ExcludeFiles, $task.OlderThan.BasedOn
                     )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}' ExcludeFolders '{5}' ExcludeFiles '{6}'" -f
+                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{7}' Recurse '{4}' ExcludeFolders '{5}' ExcludeFiles '{6}'" -f
                     $task.ComputerName,
                     $argumentList[1], $argumentList[3], $argumentList[4],
                     $argumentList[5], ($task.ExcludeFolders -join "', '"),
-                    ($task.ExcludeFiles -join "', '")
+                    ($task.ExcludeFiles -join "', '"), $argumentList[7]
 
                     break
                 }
@@ -775,6 +791,7 @@ End {
                 Expression = { $_.FullName }
             },
             'CreationTime',
+            'LastWriteTime',
             @{
                 Name       = 'OlderThan'
                 Expression = {
@@ -783,6 +800,10 @@ End {
                         $task.OlderThan.Quantity, $task.OlderThan.Unit
                     }
                 }
+            },
+            @{
+                Name       = 'OlderThanBasedOn'
+                Expression = { $task.OlderThan.BasedOn }
             },
             'Action', 'Error'
         }

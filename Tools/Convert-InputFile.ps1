@@ -159,9 +159,11 @@ $tasks = foreach ($group in $groups.Values) {
     $task[$group.ListName] = $group[$group.ListName]
 
     if ($group.OlderThan) {
+        # the old format always compared the creation time
         $task.OlderThan = [ordered]@{
             Quantity = $group.OlderThan.Quantity
             Unit     = $group.OlderThan.Unit
+            BasedOn  = 'CreationTime'
         }
     }
     if ($group.ListName -eq 'Folders') {

@@ -12,19 +12,19 @@ Describe 'the mandatory parameters are' {
         Should -BeTrue
     }
 }
-Describe 'OlderThanUnit and OlderThanQuantity are required for Type <_>' -ForEach @(
+Describe 'OlderThanUnit, OlderThanQuantity and OlderThanBasedOn are required for Type <_>' -ForEach @(
     'File', 'FilesInFolder'
 ) {
     It 'throws when they are missing' {
-        { . $testScript -Type $_ -Path 'TestDrive:\' } |
-        Should -Throw "*Parameters 'OlderThanUnit' and 'OlderThanQuantity' are mandatory for type '$_'*"
+        { . $testScript -Type $_ -Path 'TestDrive:\' -OlderThanUnit 'Day' -OlderThanQuantity 0 } |
+        Should -Throw "*Parameters 'OlderThanUnit', 'OlderThanQuantity' and 'OlderThanBasedOn' are mandatory for type '$_'*"
     }
 }
 Describe 'a path that does not exist is reported for Type <_>' -ForEach @(
     'File', 'FilesInFolder'
 ) {
     It 'with Error Path not found' {
-        $actual = . $testScript -Type $_ -Path 'TestDrive:\notExisting' -OlderThanUnit 'Day' -OlderThanQuantity 0
+        $actual = . $testScript -Type $_ -Path 'TestDrive:\notExisting' -OlderThanUnit 'Day' -OlderThanQuantity 0 -OlderThanBasedOn 'CreationTime'
 
         $actual.Type | Should -Be $_
         $actual.Error | Should -Be 'Path not found'
@@ -37,6 +37,7 @@ Describe 'Type File' {
             Path              = (New-Item 'TestDrive:/File/a' -ItemType File -Force).FullName
             OlderThanUnit     = 'Year'
             OlderThanQuantity = 0
+            OlderThanBasedOn  = 'CreationTime'
         }
 
         $test = @{
@@ -80,6 +81,7 @@ Describe 'Type FilesInFolder' {
             Path              = (New-Item 'TestDrive:/FilesInFolder' -ItemType Directory).FullName
             OlderThanUnit     = 'Month'
             OlderThanQuantity = 3
+            OlderThanBasedOn  = 'CreationTime'
             Recurse           = $false
         }
     }
@@ -197,6 +199,7 @@ Describe 'Type FilesInFolder' {
                 Path              = $testRoot
                 OlderThanUnit     = 'Day'
                 OlderThanQuantity = 0
+                OlderThanBasedOn  = 'CreationTime'
                 Recurse           = $true
             }
 
@@ -340,6 +343,7 @@ Describe 'ExcludeFolder' {
                 ExcludeFolder     = @("$testRoot\keep")
                 OlderThanUnit     = 'Day'
                 OlderThanQuantity = 0
+                OlderThanBasedOn  = 'CreationTime'
                 Recurse           = $true
             }
         }
@@ -431,6 +435,7 @@ Describe 'ExcludeFile' {
             Path              = $testRoot
             OlderThanUnit     = 'Day'
             OlderThanQuantity = 0
+            OlderThanBasedOn  = 'CreationTime'
             Recurse           = $true
             ExcludeFile       = @($testKeepFile.FullName.ToUpper())
         }
@@ -444,5 +449,49 @@ Describe 'ExcludeFile' {
     It 'removes the other files' {
         $testRemoveFile.FullName | Should -Not -Exist
         $testRemoveTopFile.FullName | Should -Not -Exist
+    }
+}
+Describe 'OlderThanBasedOn <BasedOn>' -ForEach @(
+    @{ BasedOn = 'CreationTime'; RemovesDailyWrittenFile = $true; RemovesCopiedFile = $false }
+    @{ BasedOn = 'LastWriteTime'; RemovesDailyWrittenFile = $false; RemovesCopiedFile = $true }
+) {
+    BeforeAll {
+        $testRoot = (New-Item "TestDrive:/basedOn_$BasedOn" -ItemType Directory).FullName
+
+        # created long ago, but written every day, like a history file
+        $testDailyWrittenFile = New-Item "$testRoot\history.json" -ItemType File
+        $testDailyWrittenFile.CreationTime = (Get-Date).AddDays(-100)
+        $testDailyWrittenFile.LastWriteTime = Get-Date
+
+        # copied today, but with its original old content date
+        $testCopiedFile = New-Item "$testRoot\copied.txt" -ItemType File
+        $testCopiedFile.CreationTime = Get-Date
+        $testCopiedFile.LastWriteTime = (Get-Date).AddDays(-100)
+
+        $testParams = @{
+            Type              = 'FilesInFolder'
+            Path              = $testRoot
+            OlderThanUnit     = 'Day'
+            OlderThanQuantity = 30
+            OlderThanBasedOn  = $BasedOn
+            Recurse           = $false
+        }
+
+        $actual = . $testScript @testParams
+    }
+    It 'a file created long ago but written today is removed: <RemovesDailyWrittenFile>' {
+        Test-Path -LiteralPath $testDailyWrittenFile.FullName |
+        Should -Be (-not $RemovesDailyWrittenFile)
+    }
+    It 'a file created today with an old last write time is removed: <RemovesCopiedFile>' {
+        Test-Path -LiteralPath $testCopiedFile.FullName |
+        Should -Be (-not $RemovesCopiedFile)
+    }
+    It 'reports both dates of a removed file' {
+        $actual | Should -Not -BeNullOrEmpty
+        $actual | ForEach-Object {
+            $_.CreationTime | Should -Not -BeNullOrEmpty
+            $_.LastWriteTime | Should -Not -BeNullOrEmpty
+        }
     }
 }

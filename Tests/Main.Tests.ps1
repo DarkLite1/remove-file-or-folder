@@ -19,6 +19,7 @@ BeforeAll {
                 OlderThan    = @{
                     Quantity = 1
                     Unit     = 'Day'
+                    BasedOn  = 'CreationTime'
                 }
             }
             @{
@@ -29,6 +30,7 @@ BeforeAll {
                 OlderThan          = @{
                     Quantity = 1
                     Unit     = 'Day'
+                    BasedOn  = 'LastWriteTime'
                 }
                 Recurse            = $true
                 RemoveEmptyFolders = $false
@@ -426,6 +428,21 @@ Describe 'an incorrect input file' {
             Message     = "Property 'Tasks[1].OlderThan.Quantity' needs to be a positive number, the value '-1' is not supported."
         }
         @{
+            Description = 'Tasks[0].OlderThan.BasedOn missing'
+            Change      = { param($f) $f.Tasks[0].OlderThan.PSObject.Properties.Remove('BasedOn') }
+            Message     = "Property 'Tasks[0].OlderThan.BasedOn' not found. Use 'CreationTime' or 'LastWriteTime'."
+        }
+        @{
+            Description = 'Tasks[1].OlderThan.BasedOn not supported'
+            Change      = { param($f) $f.Tasks[1].OlderThan.BasedOn = 'LastAccessTime' }
+            Message     = "Property 'Tasks[1].OlderThan.BasedOn' with value 'LastAccessTime' is not supported. Supported values are 'CreationTime' or 'LastWriteTime'."
+        }
+        @{
+            Description = 'Tasks[0].OlderThan has an unknown property'
+            Change      = { param($f) $f.Tasks[0].OlderThan | Add-Member -NotePropertyName 'Based' -NotePropertyValue 'x' }
+            Message     = "Property 'Tasks[0].OlderThan.Based' is not supported"
+        }
+        @{
             Description = 'Tasks[0].Files[0] without a path'
             Change      = { param($f) $f.Tasks[0].Files[0].Path = $null }
             Message     = "Property 'Tasks[0].Files[0]' needs a path"
@@ -579,7 +596,8 @@ Describe 'execute script' {
                 ($ArgumentList[0] -eq 'File') -and
                 ($ArgumentList[1] -eq $testNewInputFile.Tasks[0].Files[0].Path) -and
                 ($ArgumentList[3] -eq $testNewInputFile.Tasks[0].OlderThan.Unit) -and
-                ($ArgumentList[4] -eq $testNewInputFile.Tasks[0].OlderThan.Quantity)
+                ($ArgumentList[4] -eq $testNewInputFile.Tasks[0].OlderThan.Quantity) -and
+                ($ArgumentList[7] -eq 'CreationTime')
             }
         }
     }
@@ -603,7 +621,8 @@ Describe 'execute script' {
                 ($ArgumentList[1] -eq $testNewInputFile.Tasks[0].Folders[0].Path) -and
                 ($ArgumentList[3] -eq $testNewInputFile.Tasks[0].OlderThan.Unit) -and
                 ($ArgumentList[4] -eq $testNewInputFile.Tasks[0].OlderThan.Quantity) -and
-                ($ArgumentList[5] -eq $testNewInputFile.Tasks[0].Recurse)
+                ($ArgumentList[5] -eq $testNewInputFile.Tasks[0].Recurse) -and
+                ($ArgumentList[7] -eq 'LastWriteTime')
             }
         }
     }
@@ -821,7 +840,7 @@ Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Va
             [PSCustomObject]@{
                 ComputerName = 'localhost'
                 Files        = @(1..4).ForEach({ "c:\file$_.txt" })
-                OlderThan    = @{ Quantity = 1; Unit = 'Day' }
+                OlderThan    = @{ Quantity = 1; Unit = 'Day'; BasedOn = 'CreationTime' }
             }
         )
     }
@@ -868,14 +887,14 @@ Describe 'with the real Remove items script on the local computer' {
             [PSCustomObject]@{
                 ComputerName = 'localhost'
                 Files        = @($testSingleFile.FullName)
-                OlderThan    = @{ Quantity = 0; Unit = 'Day' }
+                OlderThan    = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' }
             }
             [PSCustomObject]@{
                 ComputerName       = 'localhost'
                 Folders            = @("$testRoot\folder")
                 ExcludeFolders     = @("$testRoot\folder\keep")
                 ExcludeFiles       = @("$testRoot\folder\state.json")
-                OlderThan          = @{ Quantity = 5; Unit = 'Day' }
+                OlderThan          = @{ Quantity = 5; Unit = 'Day'; BasedOn = 'CreationTime' }
                 Recurse            = $true
                 RemoveEmptyFolders = $true
             }

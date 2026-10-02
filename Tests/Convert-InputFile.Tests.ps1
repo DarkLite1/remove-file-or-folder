@@ -47,6 +47,10 @@ Describe 'Convert-InputFile' {
         $task.Files[1] | Should -Be '\\s\b.txt'
         $task.OlderThan.Quantity | Should -Be 0
     }
+    It 'keeps comparing the creation time like the old format' {
+        $actual.Tasks.OlderThan.BasedOn | Sort-Object -Unique |
+        Should -Be 'CreationTime'
+    }
     It 'groups folders with the same computer and settings in one task' {
         $task = $actual.Tasks | Where-Object { $_.OlderThan.Unit -eq 'Month' }
 

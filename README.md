@@ -10,7 +10,7 @@ This PowerShell script removes old files, the content of folders and empty folde
 
 - 🗑️ **Flexible removal:** Remove specific files, the files in folders (optionally recursive), the empty folders below a path, or files and empty folders in one go.
 - 📋 **Compact configuration:** One task holds a list of paths that share the same computer and settings.
-- ⏳ **Age based:** Only remove files older than a number of days, months or years, based on their creation date. Use `0` to remove everything.
+- ⏳ **Age based:** Only remove files older than a number of days, months or years, based on their creation or last write date. Use `0` to remove everything.
 - ⚡ **Parallel execution:** Limit the total number of jobs (`JobsTotal`) and the number of jobs per computer (`JobsPerComputer`), so busy servers are never overloaded.
 - 🔁 **Resilient:** Remote jobs that fail because of a dropped WinRM connection are retried automatically.
 - 🌍 **Remote ready:** Use local paths with a `ComputerName` (PowerShell remoting) or plain UNC paths.
@@ -56,14 +56,14 @@ Copy `Example.json` to `MyConfig.json` and adjust it. `Example.json` contains a 
     {
       "ComputerName": "SERVER1",
       "Folders": ["D:\\Application\\Logs", "D:\\Application\\Archive"],
-      "OlderThan": { "Quantity": 30, "Unit": "Day" },
+      "OlderThan": { "Quantity": 30, "Unit": "Day", "BasedOn": "LastWriteTime" },
       "Recurse": true,
       "RemoveEmptyFolders": true
     },
     {
       "ComputerName": null,
       "Files": [{ "Name": "Upload log", "Path": "\\\\contoso\\sftp\\upload.log" }],
-      "OlderThan": { "Quantity": 0, "Unit": "Day" }
+      "OlderThan": { "Quantity": 0, "Unit": "Day", "BasedOn": "CreationTime" }
     }
   ],
   "Settings": {
@@ -89,7 +89,7 @@ Every task targets one computer and applies the same settings to a list of paths
 | `Folders`            | The folders to clean up. Requires `RemoveEmptyFolders`, and `Recurse` when `OlderThan` is used.                                          |
 | `ExcludeFolders`     | Optional subfolders of `Folders` to skip. Nothing inside them is removed, and they are never removed as empty folders.                   |
 | `ExcludeFiles`       | Optional files below `Folders` that are never removed, regardless of their age. Requires `OlderThan`.                                    |
-| `OlderThan`          | Remove the files older than this. Leave it out for `Folders` to only remove empty folders.                                               |
+| `OlderThan`          | Remove the files older than this, based on their `CreationTime` or `LastWriteTime`. Leave it out for `Folders` to only remove empty folders. |
 | `Recurse`            | `true` also removes the files in the subfolders.                                                                                         |
 | `RemoveEmptyFolders` | `true` removes the empty folders below each folder, after all files are removed. The folder itself is never removed.                     |
 
@@ -105,22 +105,31 @@ Input files with a `Remove` section (`File`, `FilesInFolder`, `EmptyFolders`) ar
 & '.\Tools\Convert-InputFile.ps1' -Path 'C:\old\BNL CL.json' -Destination 'C:\new\BNL CL.json'
 ```
 
-The converter groups the paths with the same computer and settings in one task, and turns an `EmptyFolders` entry for a folder that is also in `FilesInFolder` into `RemoveEmptyFolders: true`. `Settings` are copied from `Example.json` with the old `SendMail.To` and `SendMail.When`, so check the mail server, log folder and event log settings afterwards.
+The converter groups the paths with the same computer and settings in one task, and turns an `EmptyFolders` entry for a folder that is also in `FilesInFolder` into `RemoveEmptyFolders: true`. `OlderThan.BasedOn` is set to `CreationTime`, which is what the old format used. `Settings` are copied from `Example.json` with the old `SendMail.To` and `SendMail.When`, so check the mail server, log folder and event log settings afterwards.
 
 ### ⏳ How `OlderThan` works
 
-Files are selected on their **creation date**. `Quantity` `0` removes all files, regardless of their age.
+`OlderThan.BasedOn` decides which file date is compared, it is required:
 
-`Month` and `Year` compare **calendar periods** by design, not an exact number of days. Only the month or year of the creation date counts, the day is ignored:
+| `BasedOn`       | Meaning                                                    | Use it for                                                                                     |
+| --------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `CreationTime`  | When the file was created on this disk                     | Files that are written once, like scans, exports or drop files                                 |
+| `LastWriteTime` | When the content was last changed                          | Files that are updated over time, like logs or history files: they are kept while still in use |
 
-| `OlderThan`         | Run on 1 October 2026 removes files created |
-| ------------------- | ------------------------------------------- |
-| `1 Day`             | on or before 30 September 2026              |
-| `30 Day`            | on or before 1 September 2026               |
-| `1 Month`           | in September 2026 or earlier                |
-| `1 Year`            | in 2025 or earlier                          |
+A copied file gets a new `CreationTime` but keeps its `LastWriteTime`. So with `LastWriteTime` a file that was just copied can already be old enough to be removed.
 
-So `1 Month` removes a file created on 30 September, even though it is only one day old. When you need an exact age, like 30 days, use `Day` with `30` instead of `Month` with `1`.
+`Quantity` `0` removes all files, regardless of their date.
+
+`Month` and `Year` compare **calendar periods** by design, not an exact number of days. Only the month or year of the file date counts, the day is ignored:
+
+| `OlderThan`         | Run on 1 October 2026 removes files dated |
+| ------------------- | ----------------------------------------- |
+| `1 Day`             | on or before 30 September 2026            |
+| `30 Day`            | on or before 1 September 2026             |
+| `1 Month`           | in September 2026 or earlier              |
+| `1 Year`            | in 2025 or earlier                        |
+
+So `1 Month` removes a file dated 30 September, even though it is only one day old. When you need an exact age, like 30 days, use `Day` with `30` instead of `Month` with `1`.
 
 ## 💻 Usage
 
