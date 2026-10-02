@@ -47,6 +47,7 @@ Param (
     [String[]]$ExcludeFolder = @(),
     [ValidateSet('Day', 'Month', 'Year')]
     [String]$OlderThanUnit,
+    [ValidateRange(0, [int]::MaxValue)]
     [Int]$OlderThanQuantity,
     [Boolean]$Recurse,
     [AllowEmptyCollection()]

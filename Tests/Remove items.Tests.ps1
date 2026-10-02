@@ -20,6 +20,25 @@ Describe 'OlderThanUnit, OlderThanQuantity and OlderThanBasedOn are required for
         Should -Throw "*Parameters 'OlderThanUnit', 'OlderThanQuantity' and 'OlderThanBasedOn' are mandatory for type '$_'*"
     }
 }
+Describe 'age validation' {
+    It 'rejects negative quantity <_> without deleting the file' -ForEach @(-1, [int]::MinValue) {
+        $testFile = New-Item "TestDrive:/negative_$_.txt" -ItemType File
+
+        { . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity $_ -OlderThanBasedOn LastWriteTime } |
+        Should -Throw '*OlderThanQuantity*'
+
+        $testFile.FullName | Should -Exist
+    }
+
+    It 'continues to allow zero to remove a recent file' {
+        $testFile = New-Item 'TestDrive:/zero.txt' -ItemType File
+
+        $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime
+
+        $actual.Action | Should -Be 'Removed'
+        $testFile.FullName | Should -Not -Exist
+    }
+}
 Describe 'a path that does not exist is reported for Type <_>' -ForEach @(
     'File', 'FilesInFolder'
 ) {
