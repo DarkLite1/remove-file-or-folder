@@ -87,6 +87,7 @@ Every task targets one computer and applies the same settings to a list of paths
 | `ComputerName`       | The computer that executes the removal. Required for local paths like `D:\Logs`, use `null` for UNC paths and `localhost` for this computer. |
 | `Files`              | The files to remove. Requires `OlderThan`.                                                                                                |
 | `Folders`            | The folders to clean up. Requires `RemoveEmptyFolders`, and `Recurse` when `OlderThan` is used.                                          |
+| `ExcludeFolders`     | Optional subfolders of `Folders` to skip. Nothing inside them is removed, and they are never removed as empty folders.                   |
 | `OlderThan`          | Remove the files older than this. Leave it out for `Folders` to only remove empty folders.                                               |
 | `Recurse`            | `true` also removes the files in the subfolders.                                                                                         |
 | `RemoveEmptyFolders` | `true` removes the empty folders below each folder, after all files are removed. The folder itself is never removed.                     |

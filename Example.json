@@ -36,6 +36,15 @@
       "RemoveEmptyFolders": false
     },
     {
+      "?": "Clean up a log share, but never touch the folder that holds the print history files.",
+      "ComputerName": null,
+      "Folders": ["\\\\contoso\\log"],
+      "ExcludeFolders": ["\\\\contoso\\log\\Print file in folder"],
+      "OlderThan": { "Quantity": 90, "Unit": "Day" },
+      "Recurse": true,
+      "RemoveEmptyFolders": true
+    },
+    {
       "?": "Clean up scanner folders on shares, each shown with a friendly name in the e-mail.",
       "ComputerName": null,
       "Folders": [
@@ -109,6 +118,7 @@
         "ComputerName": "(Mandatory when a path is a local path) The computer where the removal is executed. Use null for UNC paths, they are processed by the computer running the script. Use 'localhost' for local paths on the computer running the script.",
         "Files": "(Mandatory 'Files' or 'Folders') An array of file paths to remove. Each item is a path string, or an object { \"Name\": \"...\", \"Path\": \"...\" } where 'Name' is shown in the e-mail instead of the path. A path is a local path when 'ComputerName' is used, or a UNC path.",
         "Folders": "(Mandatory 'Files' or 'Folders') An array of folder paths, in the same format as 'Files'. All settings of the task apply to every folder.",
+        "ExcludeFolders": "(Optional, only for 'Folders') An array of folder paths to skip. The files and folders inside an excluded folder are never removed, and the excluded folder itself is never removed when it is empty. Every path needs to be a subfolder of a path in 'Folders', in the same format (local path or UNC path).",
         "OlderThan": {
           "?": "(Mandatory for 'Files', optional for 'Folders') Remove the files with a creation date older than this. Leave it out for 'Folders' to only remove empty folders.",
           "Quantity": "(Mandatory) Number of units. Value 0 removes all files regardless of their creation date.",

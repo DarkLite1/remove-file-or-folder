@@ -175,7 +175,7 @@ Begin {
                 $taskProperties = $task.PSObject.Properties.Name
 
                 foreach ($name in $taskProperties) {
-                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
+                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'ExcludeFolders', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
                         throw "Property '$prefix.$name' is not supported"
                     }
                 }
@@ -262,6 +262,25 @@ Begin {
 
                 #region Create one task to execute per path
                 $entries = @($task.$listName)
+                $folderPaths = @()
+
+                #region ExcludeFolders
+                $excludeFolders = @()
+
+                if ($taskProperties -contains 'ExcludeFolders') {
+                    if ($listName -eq 'Files') {
+                        throw "Property '$prefix.ExcludeFolders' can only be used with '$prefix.Folders'"
+                    }
+
+                    $excludeFolders = @($task.ExcludeFolders)
+
+                    foreach ($excludeFolder in $excludeFolders) {
+                        if (($excludeFolder -isnot [string]) -or (-not $excludeFolder)) {
+                            throw "Property '$prefix.ExcludeFolders' needs to be an array of folder paths, the value '$excludeFolder' is not supported."
+                        }
+                    }
+                }
+                #endregion
 
                 for ($j = 0; $j -lt $entries.Count; $j++) {
                     $entry = $entries[$j]
@@ -298,19 +317,39 @@ Begin {
                         if ($task.RemoveEmptyFolders) { 'RemoveEmptyFolders' }
                     }
 
+                    $folderPaths += $path.TrimEnd('\')
+                    $pathExcludeFolders = @(
+                        $excludeFolders.Where({
+                                $_.StartsWith(
+                                    "$($path.TrimEnd('\'))\", [StringComparison]::OrdinalIgnoreCase
+                                )
+                            })
+                    )
+
                     foreach ($type in $types) {
                         $tasksToExecute += [PSCustomObject]@{
-                            Name         = $name
-                            ComputerName = $computerName
-                            Path         = $path.ToLower()
-                            Type         = $type
-                            OlderThan    = if ($type -ne 'RemoveEmptyFolders') { $task.OlderThan }
-                            Recurse      = $task.Recurse
-                            Job          = @{
+                            Name           = $name
+                            ComputerName   = $computerName
+                            Path           = $path.ToLower()
+                            Type           = $type
+                            OlderThan      = if ($type -ne 'RemoveEmptyFolders') { $task.OlderThan }
+                            Recurse        = $task.Recurse
+                            ExcludeFolders = $pathExcludeFolders
+                            Job            = @{
                                 Results = @()
                                 Errors  = @()
                             }
                         }
+                    }
+                }
+
+                foreach ($excludeFolder in $excludeFolders) {
+                    $isBelowFolder = $folderPaths.Where({
+                            $excludeFolder.StartsWith("$_\", [StringComparison]::OrdinalIgnoreCase)
+                        })
+
+                    if (-not $isBelowFolder) {
+                        throw "Property '$prefix.ExcludeFolders' contains '$excludeFolder', which is not a subfolder of a path in '$prefix.Folders'"
                     }
                 }
                 #endregion
@@ -369,35 +408,38 @@ Process {
             switch ($task.Type) {
                 'RemoveFile' {
                     $argumentList = @(
-                        'File', $task.Path,
+                        'File', $task.Path, @(),
                         $task.OlderThan.Unit, $task.OlderThan.Quantity
                     )
 
                     $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}'" -f
                     $task.ComputerName,
-                    $argumentList[1], $argumentList[2], $argumentList[3]
+                    $argumentList[1], $argumentList[3], $argumentList[4]
 
                     break
                 }
                 'RemoveFilesInFolder' {
                     $argumentList = @(
-                        'FilesInFolder', $task.Path,
+                        'FilesInFolder', $task.Path, $task.ExcludeFolders,
                         $task.OlderThan.Unit, $task.OlderThan.Quantity,
                         $task.Recurse
                     )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}'" -f
+                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' Recurse '{4}' ExcludeFolders '{5}'" -f
                     $task.ComputerName,
-                    $argumentList[1], $argumentList[2], $argumentList[3],
-                    $argumentList[4]
+                    $argumentList[1], $argumentList[3], $argumentList[4],
+                    $argumentList[5], ($task.ExcludeFolders -join "', '")
 
                     break
                 }
                 'RemoveEmptyFolders' {
-                    $argumentList = @('EmptyFolders', $task.Path)
+                    $argumentList = @(
+                        'EmptyFolders', $task.Path, $task.ExcludeFolders
+                    )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}'" -f
-                    $task.ComputerName, $argumentList[1]
+                    $M = "Start job '$_' on '{0}' with Path '{1}' ExcludeFolders '{2}'" -f
+                    $task.ComputerName, $argumentList[1],
+                    ($task.ExcludeFolders -join "', '")
 
                     break
                 }

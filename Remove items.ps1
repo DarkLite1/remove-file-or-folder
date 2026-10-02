@@ -15,6 +15,10 @@
     FilesInFolder : remove the files in the folder 'Path'
     EmptyFolders  : remove all empty folders in the folder 'Path'
 
+.PARAMETER ExcludeFolder
+    Folders below 'Path' to skip, for 'FilesInFolder' and 'EmptyFolders'. The
+    files and folders inside them are never removed.
+
 .PARAMETER OlderThanUnit
     Mandatory for 'File' and 'FilesInFolder'. Day, Month or Year.
 
@@ -32,20 +36,64 @@ Param (
     [String]$Type,
     [Parameter(Mandatory)]
     [String]$Path,
+    [AllowEmptyCollection()]
+    [String[]]$ExcludeFolder = @(),
     [ValidateSet('Day', 'Month', 'Year')]
     [String]$OlderThanUnit,
     [Int]$OlderThanQuantity,
     [Boolean]$Recurse
 )
 
+$excludedPaths = @(
+    $ExcludeFolder | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+)
+
+function Test-IsExcludedHC {
+    param ([String]$FullName)
+
+    foreach ($excludedPath in $excludedPaths) {
+        if (
+            $FullName.Equals($excludedPath, [StringComparison]::OrdinalIgnoreCase) -or
+            $FullName.StartsWith("$excludedPath\", [StringComparison]::OrdinalIgnoreCase)
+        ) {
+            return $true
+        }
+    }
+    $false
+}
+
 if ($Type -eq 'EmptyFolders') {
     $failedFolderRemoval = @()
+    $getErrors = @()
+    $unreadableFolders = @{}
+
+    function Test-IsEmptyFolderHC {
+        param ([System.IO.DirectoryInfo]$Folder)
+
+        try {
+            $Folder.GetFileSystemInfos().Count -eq 0
+        }
+        catch {
+            $unreadableFolders[$Folder.FullName] = $_.Exception.InnerException.Message
+            $Error.RemoveAt(0)
+            $false
+        }
+    }
+
+    $getParams = @{
+        LiteralPath   = $Path
+        Directory     = $true
+        Recurse       = $true
+        ErrorAction   = 'SilentlyContinue'
+        ErrorVariable = '+getErrors'
+    }
 
     while (
-        $emptyFolders = Get-ChildItem -LiteralPath $Path -Directory -Recurse |
+        $emptyFolders = Get-ChildItem @getParams |
         Where-Object {
-            ($_.GetFileSystemInfos().Count -eq 0) -and
-            ($failedFolderRemoval -notContains $_.FullName)
+            (-not (Test-IsExcludedHC $_.FullName)) -and
+            ($failedFolderRemoval -notContains $_.FullName) -and
+            (Test-IsEmptyFolderHC $_)
         }
     ) {
         foreach ($emptyFolder in $emptyFolders) {
@@ -77,6 +125,32 @@ if ($Type -eq 'EmptyFolders') {
             finally {
                 $result
             }
+        }
+    }
+
+    $readErrors = @{}
+
+    foreach ($getError in $getErrors) {
+        $readErrors["$($getError.TargetObject)"] = "$getError"
+    }
+    foreach ($unreadableFolder in $unreadableFolders.GetEnumerator()) {
+        $readErrors[$unreadableFolder.Key] = $unreadableFolder.Value
+    }
+
+    $readErrors.GetEnumerator() |
+    Where-Object { -not (Test-IsExcludedHC $_.Key) } |
+    Sort-Object -Property Key |
+    ForEach-Object {
+        Write-Warning "Failed to read '$($_.Key)': $($_.Value)"
+
+        [PSCustomObject]@{
+            DateTime     = Get-Date
+            ComputerName = $env:COMPUTERNAME
+            Type         = $Type
+            FullName     = $_.Key
+            CreationTime = $null
+            Action       = $null
+            Error        = $_.Value
         }
     }
 
@@ -124,6 +198,11 @@ else {
         ErrorVariable = 'getErrors'
     }
     Get-ChildItem @getParams
+}
+
+if ($excludedPaths) {
+    $files = $files.Where({ -not (Test-IsExcludedHC $_.FullName) })
+    $getErrors = $getErrors.Where({ -not (Test-IsExcludedHC "$($_.TargetObject)") })
 }
 #endregion
 

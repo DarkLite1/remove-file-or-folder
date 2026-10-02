@@ -283,4 +283,138 @@ Describe 'Type EmptyFolders' {
             Should -Not -BeNullOrEmpty
         }
     }
+    Context 'a subfolder that cannot be read' {
+        BeforeAll {
+            $testRoot = (New-Item 'TestDrive:/emptyUnreadable' -ItemType Directory).FullName
+            $testDenied = (New-Item "$testRoot\denied" -ItemType Directory).FullName
+            $testEmptyFolder = New-Item "$testRoot\readable\empty" -ItemType Directory -Force
+
+            $testUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+            $testDenyRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+                $testUser, 'ListDirectory', 'Deny'
+            )
+            $testAcl = Get-Acl -LiteralPath $testDenied
+            $testAcl.AddAccessRule($testDenyRule)
+            Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+
+            try {
+                $actual = . $testScript -Type 'EmptyFolders' -Path $testRoot -WarningAction SilentlyContinue -ErrorVariable testErrors -ErrorAction SilentlyContinue
+            }
+            finally {
+                $testAcl = Get-Acl -LiteralPath $testDenied
+                $testAcl.RemoveAccessRule($testDenyRule) | Out-Null
+                Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+            }
+        }
+        It 'does not stop the removal of other empty folders' {
+            $testEmptyFolder.FullName | Should -Not -Exist
+            ($actual | Where-Object FullName -EQ $testEmptyFolder.FullName).Action |
+            Should -Be 'Removed'
+        }
+        It 'is reported once as an error' {
+            @($actual | Where-Object FullName -EQ $testDenied) | Should -HaveCount 1
+            ($actual | Where-Object FullName -EQ $testDenied).Error |
+            Should -Not -BeNullOrEmpty
+        }
+        It 'writes no error to the error stream' {
+            $testErrors | Should -BeNullOrEmpty
+        }
+    }
+}
+Describe 'ExcludeFolder' {
+    BeforeEach {
+        $testRoot = (New-Item "TestDrive:/exclude_$([guid]::NewGuid())" -ItemType Directory).FullName
+
+        $testRemoveFile = New-Item "$testRoot\remove.txt" -ItemType File
+        $testKeepFile = New-Item "$testRoot\Keep\PrintHistory.json" -ItemType File -Force
+        $testKeepDeepFile = New-Item "$testRoot\Keep\sub\file.txt" -ItemType File -Force
+        $testKeepEmptyFolder = New-Item "$testRoot\Keep\empty" -ItemType Directory
+        $testRemoveEmptyFolder = New-Item "$testRoot\other\empty" -ItemType Directory -Force
+        $testSimilarName = New-Item "$testRoot\Keeper\file.txt" -ItemType File -Force
+    }
+    Context 'Type FilesInFolder' {
+        BeforeEach {
+            $testParams = @{
+                Type              = 'FilesInFolder'
+                Path              = $testRoot
+                ExcludeFolder     = @("$testRoot\keep")
+                OlderThanUnit     = 'Day'
+                OlderThanQuantity = 0
+                Recurse           = $true
+            }
+        }
+        It 'does not remove files in the excluded folder or its subfolders' {
+            $actual = . $testScript @testParams
+
+            $testKeepFile.FullName | Should -Exist
+            $testKeepDeepFile.FullName | Should -Exist
+            $actual.FullName | Should -Not -Contain $testKeepFile.FullName
+        }
+        It 'removes the other files' {
+            . $testScript @testParams
+
+            $testRemoveFile.FullName | Should -Not -Exist
+        }
+        It 'removes files in a folder that only starts with the same name' {
+            . $testScript @testParams
+
+            $testSimilarName.FullName | Should -Not -Exist
+        }
+        It 'accepts an excluded folder with a trailing backslash' {
+            $testParams.ExcludeFolder = @("$testRoot\Keep\")
+
+            . $testScript @testParams
+
+            $testKeepFile.FullName | Should -Exist
+        }
+        It 'ignores read errors in the excluded folder' {
+            $testUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+            $testDenyRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+                $testUser, 'ListDirectory', 'Deny'
+            )
+            $testDenied = "$testRoot\Keep\sub"
+            $testAcl = Get-Acl -LiteralPath $testDenied
+            $testAcl.AddAccessRule($testDenyRule)
+            Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+
+            try {
+                $actual = . $testScript @testParams -WarningVariable testWarnings -WarningAction SilentlyContinue
+            }
+            finally {
+                $testAcl = Get-Acl -LiteralPath $testDenied
+                $testAcl.RemoveAccessRule($testDenyRule) | Out-Null
+                Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+            }
+
+            $actual.Error | Where-Object { $_ } | Should -BeNullOrEmpty
+            $testWarnings | Should -BeNullOrEmpty
+        }
+    }
+    Context 'Type EmptyFolders' {
+        BeforeEach {
+            $testParams = @{
+                Type          = 'EmptyFolders'
+                Path          = $testRoot
+                ExcludeFolder = @("$testRoot\Keep")
+            }
+        }
+        It 'does not remove empty folders in the excluded folder' {
+            . $testScript @testParams
+
+            $testKeepEmptyFolder.FullName | Should -Exist
+        }
+        It 'does not remove the excluded folder when it is empty' {
+            $testEmptyExcluded = New-Item "$testRoot\EmptyKeep" -ItemType Directory
+            $testParams.ExcludeFolder = @($testEmptyExcluded.FullName)
+
+            . $testScript @testParams
+
+            $testEmptyExcluded.FullName | Should -Exist
+        }
+        It 'removes the other empty folders' {
+            . $testScript @testParams
+
+            $testRemoveEmptyFolder.FullName | Should -Not -Exist
+        }
+    }
 }
