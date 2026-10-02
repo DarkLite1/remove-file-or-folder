@@ -2,7 +2,7 @@
 
 > **Keep shares, log folders and drop zones clean, on one machine or hundreds.**
 
-This PowerShell script removes old files, the content of folders and empty folders on local or remote machines, driven by a single JSON configuration file. It runs jobs in parallel with per-computer limits, retries dropped remote connections, logs everything and sends a clear summary by e-mail.
+This PowerShell script removes old files and empty subfolders on local or remote Windows machines, driven by a single JSON configuration file. It runs jobs in parallel with per-computer limits and can save logs and send a summary by e-mail.
 
 ---
 
@@ -10,9 +10,9 @@ This PowerShell script removes old files, the content of folders and empty folde
 
 - 🗑️ **Flexible removal:** Remove specific files, the files in folders (optionally recursive), the empty folders below a path, or files and empty folders in one go.
 - 📋 **Compact configuration:** One task holds a list of paths that share the same computer and settings.
-- ⏳ **Age based:** Only remove files older than a number of days, months or years, based on their creation or last write date. Use `0` to remove everything.
+- ⏳ **Age based:** Remove files using calendar-day, month or year cutoffs, based on their creation or last write date. Use `0` to remove all selected files, while still respecting exclusions.
 - ⚡ **Parallel execution:** Limit the total number of jobs (`JobsTotal`) and the number of jobs per computer (`JobsPerComputer`), so busy servers are never overloaded.
-- 🔁 **Resilient:** Remote jobs that fail because of a dropped WinRM connection are retried automatically.
+- 🔁 **Retries:** Jobs that fail with WinRM abort error 995, or the message "I/O operation has been aborted", get up to three total attempts with five seconds between attempts. Other errors are reported without retrying.
 - 🌍 **Remote ready:** Use local paths with a `ComputerName` (PowerShell remoting) or plain UNC paths.
 - 📊 **Logging:** Excel overview of every removed item, a system errors log and optional Windows Event Log entries.
 - 📬 **E-mail alerts:** Get a summary when items are removed, when errors occur, always or never.
@@ -69,18 +69,26 @@ Copy `Example.json` to `MyConfig.json` and adjust it. `Example.json` contains a 
   "Settings": {
     "ScriptName": "Remove old logs",
     "SendMail": {
-      "When": "OnError",
-      "To": ["admin@example.com"]
+      "When": "Never"
+    },
+    "SaveInEventLog": {
+      "Save": false
     }
   }
 }
 ```
 
-The mail server, log folder and event log settings are left out above for brevity; they are required, see `Example.json`.
+Replace the computer names and paths before running this example. It disables email and event logging and does not save log files. To enable reporting, use the settings in `Example.json`:
+
+- **Email:** Set `Settings.SendMail.When` to `Always`, `OnError` or `OnErrorOrAction`. Then provide `From`, at least one `To` or `Bcc` recipient, `Smtp.ServerName`, `Smtp.Port`, and both `AssemblyPath` values. SMTP authentication is optional: leave both `UserName` and `Password` empty, or provide both. Providing only one causes an error when sending mail.
+- **Log files:** Set `Settings.SaveLogFiles.Where.Folder`. Omit it or leave it empty to disable file logging.
+- **Event log:** Always include `Settings.SaveInEventLog.Save`. When it is `true`, also provide `LogName`.
+
+`Example.json` enables email, file logging and event logging. Its server names, addresses and assembly paths are placeholders to adjust for your environment.
 
 ### 📋 Tasks
 
-Every task targets one computer and applies the same settings to a list of paths. Use as many tasks as needed, for example one per computer and retention period.
+Every task targets one computer and applies the same settings to a list of paths. Choose either `Files` or `Folders` in each task, never both. Use as many tasks as needed, for example one per computer and retention period.
 
 | Property             | Description                                                                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -90,10 +98,10 @@ Every task targets one computer and applies the same settings to a list of paths
 | `ExcludeFolders`     | Optional subfolders of `Folders` to skip. Nothing inside them is removed, and they are never removed as empty folders.                   |
 | `ExcludeFiles`       | Optional files below `Folders` that are never removed, regardless of their age. Requires `OlderThan`.                                    |
 | `OlderThan`          | Remove the files older than this, based on their `CreationTime` or `LastWriteTime`. Leave it out for `Folders` to only remove empty folders. |
-| `Recurse`            | `true` also removes the files in the subfolders.                                                                                         |
-| `RemoveEmptyFolders` | `true` removes the empty folders below each folder, after all files are removed. The folder itself is never removed.                     |
+| `Recurse`            | Required only for `Folders` with `OlderThan`. `true` includes files in subfolders; `false` selects files directly in the folder. Not allowed on other tasks. |
+| `RemoveEmptyFolders` | Required for `Folders` only. `true` removes empty subfolders at every depth after the file-removal phase, independently of `Recurse`. The root folder is never removed. |
 
-A path in `Files` or `Folders` is a plain string, or an object `{ "Name": "...", "Path": "..." }` when the e-mail should show a friendly name instead of the path.
+A path in `Files` or `Folders` is a plain string, or an object `{ "Name": "...", "Path": "..." }` when the e-mail should show a friendly name above the path. Both remain visible.
 
 Every path is processed as a separate job, so `MaxConcurrent` applies per path. Empty folders are always removed after all file removals have finished.
 
@@ -118,9 +126,9 @@ The converter groups the paths with the same computer and settings in one task, 
 
 A copied file gets a new `CreationTime` but keeps its `LastWriteTime`. So with `LastWriteTime` a file that was just copied can already be old enough to be removed.
 
-`Quantity` `0` removes all files, regardless of their date.
+`Quantity` must be a whole number of `0` or greater. `0` disables the age filter: all files selected by the task are eligible, but exclusions and `Recurse` still apply. Age settings never select folders for deletion; folders must be empty.
 
-`Month` and `Year` compare **calendar periods** by design, not an exact number of days. Only the month or year of the file date counts, the day is ignored:
+All units compare **calendar periods**, not elapsed time. `Day` includes the entire cutoff day, ignoring the time of day. `Month` includes the entire cutoff month, and `Year` includes the entire cutoff year:
 
 | `OlderThan`         | Run on 1 October 2026 removes files dated |
 | ------------------- | ----------------------------------------- |
@@ -129,7 +137,11 @@ A copied file gets a new `CreationTime` but keeps its `LastWriteTime`. So with `
 | `1 Month`           | in September 2026 or earlier              |
 | `1 Year`            | in 2025 or earlier                        |
 
-So `1 Month` removes a file dated 30 September, even though it is only one day old. When you need an exact age, like 30 days, use `Day` with `30` instead of `Month` with `1`.
+For example, `1 Day` run at 00:05 can remove a file last written at 23:55 the previous day, only ten minutes earlier. Likewise, `1 Month` on 1 October can remove a file dated 30 September. Use `30 Day` for a cutoff 30 calendar days back instead of `1 Month`; neither setting guarantees an exact elapsed age. These cutoffs use the clock and local timestamps of the computer executing the removal.
+
+### Email summary
+
+The email always includes summary counts and task results. `Settings.SendMail.Body` adds optional HTML below the title; leaving it empty does not remove the summary. The subject starts with `N removed`, adds the error count only when there are errors, and appends any text in `Settings.SendMail.Subject`.
 
 ## 💻 Usage
 

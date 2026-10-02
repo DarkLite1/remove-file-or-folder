@@ -14,13 +14,13 @@
       "OlderThan": { "Quantity": 0, "Unit": "Day", "BasedOn": "CreationTime" }
     },
     {
-      "?": "Remove a log file on a server when it was not written to for 7 days, shown with a friendly name in the e-mail.",
+      "?": "Remove a server log file last written on or before the date 7 calendar days ago. Show a friendly name above its path in the e-mail.",
       "ComputerName": "SERVER1",
       "Files": [{ "Name": "FTP log file", "Path": "D:\\FTP\\ftp.log" }],
       "OlderThan": { "Quantity": 7, "Unit": "Day", "BasedOn": "LastWriteTime" }
     },
     {
-      "?": "Remove all files not written to for 30 days in folders and their subfolders, then remove the folders that became empty.",
+      "?": "Remove files last written on or before the date 30 calendar days ago, including subfolders. Then remove all empty subfolders.",
       "ComputerName": "SERVER1",
       "Folders": ["D:\\Application\\Logs", "D:\\Application\\Archive"],
       "OlderThan": { "Quantity": 30, "Unit": "Day", "BasedOn": "LastWriteTime" },
@@ -74,7 +74,7 @@
       "RemoveEmptyFolders": true
     },
     {
-      "?": "Remove all files in a folder on the computer running the script.",
+      "?": "Remove all files in a folder and its subfolders on the computer running the script, but keep the folders.",
       "ComputerName": "localhost",
       "Folders": ["C:\\Temp\\Reports"],
       "OlderThan": { "Quantity": 0, "Unit": "Day", "BasedOn": "CreationTime" },
@@ -118,60 +118,60 @@
   },
   "?": {
     "MaxConcurrent": {
-      "JobsTotal": "(Mandatory) Maximum quantity of jobs to run at the same time across ALL computers. This is the overall concurrency budget and is applied directly as the throttle limit. Value 1 runs all jobs one after the other.",
-      "JobsPerComputer": "(Mandatory) Maximum quantity of jobs to run at the same time on a SINGLE computer. A remote job holds exactly one PSSession for its lifetime, so this is also the maximum quantity of WinRM shells opened on one machine at once. Keep it below the 'MaxShellsPerUser' setting of the remote computers (check with 'winrm get winrm/config/winrs'). For a UNC path without 'ComputerName' the server in the UNC path counts as the computer."
+      "JobsTotal": "(Mandatory) Whole number of 1 or greater. Maximum number of jobs running at the same time across all computers. Value 1 runs jobs one after another.",
+      "JobsPerComputer": "(Mandatory) Whole number of 1 or greater. Maximum number of jobs running at the same time on one target computer. Each remote attempt opens one PSSession and closes it afterward. Keep this limit below the remote computer's 'MaxShellsPerUser' setting (check with 'winrm get winrm/config/winrs'). For a UNC path processed locally, the server in the path counts as the target."
     },
     "Tasks": [
       {
         "?": "(Optional) A description of the task, ignored by the script.",
         "ComputerName": "(Mandatory when a path is a local path) The computer where the removal is executed. Use null for UNC paths, they are processed by the computer running the script. Use 'localhost' for local paths on the computer running the script.",
-        "Files": "(Mandatory 'Files' or 'Folders') An array of file paths to remove. Each item is a path string, or an object { \"Name\": \"...\", \"Path\": \"...\" } where 'Name' is shown in the e-mail instead of the path. A path is a local path when 'ComputerName' is used, or a UNC path.",
-        "Folders": "(Mandatory 'Files' or 'Folders') An array of folder paths, in the same format as 'Files'. All settings of the task apply to every folder.",
+        "Files": "(Use either 'Files' or 'Folders', never both) An array of file paths to remove. Requires 'OlderThan'. Each item is a path string, or an object { \"Name\": \"...\", \"Path\": \"...\" } where the e-mail shows 'Name' above the path. Use local paths with 'ComputerName', or UNC paths.",
+        "Folders": "(Use either 'Files' or 'Folders', never both) An array of folder paths, in the same format as 'Files'. All settings of the task apply to every folder. Requires 'RemoveEmptyFolders'. Without 'OlderThan', 'RemoveEmptyFolders' must be true.",
         "ExcludeFolders": "(Optional, only for 'Folders') An array of folder paths to skip. The files and folders inside an excluded folder are never removed, and the excluded folder itself is never removed when it is empty. Every path needs to be a subfolder of a path in 'Folders', in the same format (local path or UNC path).",
         "ExcludeFiles": "(Optional, only for 'Folders' with 'OlderThan') An array of file paths that are never removed, regardless of their age. Every path needs to be a file below a path in 'Folders', in the same format (local path or UNC path).",
         "OlderThan": {
           "?": "(Mandatory for 'Files', optional for 'Folders') Remove the files with a date older than this. Leave it out for 'Folders' to only remove empty folders.",
-          "Quantity": "(Mandatory) Number of units. Value 0 removes all files regardless of their date.",
-          "Unit": "(Mandatory) Possible values: 'Day', 'Month' or 'Year'. 'Month' and 'Year' compare calendar periods, not an exact number of days: '1 Month' removes all files dated in an earlier month. Use 'Day' for an exact age, e.g. 30 days instead of 1 month.",
+          "Quantity": "(Mandatory) Whole number of 0 or greater. Value 0 disables the age filter; exclusions and 'Recurse' still apply. Age settings apply to files, not folders.",
+          "Unit": "(Mandatory) 'Day', 'Month' or 'Year'. All use calendar cutoffs, not elapsed time. 'Day' includes the entire date that is Quantity days ago; 'Month' includes that entire month; 'Year' includes that entire year, plus all earlier dates. For example, '1 Day' at 00:05 can remove a file written at 23:55 yesterday. '30 Day' means 30 calendar days back, not exactly 30 times 24 hours.",
           "BasedOn": "(Mandatory) The file date to compare. Possible values: 'CreationTime' - when the file was created on this disk, a copied file gets a new creation time; 'LastWriteTime' - when the content was last changed, a copied file keeps its last write time. Use 'LastWriteTime' for files that are updated over time, like logs or history files, so they are only removed when they are no longer written to."
         },
-        "Recurse": "(Mandatory for 'Folders' with 'OlderThan') Also remove the files in the subfolders. Possible values: true or false.",
-        "RemoveEmptyFolders": "(Mandatory for 'Folders') Remove all empty folders in the folder, after all files are removed. The folder itself is never removed. Possible values: true or false."
+        "Recurse": "(Mandatory for 'Folders' with 'OlderThan', not allowed otherwise) true includes files in subfolders; false selects files directly in the folder. Does not control empty-folder cleanup.",
+        "RemoveEmptyFolders": "(Mandatory for 'Folders', not allowed for 'Files') true removes empty subfolders at every depth after the file-removal phase, independently of 'Recurse'. The root folder is never removed. false keeps all folders; in that case 'OlderThan' is required."
       }
     ],
-    "PSSessionConfiguration": "(Optional) The PowerShell version of the remote endpoint. This value corresponds to the output of the Get-PSSessionConfiguration cmdlet. The minimum supported version is 'PowerShell.7'. Defaults to 'PowerShell.7' if not specified.",
+    "PSSessionConfiguration": "(Optional) Name of the remote PowerShell endpoint, as listed by Get-PSSessionConfiguration. The endpoint must run PowerShell 7 or later. Defaults to 'PowerShell.7' when omitted or empty.",
     "Settings": {
       "ScriptName": "(Mandatory) Name of the script, used in the log files and in the event logs.",
       "SendMail": {
         "When": "(Mandatory) Specifies when to send an email notification. Possible values: 'OnError' - Send email only when an error occurs; 'OnErrorOrAction' - Send email when items were removed or when errors occurred; 'Always' - Send email when the script is finished, regardless of success or failure; 'Never' - Do not send email.",
-        "From": "(Mandatory) The sender's email address. Supports environment variables (e.g., 'ENV:MAIL_FROM_ADDRESS').",
+        "From": "(Required unless 'When' is 'Never') The sender's email address. Supports environment variables (e.g., 'ENV:MAIL_FROM_ADDRESS').",
         "FromDisplayName": "(Optional) The display name to show for the sender. Email clients may display this differently. It is most likely to be shown if the sender's email address is not recognized (e.g., not in the address book). Supports environment variables (e.g., 'ENV:MAIL_FROM_DISPLAY_NAME').",
-        "To": "(Mandatory 'To' or 'Bcc') An array of recipient email addresses. The script will send an email to all addresses in the array.",
-        "Bcc": "(Mandatory 'To' or 'Bcc') An array of BCC email addresses.",
-        "Subject": "(Optional) Text added to the subject line of the email. Default value: 'N removed, N errors'",
-        "Body": "(Optional) The HTML text shown at the top of the email. Default value: A summary table with action and error count.",
+        "To": "(At least one 'To' or 'Bcc' recipient is required unless 'When' is 'Never') An array of recipient email addresses.",
+        "Bcc": "(At least one 'To' or 'Bcc' recipient is required unless 'When' is 'Never') An array of BCC email addresses.",
+        "Subject": "(Optional) Text appended to the generated subject. The subject starts with 'N removed' and adds ', N error' or ', N errors' only when errors occur.",
+        "Body": "(Optional) HTML text shown below the email title. Empty by default. Summary counts and task results are always included separately.",
         "Smtp": {
-          "ServerName": "(Mandatory) The hostname or IP address of the SMTP server. Supports environment variables (e.g., 'ENV:SMTP_SERVER').",
-          "Port": "(Mandatory) The port number of the SMTP server. Possible values: 25, 465, 587, 2525. Supports environment variables (e.g., 'ENV:SMTP_PORT').",
+          "ServerName": "(Required unless 'When' is 'Never') The hostname or IP address of the SMTP server. Supports environment variables (e.g., 'ENV:SMTP_SERVER').",
+          "Port": "(Required unless 'When' is 'Never') The port number of the SMTP server. Possible values: 25, 465, 587, 2525. Supports environment variables (e.g., 'ENV:SMTP_PORT').",
           "ConnectionType": "(Optional) The connection type for the SMTP server. Possible values: 'None' - No encryption; 'Auto' - Attempt TLS, fall back to unencrypted; 'SslOnConnect' - Use SSL from the beginning; 'StartTls' - Start with unencrypted, then upgrade to TLS; 'StartTlsWhenAvailable' - Start with unencrypted, upgrade to TLS if supported. Default value: 'None'. Supports environment variables (e.g., 'ENV:SMTP_CONNECTION_TYPE').",
-          "UserName": "(Optional) The username for authenticating with the SMTP server. If undefined or NULL, no authentication is attempted. Supports environment variables (e.g., 'ENV:SMTP_USERNAME').",
-          "Password": "(Optional) The password for authenticating with the SMTP server. If undefined or NULL, no authentication is attempted. Supports environment variables (e.g., 'ENV:SMTP_PASSWORD')."
+          "UserName": "(Optional) SMTP username. Provide both 'UserName' and 'Password' to authenticate, or leave both empty for no authentication. Providing only one causes an error when sending mail. Supports environment variables (e.g., 'ENV:SMTP_USERNAME').",
+          "Password": "(Optional) SMTP password. Required when 'UserName' is provided; leave both empty for no authentication. Supports environment variables (e.g., 'ENV:SMTP_PASSWORD')."
         },
         "AssemblyPath": {
           "?": "To use email functionality, install the following packages: 'Install-Package -Name 'MailKit' -Source 'https://www.nuget.org/api/v2' -Scope 'AllUsers' -SkipDependencies' and 'Install-Package -Name 'MimeKit' -Source 'https://www.nuget.org/api/v2' -Scope 'AllUsers' -SkipDependencies'",
-          "MailKit": "(Mandatory) Path to the MailKit.dll assembly. Supports environment variables (e.g., 'ENV:MAILKIT_ASSEMBLY').",
-          "MimeKit": "(Mandatory) Path to the MimeKit.dll assembly. Supports environment variables (e.g., 'ENV:MIMEKIT_ASSEMBLY')."
+          "MailKit": "(Required unless 'When' is 'Never') Path to the MailKit.dll assembly. Supports environment variables (e.g., 'ENV:MAILKIT_ASSEMBLY').",
+          "MimeKit": "(Required unless 'When' is 'Never') Path to the MimeKit.dll assembly. Supports environment variables (e.g., 'ENV:MIMEKIT_ASSEMBLY')."
         }
       },
       "SaveLogFiles": {
         "Where": {
-          "Folder": "(Mandatory) The path to the folder where log files will be created. Value '..\\\\Logs': Path relative to the script. Value 'C:\\\\MyApp\\\\Logs': An absolute path. If not specified or NULL, no log files will be created. Supports environment variables (e.g., 'ENV:LOG_FOLDER')."
+          "Folder": "(Optional) Folder for log files. Relative paths are resolved from the script folder. If omitted, NULL or empty, no log files are created. Supports environment variables (e.g., 'ENV:LOG_FOLDER')."
         },
         "DeleteLogsAfterDays": "(Optional) The number of days to keep log files. Log files older than this value (based on their last write time) will be removed from the log folder specified in 'SaveLogFiles.Where.Folder'. If not specified or 0, logs will be kept indefinitely. CAUTION: Ensure the 'SaveLogFiles.Where.Folder' is specifically designated for log files to avoid unintended deletion of other files."
       },
       "SaveInEventLog": {
         "Save": "(Mandatory) Whether to log messages to the Windows event log. Possible values: true or false.",
-        "LogName": "(Mandatory) The name of the event log to write to (e.g., 'Application', 'System', or a custom log name like 'Scripts'). Supports environment variables (e.g., 'ENV:EVENT_LOG_NAME')."
+        "LogName": "(Required only when 'Save' is true) The name of the event log to write to, such as 'Application' or a custom log named 'Scripts'. Supports environment variables (e.g., 'ENV:EVENT_LOG_NAME')."
       }
     }
   }
