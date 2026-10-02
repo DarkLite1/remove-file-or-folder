@@ -969,6 +969,380 @@ Describe 'with the real Remove items script on the local computer' {
         $LASTEXITCODE | Should -Be 0
     }
 }
+Describe 'end-to-end filesystem scenarios' {
+    BeforeAll {
+        function New-E2EFixtureHC {
+            Clear-TestLogFolderHC
+            $script:e2eRoot = (New-Item "TestDrive:/scenario-$([guid]::NewGuid())" -ItemType Directory).FullName
+            $script:e2eRemovedFiles = [System.Collections.Generic.List[string]]::new()
+            $script:e2eRemovedFolders = [System.Collections.Generic.List[string]]::new()
+            $script:e2eKeptFiles = @{}
+            $script:e2eConfiguration = Copy-ObjectHC $testInputFile
+            $script:e2eConfiguration.Settings.SendMail.When = 'Never'
+            $script:e2eConfiguration.Settings.SaveInEventLog.Save = $false
+            $script:e2eConfiguration.MaxConcurrent.JobsPerComputer = 2
+        }
+
+        function Add-E2EFolderHC {
+            param ([string]$RelativePath, [switch]$Removed)
+
+            $folderPath = Join-Path $e2eRoot $RelativePath
+            $null = New-Item -Path $folderPath -ItemType Directory -Force
+            if ($Removed) { $e2eRemovedFolders.Add($folderPath) }
+            $folderPath
+        }
+
+        function Add-E2EFileHC {
+            param (
+                [string]$RelativePath,
+                [datetime]$CreationTime = (Get-Date),
+                [datetime]$LastWriteTime = (Get-Date),
+                [switch]$Removed,
+                [switch]$Hidden,
+                [switch]$ReadOnly
+            )
+
+            $filePath = Join-Path $e2eRoot $RelativePath
+            $null = New-Item -Path (Split-Path $filePath) -ItemType Directory -Force
+            $content = "Keep exact contents: $RelativePath"
+            [System.IO.File]::WriteAllText($filePath, $content)
+            [System.IO.File]::SetCreationTime($filePath, $CreationTime)
+            [System.IO.File]::SetLastWriteTime($filePath, $LastWriteTime)
+            $attributes = [System.IO.File]::GetAttributes($filePath)
+            if ($Hidden) { $attributes = $attributes -bor [System.IO.FileAttributes]::Hidden }
+            if ($ReadOnly) { $attributes = $attributes -bor [System.IO.FileAttributes]::ReadOnly }
+            [System.IO.File]::SetAttributes($filePath, $attributes)
+            if ($Removed) { $e2eRemovedFiles.Add($filePath) }
+            else { $e2eKeptFiles[$filePath] = $content }
+            $filePath
+        }
+
+        function Invoke-E2EAndAssertHC {
+            param ([string[]]$ExpectedErrorPaths = @())
+
+            $expectedFolders = @(
+                Get-ChildItem -LiteralPath $e2eRoot -Directory -Recurse -Force |
+                Where-Object FullName -NotIn $e2eRemovedFolders |
+                Select-Object -ExpandProperty FullName | Sort-Object
+            )
+            Test-NewJsonFileHC $e2eConfiguration
+            $global:LASTEXITCODE = 0
+            & $testScript -ConfigurationJsonFile $testOutParams.FilePath
+            $LASTEXITCODE | Should -Be $(if ($ExpectedErrorPaths.Count) { 1 } else { 0 })
+
+            $e2eRoot | Should -Exist
+            $actualFiles = @(Get-ChildItem -LiteralPath $e2eRoot -File -Recurse -Force | Select-Object -ExpandProperty FullName | Sort-Object)
+            ($actualFiles -join "`n") | Should -Be (($e2eKeptFiles.Keys | Sort-Object) -join "`n")
+            foreach ($filePath in $e2eKeptFiles.Keys) {
+                [System.IO.File]::ReadAllText($filePath) | Should -BeExactly $e2eKeptFiles[$filePath]
+            }
+            $actualFolders = @(Get-ChildItem -LiteralPath $e2eRoot -Directory -Recurse -Force | Select-Object -ExpandProperty FullName | Sort-Object)
+            ($actualFolders -join "`n") | Should -Be ($expectedFolders -join "`n")
+            foreach ($removedPath in @($e2eRemovedFiles) + @($e2eRemovedFolders)) {
+                $removedPath | Should -Not -Exist
+            }
+
+            $expectedRemoved = @($e2eRemovedFiles) + @($e2eRemovedFolders)
+            if ($expectedRemoved.Count -or $ExpectedErrorPaths.Count) {
+                $workbooks = @(Get-TestExcelFileHC)
+                $workbooks | Should -HaveCount 1
+                $rows = @(Import-Excel -Path $workbooks[0].FullName -WorksheetName Overview)
+                $rows | Should -HaveCount ($expectedRemoved.Count + $ExpectedErrorPaths.Count)
+                $removedRows = @($rows | Where-Object Action -EQ Removed)
+                (($removedRows.Path | Sort-Object) -join "`n") | Should -Be (($expectedRemoved | Sort-Object) -join "`n")
+                @($removedRows | Where-Object Error) | Should -HaveCount 0
+                @($removedRows | Where-Object Type -EQ File) | Should -HaveCount $e2eRemovedFiles.Count
+                @($removedRows | Where-Object Type -EQ EmptyFolder) | Should -HaveCount $e2eRemovedFolders.Count
+                $errorRows = @($rows | Where-Object Error)
+                (($errorRows.Path | Sort-Object) -join "`n") | Should -Be (($ExpectedErrorPaths | Sort-Object) -join "`n")
+                @($errorRows | Where-Object Action) | Should -HaveCount 0
+            }
+            else {
+                @(Get-TestExcelFileHC) | Should -HaveCount 0
+            }
+            if ($ExpectedErrorPaths.Count) {
+                $errors = @(Get-TestSystemErrorsHC)
+                $errors | Should -HaveCount $ExpectedErrorPaths.Count
+                foreach ($errorPath in $ExpectedErrorPaths) {
+                    @($errors | Where-Object { $_.Message.Contains($errorPath) }) | Should -HaveCount 1
+                }
+            }
+            else {
+                @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log*') | Should -HaveCount 0
+            }
+        }
+    }
+
+    It 'runs Example.json task <TaskIndex> with JobsTotal <JobsTotal> and verifies all files, folders and removal records' -ForEach @(
+        foreach ($taskIndex in 0..8) {
+            foreach ($jobsTotal in 1, 3) {
+                @{ TaskIndex = $taskIndex; JobsTotal = $jobsTotal }
+            }
+        }
+    ) {
+        New-E2EFixtureHC
+        $example = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot) 'Example.json') -Raw | ConvertFrom-Json
+        $example.Tasks | Should -HaveCount 9
+        $task = $example.Tasks[$TaskIndex]
+        $task.ComputerName = 'localhost'
+        $oldDate = (Get-Date).AddYears(-5)
+        $futureDate = (Get-Date).AddYears(1)
+        $null = Add-E2EFileHC -RelativePath 'outside-task\sentinel.txt' -CreationTime $oldDate -LastWriteTime $oldDate
+
+        if ($task.Files) {
+            $task.Files = @(
+                for ($entryIndex = 0; $entryIndex -lt $task.Files.Count; $entryIndex++) {
+                    $entry = $task.Files[$entryIndex]
+                    $filePath = Add-E2EFileHC -RelativePath "files\selected-$entryIndex.txt" -CreationTime $oldDate -LastWriteTime $oldDate -Removed
+                    if ($entry -is [string]) { $filePath }
+                    else { [pscustomobject]@{ Name = $entry.Name; Path = $filePath } }
+                }
+            )
+            $null = Add-E2EFileHC -RelativePath 'files\unselected.txt' -CreationTime $oldDate -LastWriteTime $oldDate
+        }
+        else {
+            $task.Folders = @(
+                for ($entryIndex = 0; $entryIndex -lt $task.Folders.Count; $entryIndex++) {
+                    $entry = $task.Folders[$entryIndex]
+                    $relativeRoot = "folder-$entryIndex"
+                    $folderPath = Add-E2EFolderHC $relativeRoot
+                    $hasAge = $null -ne $task.OlderThan
+                    $removeRecent = $hasAge -and ($task.OlderThan.Quantity -eq 0)
+                    $removeNested = $hasAge -and $task.Recurse
+                    $null = Add-E2EFileHC "$relativeRoot\old.txt" -CreationTime $oldDate -LastWriteTime $oldDate -Removed:$hasAge
+                    $null = Add-E2EFileHC "$relativeRoot\recent.txt" -CreationTime $futureDate -LastWriteTime $futureDate -Removed:$removeRecent
+                    $null = Add-E2EFileHC "$relativeRoot\nested\old.txt" -CreationTime $oldDate -LastWriteTime $oldDate -Removed:$removeNested
+                    $null = Add-E2EFolderHC "$relativeRoot\nested" -Removed:($removeNested -and $task.RemoveEmptyFolders)
+                    $null = Add-E2EFolderHC "$relativeRoot\empty\deep" -Removed:$task.RemoveEmptyFolders
+                    $null = Add-E2EFolderHC "$relativeRoot\empty" -Removed:$task.RemoveEmptyFolders
+
+                    if ($task.ExcludeFolders) {
+                        $task.ExcludeFolders = @(Add-E2EFolderHC "$relativeRoot\protected")
+                        $null = Add-E2EFolderHC "$relativeRoot\protected\empty"
+                        $null = Add-E2EFileHC "$relativeRoot\protected\history.json" -CreationTime $oldDate -LastWriteTime $oldDate
+                    }
+                    if ($task.ExcludeFiles) {
+                        $task.ExcludeFiles = @(Add-E2EFileHC "$relativeRoot\State\last-run.json" -CreationTime $oldDate -LastWriteTime $oldDate)
+                        $null = Add-E2EFileHC "$relativeRoot\State\other.json" -CreationTime $oldDate -LastWriteTime $oldDate -Removed
+                    }
+                    if ($entry -is [string]) { $folderPath }
+                    else { [pscustomobject]@{ Name = $entry.Name; Path = $folderPath } }
+                }
+            )
+        }
+
+        $e2eConfiguration.Tasks = @($task)
+        $e2eConfiguration.MaxConcurrent.JobsTotal = $JobsTotal
+        Invoke-E2EAndAssertHC
+        Should -Not -Invoke New-PSSession -Scope It
+        Should -Not -Invoke Invoke-Command -Scope It
+    }
+
+    It 'uses the <Unit> calendar boundary and <BasedOn> for <ListName>' -ForEach @(
+        foreach ($unit in 'Day', 'Month', 'Year') {
+            foreach ($basedOn in 'CreationTime', 'LastWriteTime') {
+                foreach ($listName in 'Files', 'Folders') {
+                    @{ Unit = $unit; BasedOn = $basedOn; ListName = $listName }
+                }
+            }
+        }
+    ) {
+        New-E2EFixtureHC
+        Mock Get-Date { [datetime]'2026-10-02T12:00:00' }
+        $boundary = switch ($Unit) {
+            'Day' { [datetime]'2026-10-02T00:00:00' }
+            'Month' { [datetime]'2026-10-01T00:00:00' }
+            'Year' { [datetime]'2026-01-01T00:00:00' }
+        }
+        $selectedPaths = @(
+            foreach ($case in @(
+                    @{ Name = 'before'; Date = $boundary.AddSeconds(-1); Remove = $true }
+                    @{ Name = 'boundary'; Date = $boundary; Remove = $false }
+                    @{ Name = 'after'; Date = $boundary.AddSeconds(1); Remove = $false }
+                )) {
+                $dates = @{
+                    CreationTime = if ($case.Remove) { [datetime]'2030-01-01' } else { [datetime]'2000-01-01' }
+                    LastWriteTime = if ($case.Remove) { [datetime]'2030-01-01' } else { [datetime]'2000-01-01' }
+                }
+                $dates[$BasedOn] = $case.Date
+                Add-E2EFileHC "selected\$($case.Name).txt" @dates -Removed:$case.Remove
+            }
+        )
+        $null = Add-E2EFileHC 'outside\untouched.txt' -CreationTime ([datetime]'2000-01-01') -LastWriteTime ([datetime]'2000-01-01')
+        $task = [pscustomobject]@{
+            ComputerName = 'localhost'
+            OlderThan = @{ Quantity = 1; Unit = $Unit; BasedOn = $BasedOn }
+        }
+        if ($ListName -eq 'Files') {
+            $task | Add-Member Files $selectedPaths
+        }
+        else {
+            $task | Add-Member Folders @(Join-Path $e2eRoot 'selected')
+            $task | Add-Member Recurse $true
+            $task | Add-Member RemoveEmptyFolders $true
+        }
+        $e2eConfiguration.Tasks = @($task)
+        Invoke-E2EAndAssertHC
+    }
+
+    It 'honors normalized exclusions and exact names with quantity zero and JobsTotal <JobsTotal>' -ForEach @(1, 3 | ForEach-Object { @{ JobsTotal = $_ } }) {
+        New-E2EFixtureHC
+        $firstRoot = Add-E2EFolderHC 'first'
+        $secondRoot = Add-E2EFolderHC 'second'
+        $null = Add-E2EFileHC 'first\protected\history.json' -Hidden -ReadOnly
+        $null = Add-E2EFolderHC 'first\protected\empty'
+        $null = Add-E2EFileHC 'first\protected-other\remove.txt' -Removed
+        $null = Add-E2EFolderHC 'first\protected-other' -Removed
+        $null = Add-E2EFileHC 'first\state.json' -Hidden -ReadOnly
+        $null = Add-E2EFileHC 'first\state.json.bak' -Removed
+        $null = Add-E2EFileHC 'first\hidden\readonly.txt' -Hidden -ReadOnly -Removed
+        $null = Add-E2EFolderHC 'first\hidden' -Removed
+        $null = Add-E2EFileHC 'second\protected\remove.txt' -Removed
+        $null = Add-E2EFolderHC 'second\protected' -Removed
+        $null = Add-E2EFileHC 'second\state.json' -Removed
+        $null = Add-E2EFolderHC 'second\empty' -Removed
+        $e2eConfiguration.Tasks = @([pscustomobject]@{
+                ComputerName = 'localhost'
+                Folders = @("$firstRoot\unused\..", "$secondRoot\.")
+                ExcludeFolders = @("$firstRoot\unused\..\PROTECTED\")
+                ExcludeFiles = @("$firstRoot\STATE.JSON", "$firstRoot\state.json")
+                OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $true
+            })
+        $e2eConfiguration.MaxConcurrent.JobsTotal = $JobsTotal
+        Invoke-E2EAndAssertHC
+    }
+
+    It 'keeps nested files with Recurse false but removes empty folders at every depth with JobsTotal <JobsTotal>' -ForEach @(1, 3 | ForEach-Object { @{ JobsTotal = $_ } }) {
+        New-E2EFixtureHC
+        $rootPath = Add-E2EFolderHC 'selected'
+        $null = Add-E2EFileHC 'selected\direct.txt' -Removed
+        $null = Add-E2EFileHC 'selected\nested\old.txt' -CreationTime ((Get-Date).AddYears(-5))
+        $null = Add-E2EFileHC 'selected\nested\hidden.txt' -Hidden
+        $null = Add-E2EFolderHC 'selected\nested\empty\deep' -Removed
+        $null = Add-E2EFolderHC 'selected\nested\empty' -Removed
+        $null = Add-E2EFolderHC 'selected\empty' -Removed
+        $e2eConfiguration.Tasks = @([pscustomobject]@{
+                ComputerName = 'localhost'
+                Folders = @($rootPath)
+                OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' }
+                Recurse = $false
+                RemoveEmptyFolders = $true
+            })
+        $e2eConfiguration.MaxConcurrent.JobsTotal = $JobsTotal
+        Invoke-E2EAndAssertHC
+    }
+
+    It 'finishes file tasks before empty-folder tasks even when listed in reverse order with JobsTotal <JobsTotal>' -ForEach @(1, 3 | ForEach-Object { @{ JobsTotal = $_ } }) {
+        New-E2EFixtureHC
+        $rootPath = Add-E2EFolderHC 'selected'
+        $selectedFiles = @(
+            Add-E2EFileHC 'selected\first\deep\remove.txt' -Removed
+            Add-E2EFileHC 'selected\second\remove.txt' -Removed
+        )
+        $null = Add-E2EFolderHC 'selected\first\deep' -Removed
+        $null = Add-E2EFolderHC 'selected\first' -Removed
+        $null = Add-E2EFolderHC 'selected\second' -Removed
+        $null = Add-E2EFileHC 'outside\sentinel.txt'
+        $e2eConfiguration.Tasks = @(
+            [pscustomobject]@{
+                ComputerName = 'localhost'
+                Folders = @($rootPath)
+                RemoveEmptyFolders = $true
+            }
+            [pscustomobject]@{
+                ComputerName = 'localhost'
+                Files = $selectedFiles
+                OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+            }
+        )
+        $e2eConfiguration.MaxConcurrent.JobsTotal = $JobsTotal
+        Invoke-E2EAndAssertHC
+    }
+
+    It 'keeps all files and folders when nothing qualifies' {
+        New-E2EFixtureHC
+        $rootPath = Add-E2EFolderHC 'selected'
+        $null = Add-E2EFileHC 'selected\recent.txt' -LastWriteTime ((Get-Date).AddYears(1))
+        $null = Add-E2EFileHC 'selected\nested\recent.txt' -LastWriteTime ((Get-Date).AddYears(1))
+        $null = Add-E2EFolderHC 'selected\empty'
+        $e2eConfiguration.Tasks = @([pscustomobject]@{
+                ComputerName = 'localhost'
+                Folders = @($rootPath)
+                OlderThan = @{ Quantity = 30; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $false
+            })
+        Invoke-E2EAndAssertHC
+    }
+
+    It 'reports a missing <ListName> path and still processes valid sibling paths' -ForEach @('Files', 'Folders' | ForEach-Object { @{ ListName = $_ } }) {
+        New-E2EFixtureHC
+        $validFile = Add-E2EFileHC 'valid\remove.txt' -Removed
+        $missingPath = Join-Path $e2eRoot 'missing'
+        $task = [pscustomobject]@{
+            ComputerName = 'localhost'
+            OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' }
+        }
+        if ($ListName -eq 'Files') {
+            $task | Add-Member Files @($missingPath, $validFile)
+        }
+        else {
+            $task | Add-Member Folders @($missingPath, (Split-Path $validFile))
+            $task | Add-Member Recurse $true
+            $task | Add-Member RemoveEmptyFolders $false
+        }
+        $e2eConfiguration.Tasks = @($task)
+        Invoke-E2EAndAssertHC -ExpectedErrorPaths @($missingPath)
+    }
+
+    It 'reports a locked file, keeps its parent and continues deleting other files and empty folders' {
+        New-E2EFixtureHC
+        $rootPath = Add-E2EFolderHC 'selected'
+        $lockedPath = Add-E2EFileHC 'selected\locked\keep.txt'
+        $null = Add-E2EFileHC 'selected\other\remove.txt' -Removed
+        $null = Add-E2EFolderHC 'selected\other' -Removed
+        $e2eConfiguration.Tasks = @([pscustomobject]@{
+                ComputerName = 'localhost'
+                Folders = @($rootPath)
+                OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $true
+            })
+        $lockStream = [System.IO.File]::Open($lockedPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        try {
+            Invoke-E2EAndAssertHC -ExpectedErrorPaths @($lockedPath)
+        }
+        finally { $lockStream.Dispose() }
+    }
+
+    It 'passes remote job arguments through to the real worker using a local transport mock' {
+        New-E2EFixtureHC
+        $rootPath = Add-E2EFolderHC 'selected'
+        $null = Add-E2EFileHC 'selected\old.txt' -LastWriteTime ((Get-Date).AddYears(-5)) -Removed
+        $null = Add-E2EFileHC 'selected\recent.txt' -LastWriteTime ((Get-Date).AddYears(1))
+        $null = Add-E2EFileHC 'selected\keep.json' -LastWriteTime ((Get-Date).AddYears(-5))
+        $null = Add-E2EFolderHC 'selected\empty' -Removed
+        Mock Invoke-Command {
+            $FilePath | Should -Be (Join-Path (Split-Path $PSScriptRoot) 'Remove items.ps1')
+            $ArgumentList[1] | Should -Be $rootPath
+            & $FilePath @ArgumentList
+        }
+        $e2eConfiguration.Tasks = @([pscustomobject]@{
+                ComputerName = 'E2E-MOCK-REMOTE'
+                Folders = @($rootPath)
+                ExcludeFiles = @(Join-Path $rootPath 'keep.json')
+                OlderThan = @{ Quantity = 30; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $true
+            })
+        Invoke-E2EAndAssertHC
+        Should -Invoke New-PSSession -Exactly -Times 2 -Scope It
+        Should -Invoke Invoke-Command -Exactly -Times 2 -Scope It
+        Should -Invoke Remove-PSSession -Exactly -Times 2 -Scope It
+    }
+}
 Describe 'create an Excel file' {
     BeforeAll {
         Clear-TestLogFolderHC
