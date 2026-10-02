@@ -150,7 +150,7 @@ if ($Type -eq 'EmptyFolders') {
         ErrorVariable = '+getErrors'
     }
 
-    $emptyFolders = if ($excludedPaths) {
+    $folderCandidates = if ($excludedPaths) {
         Get-IncludedChildItemHC -Root $Path -Recursive $true -Directories -ReadErrors $getErrors |
         Sort-Object { $_.FullName.Length } -Descending
     }
@@ -158,7 +158,7 @@ if ($Type -eq 'EmptyFolders') {
         Get-ChildItem @getParams | Sort-Object { $_.FullName.Length } -Descending
     }
 
-    $emptyFolders | Where-Object { Test-IsEmptyFolderHC $_ } | ForEach-Object {
+    $folderCandidates | Where-Object { Test-IsEmptyFolderHC $_ } | ForEach-Object {
         $emptyFolder = $_
         try {
             Write-Verbose "Remove empty folder '$emptyFolder'"
