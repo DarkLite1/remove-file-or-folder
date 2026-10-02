@@ -86,6 +86,34 @@ function Test-IsExcludedHC {
     $false
 }
 
+function Get-ExclusiveCutoffHC {
+    param (
+        [Parameter(Mandatory)]
+        [datetime]$ReferenceDate,
+        [Parameter(Mandatory)]
+        [ValidateSet('Day', 'Month', 'Year')]
+        [string]$Unit,
+        [Parameter(Mandatory)]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$Quantity
+    )
+
+    try {
+        switch ($Unit) {
+            'Day' { $ReferenceDate.AddDays(-$Quantity).Date.AddDays(1) }
+            'Month' {
+                $cutoffDate = $ReferenceDate.AddMonths(-$Quantity)
+                [datetime]::new($cutoffDate.Year, $cutoffDate.Month, 1).AddMonths(1)
+            }
+            'Year' {
+                $cutoffDate = $ReferenceDate.AddYears(-$Quantity)
+                [datetime]::new($cutoffDate.Year, 1, 1).AddYears(1)
+            }
+        }
+    }
+    catch { throw "Invalid retention period '$Quantity $Unit': $_" }
+}
+
 function Get-IncludedChildItemHC {
     param (
         [string]$Root,
@@ -250,22 +278,7 @@ if (-not (Test-Path -LiteralPath $Path -PathType $pathType)) {
 Write-Verbose "Select files with a $OlderThanBasedOn older than '$OlderThanQuantity $OlderThanUnit'"
 
 if ($OlderThanQuantity -ne 0) {
-    $today = Get-Date
-
-    try {
-        $cutoffExclusive = switch ($OlderThanUnit) {
-            'Day' { $today.AddDays(-$OlderThanQuantity).Date.AddDays(1) }
-            'Month' {
-                $cutoffDate = $today.AddMonths(-$OlderThanQuantity)
-                [datetime]::new($cutoffDate.Year, $cutoffDate.Month, 1).AddMonths(1)
-            }
-            'Year' {
-                $cutoffDate = $today.AddYears(-$OlderThanQuantity)
-                [datetime]::new($cutoffDate.Year, 1, 1).AddYears(1)
-            }
-        }
-    }
-    catch { throw "Invalid retention period '$OlderThanQuantity $OlderThanUnit': $_" }
+    $cutoffExclusive = Get-ExclusiveCutoffHC -ReferenceDate (Get-Date) -Unit $OlderThanUnit -Quantity $OlderThanQuantity
 }
 #endregion
 

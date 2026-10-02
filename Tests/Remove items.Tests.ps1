@@ -542,6 +542,44 @@ Describe 'streamed file processing' {
         $testRemove.FullName | Should -Not -Exist
     }
 }
+Describe 'exclusive cutoff helper' {
+    BeforeAll {
+        $testTokens = $null
+        $testParseErrors = $null
+        $testAst = [System.Management.Automation.Language.Parser]::ParseFile($testScript, [ref]$testTokens, [ref]$testParseErrors)
+        $testParseErrors | Should -BeNullOrEmpty
+        $testFunction = $testAst.Find({
+                param($node)
+                $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Get-ExclusiveCutoffHC'
+            }, $true)
+        . ([scriptblock]::Create($testFunction.Extent.Text))
+    }
+
+    It 'returns the exclusive <Unit> boundary for quantity <Quantity>' -ForEach @(
+        @{ Unit = 'Day'; Quantity = 30; ReferenceDate = '2026-10-02T15:30:00'; Expected = '2026-09-03' }
+        @{ Unit = 'Day'; Quantity = 1; ReferenceDate = '2024-03-01T15:30:00'; Expected = '2024-03-01' }
+        @{ Unit = 'Month'; Quantity = 1; ReferenceDate = '2024-03-31T15:30:00'; Expected = '2024-03-01' }
+        @{ Unit = 'Month'; Quantity = 13; ReferenceDate = '2026-01-31T15:30:00'; Expected = '2025-01-01' }
+        @{ Unit = 'Year'; Quantity = 1; ReferenceDate = '2024-02-29T15:30:00'; Expected = '2024-01-01' }
+        @{ Unit = 'Year'; Quantity = 3; ReferenceDate = '2026-10-02T15:30:00'; Expected = '2024-01-01' }
+    ) {
+        $actual = Get-ExclusiveCutoffHC -ReferenceDate ([datetime]$ReferenceDate) -Unit $Unit -Quantity $Quantity
+
+        $actual | Should -BeOfType ([datetime])
+        $actual | Should -Be ([datetime]$Expected)
+    }
+
+    It 'rejects nonpositive quantity <_>' -ForEach @(0, -1) {
+        { Get-ExclusiveCutoffHC -ReferenceDate ([datetime]'2026-10-02') -Unit Day -Quantity $_ } |
+        Should -Throw '*Quantity*'
+    }
+
+    It 'preserves the overflow error for <_>' -ForEach @('Day', 'Month', 'Year') {
+        { Get-ExclusiveCutoffHC -ReferenceDate ([datetime]'2026-10-02') -Unit $_ -Quantity ([int]::MaxValue) } |
+        Should -Throw '*Invalid retention period*'
+    }
+}
 Describe 'calendar cutoff boundaries' {
     It 'preserves <Unit> boundaries for <Today> based on <BasedOn>' -ForEach @(
         @{ Unit = 'Day'; Today = '2026-10-02T15:30:00'; Cutoff = '2026-10-02'; BasedOn = 'CreationTime' }
