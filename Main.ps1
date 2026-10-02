@@ -136,8 +136,12 @@ Begin {
             #endregion
             #endregion
 
+            if ($file.PSObject.Properties.Name -contains 'Remove') {
+                throw "Property 'Remove' is no longer supported, use 'Tasks' instead. See 'Example.json'."
+            }
+
             @(
-                'MaxConcurrent', 'Remove'
+                'MaxConcurrent', 'Tasks'
             ).where(
                 { -not $file.$_ }
             ).foreach(
@@ -161,114 +165,157 @@ Begin {
             $maxConcurrentJobsTotal = [int]$file.MaxConcurrent.JobsTotal
             $maxConcurrentJobsPerComputer = [int]$file.MaxConcurrent.JobsPerComputer
 
-            foreach ($fileToRemove in $file.Remove.File) {
-                @(
-                    'Path', 'OlderThan'
-                ).where(
-                    { -not $fileToRemove.$_ }
-                ).foreach(
-                    { throw "Property 'Remove.File.$_' not found" }
-                )
+            #region Tasks
+            $tasksToExecute = @()
+            $tasks = @($file.Tasks)
 
-                #region OlderThan
-                if (-not $fileToRemove.OlderThan.Unit) {
-                    throw "No 'Remove.File.OlderThan.Unit' found"
-                }
+            for ($i = 0; $i -lt $tasks.Count; $i++) {
+                $task = $tasks[$i]
+                $prefix = "Tasks[$i]"
+                $taskProperties = $task.PSObject.Properties.Name
 
-                if ($fileToRemove.OlderThan.Unit -notMatch '^Day$|^Month$|^Year$') {
-                    throw "Value '$($fileToRemove.OlderThan.Unit)' is not supported by 'Remove.File.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
-                }
-
-                if ($fileToRemove.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
-                    throw "Property 'Remove.File.OlderThan.Quantity' not found. Use value number '0' to move all files."
-                }
-
-                try {
-                    $null = [int]$fileToRemove.OlderThan.Quantity
-                }
-                catch {
-                    throw "Property 'Remove.File.OlderThan.Quantity' needs to be a number, the value '$($fileToRemove.OlderThan.Quantity)' is not supported. Use value number '0' to move all files."
-                }
-                #endregion
-
-                if (
-                    ($fileToRemove.Path -notMatch '^\\\\') -and
-                    (-not $fileToRemove.ComputerName)
-                ) {
-                    throw "No 'Remove.File.ComputerName' found for path '$($fileToRemove.Path)'"
-                }
-            }
-
-            foreach ($fileInFolderToRemove in $file.Remove.FilesInFolder) {
-                @(
-                    'Path', 'OlderThan'
-                ).where(
-                    { -not $fileInFolderToRemove.$_ }
-                ).foreach(
-                    { throw "Property 'Remove.FilesInFolder.$_' not found" }
-                )
-
-                #region OlderThan
-                if (-not $fileInFolderToRemove.OlderThan.Unit) {
-                    throw "No 'Remove.FilesInFolder.OlderThan.Unit' found"
-                }
-
-                if ($fileInFolderToRemove.OlderThan.Unit -notMatch '^Day$|^Month$|^Year$') {
-                    throw "Value '$($fileInFolderToRemove.OlderThan.Unit)' is not supported by 'Remove.FilesInFolder.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
-                }
-
-                if ($fileInFolderToRemove.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
-                    throw "Property 'Remove.FilesInFolder.OlderThan.Quantity' not found. Use value number '0' to move all files."
-                }
-
-                try {
-                    $null = [int]$fileInFolderToRemove.OlderThan.Quantity
-                }
-                catch {
-                    throw "Property 'Remove.FilesInFolder.OlderThan.Quantity' needs to be a number, the value '$($fileInFolderToRemove.OlderThan.Quantity)' is not supported. Use value number '0' to move all files."
-                }
-                #endregion
-
-                if (
-                    ($fileInFolderToRemove.Path -notMatch '^\\\\') -and
-                    (-not $fileInFolderToRemove.ComputerName)
-                ) {
-                    throw "No 'Remove.FilesInFolder.ComputerName' found for path '$($fileInFolderToRemove.Path)'"
-                }
-
-                #region Test boolean values
-                foreach (
-                    $boolean in
-                    @(
-                        'Recurse'
-                    )
-                ) {
-                    try {
-                        $null = [Boolean]::Parse($fileInFolderToRemove.$boolean)
+                foreach ($name in $taskProperties) {
+                    if ($name -notin 'ComputerName', 'Files', 'Folders', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
+                        throw "Property '$prefix.$name' is not supported"
                     }
-                    catch {
-                        throw "Property 'Remove.FilesInFolder.$boolean' is not a boolean value"
+                }
+
+                #region Files or Folders
+                if ($task.Files -and $task.Folders) {
+                    throw "Property '$prefix.Files' and '$prefix.Folders' cannot be used at the same time"
+                }
+                if (-not ($task.Files -or $task.Folders)) {
+                    throw "Property '$prefix.Files' or '$prefix.Folders' not found"
+                }
+
+                $listName = if ($task.Files) { 'Files' } else { 'Folders' }
+                $removeFiles = $taskProperties -contains 'OlderThan'
+                #endregion
+
+                #region Recurse and RemoveEmptyFolders
+                if ($listName -eq 'Files') {
+                    if (-not $removeFiles) {
+                        throw "Property '$prefix.OlderThan' not found"
+                    }
+
+                    foreach ($name in 'Recurse', 'RemoveEmptyFolders') {
+                        if ($taskProperties -contains $name) {
+                            throw "Property '$prefix.$name' can only be used with '$prefix.Folders'"
+                        }
+                    }
+                }
+                else {
+                    $booleans = @('RemoveEmptyFolders')
+
+                    if ($removeFiles) {
+                        $booleans += 'Recurse'
+                    }
+                    elseif ($taskProperties -contains 'Recurse') {
+                        throw "Property '$prefix.Recurse' can only be used together with '$prefix.OlderThan'"
+                    }
+
+                    foreach ($name in $booleans) {
+                        if ($null -eq $task.$name) {
+                            throw "Property '$prefix.$name' not found"
+                        }
+                        if ($task.$name -isnot [bool]) {
+                            throw "Property '$prefix.$name' needs to be true or false, the value '$($task.$name)' is not supported."
+                        }
+                    }
+
+                    if ((-not $removeFiles) -and (-not $task.RemoveEmptyFolders)) {
+                        throw "Property '$prefix.OlderThan' not found. Use 'OlderThan' to remove files, 'RemoveEmptyFolders' to remove empty folders or both."
                     }
                 }
                 #endregion
-            }
 
-            foreach ($emptyFoldersToRemove in $file.Remove.EmptyFolders) {
-                @(
-                    'Path'
-                ).where(
-                    { -not $emptyFoldersToRemove.$_ }
-                ).foreach(
-                    { throw "Property 'Remove.EmptyFolders.$_' not found" }
-                )
+                #region OlderThan
+                if ($removeFiles) {
+                    if (-not $task.OlderThan.Unit) {
+                        throw "Property '$prefix.OlderThan.Unit' not found"
+                    }
 
-                if (
-                    ($emptyFoldersToRemove.Path -notMatch '^\\\\') -and
-                    (-not $emptyFoldersToRemove.ComputerName)
-                ) {
-                    throw "No 'Remove.EmptyFolders.ComputerName' found for path '$($emptyFoldersToRemove.Path)'"
+                    if ($task.OlderThan.Unit -notin 'Day', 'Month', 'Year') {
+                        throw "Property '$prefix.OlderThan.Unit' with value '$($task.OlderThan.Unit)' is not supported. Supported values are 'Day', 'Month' or 'Year'."
+                    }
+
+                    if ($task.OlderThan.PSObject.Properties.Name -notContains 'Quantity') {
+                        throw "Property '$prefix.OlderThan.Quantity' not found. Use value 0 to remove all files."
+                    }
+
+                    if ("$($task.OlderThan.Quantity)" -notMatch '^\d+$') {
+                        throw "Property '$prefix.OlderThan.Quantity' needs to be a positive number, the value '$($task.OlderThan.Quantity)' is not supported. Use value 0 to remove all files."
+                    }
                 }
+                #endregion
+
+                $computerName = if (
+                    (-not $task.ComputerName) -or
+                    ($task.ComputerName -eq 'localhost') -or
+                    ($task.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
+                ) {
+                    $env:COMPUTERNAME
+                }
+                else {
+                    $task.ComputerName
+                }
+
+                #region Create one task to execute per path
+                $entries = @($task.$listName)
+
+                for ($j = 0; $j -lt $entries.Count; $j++) {
+                    $entry = $entries[$j]
+                    $entryPrefix = "$prefix.$listName[$j]"
+
+                    if ($entry -is [string]) {
+                        $name = $null
+                        $path = $entry
+                    }
+                    else {
+                        foreach ($property in $entry.PSObject.Properties.Name) {
+                            if ($property -notin 'Name', 'Path') {
+                                throw "Property '$entryPrefix.$property' is not supported"
+                            }
+                        }
+
+                        $name = $entry.Name
+                        $path = $entry.Path
+                    }
+
+                    if (-not $path) {
+                        throw "Property '$entryPrefix' needs a path"
+                    }
+
+                    if (($path -notMatch '^\\\\') -and (-not $task.ComputerName)) {
+                        throw "Property '$prefix.ComputerName' not found, it is required for the local path '$path'"
+                    }
+
+                    $types = if ($listName -eq 'Files') {
+                        'RemoveFile'
+                    }
+                    else {
+                        if ($removeFiles) { 'RemoveFilesInFolder' }
+                        if ($task.RemoveEmptyFolders) { 'RemoveEmptyFolders' }
+                    }
+
+                    foreach ($type in $types) {
+                        $tasksToExecute += [PSCustomObject]@{
+                            Name         = $name
+                            ComputerName = $computerName
+                            Path         = $path.ToLower()
+                            Type         = $type
+                            OlderThan    = if ($type -ne 'RemoveEmptyFolders') { $task.OlderThan }
+                            Recurse      = $task.Recurse
+                            Job          = @{
+                                Results = @()
+                                Errors  = @()
+                            }
+                        }
+                    }
+                }
+                #endregion
             }
+            #endregion
         }
         catch {
             throw "Input file '$ConfigurationJsonFile': $_"
@@ -292,69 +339,7 @@ Begin {
         if (-not $PSSessionConfiguration) {
             $PSSessionConfiguration = 'PowerShell.7'
         }
-
-        $convertScriptBlock = {
-            $_.Path = $_.Path.ToLower()
-
-            #region Set ComputerName
-            if (
-                (-not $_.ComputerName) -or
-                ($_.ComputerName -eq 'localhost') -or
-                ($_.ComputerName -eq "$ENV:COMPUTERNAME.$env:USERDNSDOMAIN")
-            ) {
-                $_.ComputerName = $env:COMPUTERNAME
-            }
-            #endregion
-
-            #region Add properties
-            $_ | Add-Member -NotePropertyMembers @{
-                Job = @{
-                    Results = @()
-                    Errors  = @()
-                }
-            }
-            #endregion
-        }
         #endregion
-
-        #region Create tasks to execute
-        $tasksToExecute = @()
-
-        $file.Remove.File.foreach(
-            {
-                & $convertScriptBlock
-
-                $tasksToExecute += $_ | Select-Object -Property *,
-                @{
-                    Name       = 'Type'
-                    Expression = { 'RemoveFile' }
-                }
-            }
-        )
-
-        $file.Remove.FilesInFolder.foreach(
-            {
-                & $convertScriptBlock
-
-                $tasksToExecute += $_ | Select-Object -Property *,
-                @{
-                    Name       = 'Type'
-                    Expression = { 'RemoveFilesInFolder' }
-                }
-            }
-        )
-
-        $file.Remove.EmptyFolders.foreach(
-            {
-                & $convertScriptBlock
-
-                $tasksToExecute += $_ | Select-Object -Property *,
-                @{
-                    Name       = 'Type'
-                    Expression = { 'RemoveEmptyFolders' }
-                }
-            }
-        )
 
         if (-not $tasksToExecute) {
             throw 'No tasks to execute'

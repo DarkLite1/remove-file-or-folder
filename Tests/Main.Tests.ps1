@@ -10,38 +10,37 @@ BeforeAll {
             JobsTotal       = 1
             JobsPerComputer = 1
         }
-        Remove        = @{
-            File          = @(
-                @{
-                    Name         = 'FTP log file'
-                    ComputerName = 'PC1'
-                    Path         = 'z:\file.txt'
-                    OlderThan    = @{
-                        Quantity = 1
-                        Unit     = 'Day'
-                    }
+        Tasks         = @(
+            @{
+                ComputerName = 'PC1'
+                Files        = @(
+                    @{ Name = 'FTP log file'; Path = 'z:\file.txt' }
+                )
+                OlderThan    = @{
+                    Quantity = 1
+                    Unit     = 'Day'
                 }
-            )
-            FilesInFolder = @(
-                @{
-                    Name         = 'App log folder'
-                    ComputerName = 'PC2'
-                    Path         = 'z:\folder'
-                    Recurse      = $true
-                    OlderThan    = @{
-                        Quantity = 1
-                        Unit     = 'Day'
-                    }
+            }
+            @{
+                ComputerName       = 'PC2'
+                Folders            = @(
+                    @{ Name = 'App log folder'; Path = 'z:\folder' }
+                )
+                OlderThan          = @{
+                    Quantity = 1
+                    Unit     = 'Day'
                 }
-            )
-            EmptyFolders  = @(
-                @{
-                    Name         = 'Delivery notes'
-                    ComputerName = 'PC3'
-                    Path         = 'z:\folder'
-                }
-            )
-        }
+                Recurse            = $true
+                RemoveEmptyFolders = $false
+            }
+            @{
+                ComputerName       = 'PC3'
+                Folders            = @(
+                    @{ Name = 'Delivery notes'; Path = 'z:\folder' }
+                )
+                RemoveEmptyFolders = $true
+            }
+        )
         Settings      = @{
             ScriptName     = 'Test (Brecht)'
             SendMail       = @{
@@ -84,7 +83,7 @@ BeforeAll {
     $testData = @(
         @{
             DateTime     = Get-Date
-            ComputerName = $testInputFile.Remove.File[0].ComputerName
+            ComputerName = $testInputFile.Tasks[0].ComputerName
             Type         = 'File'
             FullName     = 'z:\file1.txt'
             CreationTime = Get-Date
@@ -93,7 +92,7 @@ BeforeAll {
         }
         @{
             DateTime     = Get-Date
-            ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
+            ComputerName = $testInputFile.Tasks[1].ComputerName
             Type         = 'File'
             FullName     = 'z:\file2.txt'
             CreationTime = Get-Date
@@ -102,7 +101,7 @@ BeforeAll {
         }
         @{
             DateTime     = Get-Date
-            ComputerName = $testInputFile.Remove.FilesInFolder[0].ComputerName
+            ComputerName = $testInputFile.Tasks[1].ComputerName
             Type         = 'File'
             FullName     = 'z:\file3.txt'
             CreationTime = Get-Date
@@ -111,7 +110,7 @@ BeforeAll {
         }
         @{
             DateTime     = Get-Date
-            ComputerName = $testInputFile.Remove.EmptyFolders[0].ComputerName
+            ComputerName = $testInputFile.Tasks[2].ComputerName
             Type         = 'EmptyFolder'
             FullName     = 'z:\folder'
             CreationTime = Get-Date
@@ -247,9 +246,19 @@ Describe 'an incorrect input file' {
             Message     = "Property 'MaxConcurrent' not found"
         }
         @{
-            Description = 'Remove missing'
-            Change      = { param($f) $f.PSObject.Properties.Remove('Remove') }
-            Message     = "Property 'Remove' not found"
+            Description = 'Tasks missing'
+            Change      = { param($f) $f.PSObject.Properties.Remove('Tasks') }
+            Message     = "Property 'Tasks' not found"
+        }
+        @{
+            Description = 'Tasks is empty'
+            Change      = { param($f) $f.Tasks = @() }
+            Message     = "Property 'Tasks' not found"
+        }
+        @{
+            Description = 'Remove from the old format is used'
+            Change      = { param($f) $f | Add-Member -NotePropertyName 'Remove' -NotePropertyValue @{} }
+            Message     = "Property 'Remove' is no longer supported, use 'Tasks' instead."
         }
         @{
             Description = 'MaxConcurrent.JobsTotal missing'
@@ -284,7 +293,7 @@ Describe 'an incorrect input file' {
         @{
             Description = 'Settings.SendMail.When not supported'
             Change      = { param($f) $f.Settings.SendMail.When = 'Sometimes' }
-            Message     = "Property 'Settings.SendMail.When' with value 'Sometimes' is not supported*"
+            Message     = "Property 'Settings.SendMail.When' with value 'Sometimes' is not supported"
         }
         @{
             Description = 'Settings.SendMail.From missing'
@@ -304,12 +313,12 @@ Describe 'an incorrect input file' {
         @{
             Description = 'Settings.SendMail.Smtp.Port not supported'
             Change      = { param($f) $f.Settings.SendMail.Smtp.Port = 26 }
-            Message     = "Property 'Settings.SendMail.Smtp.Port' with value '26' is not supported*"
+            Message     = "Property 'Settings.SendMail.Smtp.Port' with value '26' is not supported"
         }
         @{
             Description = 'Settings.SendMail.Smtp.ConnectionType not supported'
             Change      = { param($f) $f.Settings.SendMail.Smtp.ConnectionType = 'Wrong' }
-            Message     = "Property 'Settings.SendMail.Smtp.ConnectionType' with value 'Wrong' is not supported*"
+            Message     = "Property 'Settings.SendMail.Smtp.ConnectionType' with value 'Wrong' is not supported"
         }
         @{
             Description = 'Settings.SaveLogFiles.DeleteLogsAfterDays not a number'
@@ -332,79 +341,104 @@ Describe 'an incorrect input file' {
             Message     = "Property 'Settings.SaveInEventLog.LogName' not found"
         }
         @{
-            Description = 'Remove.File.Path missing'
-            Change      = { param($f) $f.Remove.File[0].Path = $null }
-            Message     = "Property 'Remove.File.Path' not found"
+            Description = 'Tasks[0] has an unknown property'
+            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'Recursive' -NotePropertyValue $true }
+            Message     = "Property 'Tasks[0].Recursive' is not supported"
         }
         @{
-            Description = 'Remove.File.OlderThan missing'
-            Change      = { param($f) $f.Remove.File[0].OlderThan = $null }
-            Message     = "Property 'Remove.File.OlderThan' not found"
+            Description = 'Tasks[0] has Files and Folders'
+            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'Folders' -NotePropertyValue @('z:\a') }
+            Message     = "Property 'Tasks[0].Files' and 'Tasks[0].Folders' cannot be used at the same time"
         }
         @{
-            Description = 'Remove.File.OlderThan.Unit missing'
-            Change      = { param($f) $f.Remove.File[0].OlderThan.PSObject.Properties.Remove('Unit') }
-            Message     = "No 'Remove.File.OlderThan.Unit' found"
+            Description = 'Tasks[0] has no Files or Folders'
+            Change      = { param($f) $f.Tasks[0].PSObject.Properties.Remove('Files') }
+            Message     = "Property 'Tasks[0].Files' or 'Tasks[0].Folders' not found"
         }
         @{
-            Description = 'Remove.File.OlderThan.Unit not supported'
-            Change      = { param($f) $f.Remove.File[0].OlderThan.Unit = 'notSupported' }
-            Message     = "Value 'notSupported' is not supported by 'Remove.File.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
+            Description = 'Tasks[0].OlderThan missing for Files'
+            Change      = { param($f) $f.Tasks[0].PSObject.Properties.Remove('OlderThan') }
+            Message     = "Property 'Tasks[0].OlderThan' not found"
         }
         @{
-            Description = 'Remove.File.OlderThan.Quantity missing'
-            Change      = { param($f) $f.Remove.File[0].OlderThan.PSObject.Properties.Remove('Quantity') }
-            Message     = "Property 'Remove.File.OlderThan.Quantity' not found. Use value number '0' to move all files."
+            Description = 'Tasks[0].Recurse used with Files'
+            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'Recurse' -NotePropertyValue $true }
+            Message     = "Property 'Tasks[0].Recurse' can only be used with 'Tasks[0].Folders'"
         }
         @{
-            Description = 'Remove.File.OlderThan.Quantity not a number'
-            Change      = { param($f) $f.Remove.File[0].OlderThan.Quantity = 'a' }
-            Message     = "Property 'Remove.File.OlderThan.Quantity' needs to be a number, the value 'a' is not supported*"
+            Description = 'Tasks[0].RemoveEmptyFolders used with Files'
+            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'RemoveEmptyFolders' -NotePropertyValue $true }
+            Message     = "Property 'Tasks[0].RemoveEmptyFolders' can only be used with 'Tasks[0].Folders'"
         }
         @{
-            Description = 'Remove.File local path without ComputerName'
-            Change      = { param($f) $f.Remove.File[0].ComputerName = $null; $f.Remove.File[0].Path = 'd:\bla' }
-            Message     = "No 'Remove.File.ComputerName' found for path 'd:\bla'"
+            Description = 'Tasks[1].Recurse missing'
+            Change      = { param($f) $f.Tasks[1].PSObject.Properties.Remove('Recurse') }
+            Message     = "Property 'Tasks[1].Recurse' not found"
         }
         @{
-            Description = 'Remove.FilesInFolder.Path missing'
-            Change      = { param($f) $f.Remove.FilesInFolder[0].Path = $null }
-            Message     = "Property 'Remove.FilesInFolder.Path' not found"
+            Description = 'Tasks[1].Recurse not a boolean'
+            Change      = { param($f) $f.Tasks[1].Recurse = 'yes' }
+            Message     = "Property 'Tasks[1].Recurse' needs to be true or false, the value 'yes' is not supported."
         }
         @{
-            Description = 'Remove.FilesInFolder.OlderThan.Unit not supported'
-            Change      = { param($f) $f.Remove.FilesInFolder[0].OlderThan.Unit = 'notSupported' }
-            Message     = "Value 'notSupported' is not supported by 'Remove.FilesInFolder.OlderThan.Unit'. Valid options are 'Day', 'Month' or 'Year'."
+            Description = 'Tasks[1].RemoveEmptyFolders missing'
+            Change      = { param($f) $f.Tasks[1].PSObject.Properties.Remove('RemoveEmptyFolders') }
+            Message     = "Property 'Tasks[1].RemoveEmptyFolders' not found"
         }
         @{
-            Description = 'Remove.FilesInFolder.OlderThan.Quantity not a number'
-            Change      = { param($f) $f.Remove.FilesInFolder[0].OlderThan.Quantity = 'a' }
-            Message     = "Property 'Remove.FilesInFolder.OlderThan.Quantity' needs to be a number, the value 'a' is not supported*"
+            Description = 'Tasks[1].RemoveEmptyFolders not a boolean'
+            Change      = { param($f) $f.Tasks[1].RemoveEmptyFolders = 'yes' }
+            Message     = "Property 'Tasks[1].RemoveEmptyFolders' needs to be true or false, the value 'yes' is not supported."
         }
         @{
-            Description = 'Remove.FilesInFolder.Recurse not a boolean'
-            Change      = { param($f) $f.Remove.FilesInFolder[0].Recurse = 'a' }
-            Message     = "Property 'Remove.FilesInFolder.Recurse' is not a boolean value"
+            Description = 'Tasks[2].Recurse used without OlderThan'
+            Change      = { param($f) $f.Tasks[2] | Add-Member -NotePropertyName 'Recurse' -NotePropertyValue $true }
+            Message     = "Property 'Tasks[2].Recurse' can only be used together with 'Tasks[2].OlderThan'"
         }
         @{
-            Description = 'Remove.FilesInFolder local path without ComputerName'
-            Change      = { param($f) $f.Remove.FilesInFolder[0].ComputerName = $null; $f.Remove.FilesInFolder[0].Path = 'd:\bla' }
-            Message     = "No 'Remove.FilesInFolder.ComputerName' found for path 'd:\bla'"
+            Description = 'Tasks[2] has nothing to remove'
+            Change      = { param($f) $f.Tasks[2].RemoveEmptyFolders = $false }
+            Message     = "Property 'Tasks[2].OlderThan' not found. Use 'OlderThan' to remove files, 'RemoveEmptyFolders' to remove empty folders or both."
         }
         @{
-            Description = 'Remove.EmptyFolders.Path missing'
-            Change      = { param($f) $f.Remove.EmptyFolders[0].Path = $null }
-            Message     = "Property 'Remove.EmptyFolders.Path' not found"
+            Description = 'Tasks[0].OlderThan.Unit missing'
+            Change      = { param($f) $f.Tasks[0].OlderThan.PSObject.Properties.Remove('Unit') }
+            Message     = "Property 'Tasks[0].OlderThan.Unit' not found"
         }
         @{
-            Description = 'Remove.EmptyFolders local path without ComputerName'
-            Change      = { param($f) $f.Remove.EmptyFolders[0].ComputerName = $null; $f.Remove.EmptyFolders[0].Path = 'd:\bla' }
-            Message     = "No 'Remove.EmptyFolders.ComputerName' found for path 'd:\bla'"
+            Description = 'Tasks[0].OlderThan.Unit not supported'
+            Change      = { param($f) $f.Tasks[0].OlderThan.Unit = 'notSupported' }
+            Message     = "Property 'Tasks[0].OlderThan.Unit' with value 'notSupported' is not supported. Supported values are 'Day', 'Month' or 'Year'."
         }
         @{
-            Description = 'there is nothing to execute'
-            Change      = { param($f) $f.Remove = [PSCustomObject]@{ File = @() } }
-            Message     = 'No tasks to execute'
+            Description = 'Tasks[0].OlderThan.Quantity missing'
+            Change      = { param($f) $f.Tasks[0].OlderThan.PSObject.Properties.Remove('Quantity') }
+            Message     = "Property 'Tasks[0].OlderThan.Quantity' not found. Use value 0 to remove all files."
+        }
+        @{
+            Description = 'Tasks[0].OlderThan.Quantity not a number'
+            Change      = { param($f) $f.Tasks[0].OlderThan.Quantity = 'a' }
+            Message     = "Property 'Tasks[0].OlderThan.Quantity' needs to be a positive number, the value 'a' is not supported."
+        }
+        @{
+            Description = 'Tasks[1].OlderThan.Quantity negative'
+            Change      = { param($f) $f.Tasks[1].OlderThan.Quantity = -1 }
+            Message     = "Property 'Tasks[1].OlderThan.Quantity' needs to be a positive number, the value '-1' is not supported."
+        }
+        @{
+            Description = 'Tasks[0].Files[0] without a path'
+            Change      = { param($f) $f.Tasks[0].Files[0].Path = $null }
+            Message     = "Property 'Tasks[0].Files[0]' needs a path"
+        }
+        @{
+            Description = 'Tasks[1].Folders[0] has an unknown property'
+            Change      = { param($f) $f.Tasks[1].Folders[0] | Add-Member -NotePropertyName 'Other' -NotePropertyValue 1 }
+            Message     = "Property 'Tasks[1].Folders[0].Other' is not supported"
+        }
+        @{
+            Description = 'Tasks[1] local path without ComputerName'
+            Change      = { param($f) $f.Tasks[1].ComputerName = $null }
+            Message     = "Property 'Tasks[1].ComputerName' not found, it is required for the local path 'z:\folder'"
         }
     ) {
         $testNewInputFile = Copy-ObjectHC $testInputFile
@@ -414,14 +448,16 @@ Describe 'an incorrect input file' {
 
         .$testScript @testParams -WarningVariable testWarnings -WarningAction SilentlyContinue
 
+        $testMessage = "*$([WildcardPattern]::Escape($Message))*"
+
         $LASTEXITCODE | Should -Be 1
-        ($testWarnings -join "`n") | Should -BeLike "*$Message*"
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike "*$Message*"
+        ($testWarnings -join "`n") | Should -BeLike $testMessage
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike $testMessage
         Should -Not -Invoke Invoke-Command -Scope It
     }
     It 'is reported by e-mail and in the event log' {
         $testNewInputFile = Copy-ObjectHC $testInputFile
-        $testNewInputFile.Remove.File[0].Path = $null
+        $testNewInputFile.Tasks[0].Files[0].Path = $null
 
         Test-NewJsonFileHC $testNewInputFile
 
@@ -429,11 +465,11 @@ Describe 'an incorrect input file' {
 
         Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
             ($Priority -eq 'High') -and
-            ($Body -like "*Property 'Remove.File.Path' not found*")
+            ($Body -like "*Property 'Tasks``[0``].Files``[0``]' needs a path*")
         }
         Should -Invoke Write-EventLog -Scope It -ParameterFilter {
             ($EntryType -eq 'Error') -and
-            ($Message -like "*Property 'Remove.File.Path' not found*")
+            ($Message -like "*Property 'Tasks``[0``].Files``[0``]' needs a path*")
         }
     }
     It 'Settings.SendMail properties are not needed when SendMail.When is Never' {
@@ -452,12 +488,10 @@ Describe 'an incorrect input file' {
     }
 }
 Describe 'execute script' {
-    Context 'Remove.File' {
+    Context 'Files' {
         BeforeAll {
             $testNewInputFile = Copy-ObjectHC $testInputFile
-            $testNewInputFile.Remove = [PSCustomObject]@{
-                File = $testNewInputFile.Remove.File
-            }
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
 
             Test-NewJsonFileHC $testNewInputFile
 
@@ -465,25 +499,23 @@ Describe 'execute script' {
         }
         It 'with the correct arguments' {
             Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
-                ($ComputerName -eq $testNewInputFile.Remove.File[0].ComputerName) -and
+                ($ComputerName -eq $testNewInputFile.Tasks[0].ComputerName) -and
                 ($ConfigurationName -eq 'PowerShell.7')
             }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
                 ($FilePath -eq $testParams.RemoveItemsScript) -and
                 ($ArgumentList[0] -eq 'File') -and
-                ($ArgumentList[1] -eq $testNewInputFile.Remove.File[0].Path) -and
-                ($ArgumentList[2] -eq $testNewInputFile.Remove.File[0].OlderThan.Unit) -and
-                ($ArgumentList[3] -eq $testNewInputFile.Remove.File[0].OlderThan.Quantity)
+                ($ArgumentList[1] -eq $testNewInputFile.Tasks[0].Files[0].Path) -and
+                ($ArgumentList[2] -eq $testNewInputFile.Tasks[0].OlderThan.Unit) -and
+                ($ArgumentList[3] -eq $testNewInputFile.Tasks[0].OlderThan.Quantity)
             }
         }
     }
-    Context 'Remove.FilesInFolder' {
+    Context 'Folders with OlderThan' {
         BeforeAll {
             $testNewInputFile = Copy-ObjectHC $testInputFile
-            $testNewInputFile.Remove = [PSCustomObject]@{
-                FilesInFolder = $testNewInputFile.Remove.FilesInFolder
-            }
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
 
             Test-NewJsonFileHC $testNewInputFile
 
@@ -491,25 +523,23 @@ Describe 'execute script' {
         }
         It 'with the correct arguments' {
             Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
-                $ComputerName -eq $testNewInputFile.Remove.FilesInFolder[0].ComputerName
+                $ComputerName -eq $testNewInputFile.Tasks[0].ComputerName
             }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
                 ($FilePath -eq $testParams.RemoveItemsScript) -and
                 ($ArgumentList[0] -eq 'FilesInFolder') -and
-                ($ArgumentList[1] -eq $testNewInputFile.Remove.FilesInFolder[0].Path) -and
-                ($ArgumentList[2] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Unit) -and
-                ($ArgumentList[3] -eq $testNewInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) -and
-                ($ArgumentList[4] -eq $testNewInputFile.Remove.FilesInFolder[0].Recurse)
+                ($ArgumentList[1] -eq $testNewInputFile.Tasks[0].Folders[0].Path) -and
+                ($ArgumentList[2] -eq $testNewInputFile.Tasks[0].OlderThan.Unit) -and
+                ($ArgumentList[3] -eq $testNewInputFile.Tasks[0].OlderThan.Quantity) -and
+                ($ArgumentList[4] -eq $testNewInputFile.Tasks[0].Recurse)
             }
         }
     }
-    Context 'Remove.EmptyFolders' {
+    Context 'Folders with RemoveEmptyFolders' {
         BeforeAll {
             $testNewInputFile = Copy-ObjectHC $testInputFile
-            $testNewInputFile.Remove = [PSCustomObject]@{
-                EmptyFolders = $testNewInputFile.Remove.EmptyFolders
-            }
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[2])
 
             Test-NewJsonFileHC $testNewInputFile
 
@@ -517,25 +547,51 @@ Describe 'execute script' {
         }
         It 'with the correct arguments' {
             Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
-                $ComputerName -eq $testNewInputFile.Remove.EmptyFolders[0].ComputerName
+                $ComputerName -eq $testNewInputFile.Tasks[0].ComputerName
             }
             Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
                 ($FilePath -eq $testParams.RemoveItemsScript) -and
                 ($ArgumentList[0] -eq 'EmptyFolders') -and
-                ($ArgumentList[1] -eq $testNewInputFile.Remove.EmptyFolders[0].Path)
+                ($ArgumentList[1] -eq $testNewInputFile.Tasks[0].Folders[0].Path)
             }
         }
         It 'and close the session' {
             Should -Invoke Remove-PSSession -Times 1 -Exactly -Scope Context
         }
     }
+    Context 'Folders with OlderThan and RemoveEmptyFolders as plain path strings' {
+        BeforeAll {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
+            $testNewInputFile.Tasks[0].Folders = @('z:\a', 'z:\b')
+            $testNewInputFile.Tasks[0].RemoveEmptyFolders = $true
+
+            Test-NewJsonFileHC $testNewInputFile
+
+            .$testScript @testParams
+        }
+        It 'removes the files in every folder' {
+            foreach ($testPath in 'z:\a', 'z:\b') {
+                Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                    ($ArgumentList[0] -eq 'FilesInFolder') -and
+                    ($ArgumentList[1] -eq $testPath)
+                }
+            }
+        }
+        It 'removes the empty folders in every folder' {
+            foreach ($testPath in 'z:\a', 'z:\b') {
+                Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                    ($ArgumentList[0] -eq 'EmptyFolders') -and
+                    ($ArgumentList[1] -eq $testPath)
+                }
+            }
+        }
+    }
     Context 'PSSessionConfiguration' {
         It 'is used for the remote session' {
             $testNewInputFile = Copy-ObjectHC $testInputFile
-            $testNewInputFile.Remove = [PSCustomObject]@{
-                File = $testNewInputFile.Remove.File
-            }
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
             $testNewInputFile | Add-Member -NotePropertyName 'PSSessionConfiguration' -NotePropertyValue 'PowerShell.7.5'
 
             Test-NewJsonFileHC $testNewInputFile
@@ -551,9 +607,7 @@ Describe 'execute script' {
 Describe 'retry a remote job' {
     BeforeAll {
         $testNewInputFile = Copy-ObjectHC $testInputFile
-        $testNewInputFile.Remove = [PSCustomObject]@{
-            File = $testNewInputFile.Remove.File
-        }
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
 
         Test-NewJsonFileHC $testNewInputFile
 
@@ -635,15 +689,13 @@ Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Va
         }
 
         $testNewInputFile = Copy-ObjectHC $testInputFile
-        $testNewInputFile.Remove = [PSCustomObject]@{
-            File = @(1..4).ForEach({
-                    [PSCustomObject]@{
-                        ComputerName = 'localhost'
-                        Path         = "c:\file$_.txt"
-                        OlderThan    = @{ Quantity = 1; Unit = 'Day' }
-                    }
-                })
-        }
+        $testNewInputFile.Tasks = @(
+            [PSCustomObject]@{
+                ComputerName = 'localhost'
+                Files        = @(1..4).ForEach({ "c:\file$_.txt" })
+                OlderThan    = @{ Quantity = 1; Unit = 'Day' }
+            }
+        )
     }
     BeforeEach {
         Remove-Item -Path "$testJobLogFolder\*" -Force
@@ -679,29 +731,20 @@ Describe 'with the real Remove items script on the local computer' {
         $testOldFile.CreationTime = (Get-Date).AddDays(-10)
 
         $testNewInputFile = Copy-ObjectHC $testInputFile
-        $testNewInputFile.Remove = [PSCustomObject]@{
-            File          = @(
-                [PSCustomObject]@{
-                    ComputerName = 'localhost'
-                    Path         = $testSingleFile.FullName
-                    OlderThan    = @{ Quantity = 0; Unit = 'Day' }
-                }
-            )
-            FilesInFolder = @(
-                [PSCustomObject]@{
-                    ComputerName = 'localhost'
-                    Path         = "$testRoot\folder"
-                    Recurse      = $true
-                    OlderThan    = @{ Quantity = 5; Unit = 'Day' }
-                }
-            )
-            EmptyFolders  = @(
-                [PSCustomObject]@{
-                    ComputerName = 'localhost'
-                    Path         = $testRoot
-                }
-            )
-        }
+        $testNewInputFile.Tasks = @(
+            [PSCustomObject]@{
+                ComputerName = 'localhost'
+                Files        = @($testSingleFile.FullName)
+                OlderThan    = @{ Quantity = 0; Unit = 'Day' }
+            }
+            [PSCustomObject]@{
+                ComputerName       = 'localhost'
+                Folders            = @("$testRoot\folder")
+                OlderThan          = @{ Quantity = 5; Unit = 'Day' }
+                Recurse            = $true
+                RemoveEmptyFolders = $true
+            }
+        )
         $testFolderFile.CreationTime = (Get-Date).AddDays(-10)
 
         Test-NewJsonFileHC $testNewInputFile
@@ -777,7 +820,7 @@ Describe 'create an Excel file' {
                     Type         = $testData[0].Type
                     Path         = $testData[0].FullName
                     CreationTime = $testData[0].CreationTime
-                    OlderThan    = "$($testInputFile.Remove.File[0].OlderThan.Quantity) $($testInputFile.Remove.File[0].OlderThan.Unit)"
+                    OlderThan    = "$($testInputFile.Tasks[0].OlderThan.Quantity) $($testInputFile.Tasks[0].OlderThan.Unit)"
                     Action       = $testData[0].Action
                     Error        = $testData[0].Error
                 }
@@ -787,7 +830,7 @@ Describe 'create an Excel file' {
                     Type         = $testData[1].Type
                     Path         = $testData[1].FullName
                     CreationTime = $testData[1].CreationTime
-                    OlderThan    = "$($testInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) $($testInputFile.Remove.FilesInFolder[0].OlderThan.Unit)"
+                    OlderThan    = "$($testInputFile.Tasks[1].OlderThan.Quantity) $($testInputFile.Tasks[1].OlderThan.Unit)"
                     Action       = $testData[1].Action
                     Error        = $testData[1].Error
                 }
@@ -797,7 +840,7 @@ Describe 'create an Excel file' {
                     Type         = $testData[2].Type
                     Path         = $testData[2].FullName
                     CreationTime = $testData[2].CreationTime
-                    OlderThan    = "$($testInputFile.Remove.FilesInFolder[0].OlderThan.Quantity) $($testInputFile.Remove.FilesInFolder[0].OlderThan.Unit)"
+                    OlderThan    = "$($testInputFile.Tasks[1].OlderThan.Quantity) $($testInputFile.Tasks[1].OlderThan.Unit)"
                     Action       = $testData[2].Action
                     Error        = $testData[2].Error
                 }
@@ -849,10 +892,10 @@ Describe 'create an Excel file' {
 
             $testExportedExcelRows = @(
                 @{
-                    ComputerName = $testInputFile.Remove.File[0].ComputerName
-                    Path         = $testInputFile.Remove.File[0].Path
+                    ComputerName = $testInputFile.Tasks[0].ComputerName
+                    Path         = $testInputFile.Tasks[0].Files[0].Path
                     Type         = 'RemoveFile'
-                    OlderThan    = "$($testInputFile.Remove.File[0].OlderThan.Quantity) $($testInputFile.Remove.File[0].OlderThan.Unit)"
+                    OlderThan    = "$($testInputFile.Tasks[0].OlderThan.Quantity) $($testInputFile.Tasks[0].OlderThan.Unit)"
                     Error        = 'Oops'
                 }
             )
@@ -939,9 +982,7 @@ Describe 'send an e-mail' {
         }
 
         $testNewInputFile = Copy-ObjectHC $testInputFile
-        $testNewInputFile.Remove = [PSCustomObject]@{
-            File = $testNewInputFile.Remove.File
-        }
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
 
         Test-NewJsonFileHC $testNewInputFile
 
@@ -973,10 +1014,10 @@ Describe 'send an e-mail' {
             ($Body -like '*Email body*') -and
             ($Body -like (
                 "*<a href=`"{0}`">{1}</a><br>Remove file older than 1 day<br>Removed: 1, <b style=`"color:red;`">errors: 1*" -f $(
-                    "\\$($testNewInputFile.Remove.File[0].ComputerName)\z$\$($testNewInputFile.Remove.File[0].Path.Substring(3))"
+                    "\\$($testNewInputFile.Tasks[0].ComputerName)\z$\$($testNewInputFile.Tasks[0].Files[0].Path.Substring(3))"
                 ),
                 $(
-                    $testNewInputFile.Remove.File[0].Name
+                    $testNewInputFile.Tasks[0].Files[0].Name
                 )
             ))
         }
