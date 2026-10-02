@@ -28,6 +28,9 @@
 
 .PARAMETER Recurse
     Also remove the files in the subfolders, for 'FilesInFolder' only.
+
+.PARAMETER ExcludeFile
+    Files below 'Path' that are never removed, for 'FilesInFolder' only.
 #>
 
 Param (
@@ -41,7 +44,9 @@ Param (
     [ValidateSet('Day', 'Month', 'Year')]
     [String]$OlderThanUnit,
     [Int]$OlderThanQuantity,
-    [Boolean]$Recurse
+    [Boolean]$Recurse,
+    [AllowEmptyCollection()]
+    [String[]]$ExcludeFile = @()
 )
 
 $excludedPaths = @(
@@ -203,6 +208,17 @@ else {
 if ($excludedPaths) {
     $files = $files.Where({ -not (Test-IsExcludedHC $_.FullName) })
     $getErrors = $getErrors.Where({ -not (Test-IsExcludedHC "$($_.TargetObject)") })
+}
+
+$excludedFiles = @($ExcludeFile | Where-Object { $_ })
+
+if ($excludedFiles) {
+    $files = $files.Where({
+            $fullName = $_.FullName
+            -not $excludedFiles.Where({
+                    $_.Equals($fullName, [StringComparison]::OrdinalIgnoreCase)
+                })
+        })
 }
 #endregion
 

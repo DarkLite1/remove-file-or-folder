@@ -465,6 +465,26 @@ Describe 'an incorrect input file' {
             Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\folder') }
             Message     = "Property 'Tasks[1].ExcludeFolders' contains 'z:\folder', which is not a subfolder of a path in 'Tasks[1].Folders'"
         }
+        @{
+            Description = 'Tasks[0].ExcludeFiles used with Files'
+            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\a.txt') }
+            Message     = "Property 'Tasks[0].ExcludeFiles' can only be used with 'Tasks[0].Folders'"
+        }
+        @{
+            Description = 'Tasks[2].ExcludeFiles used without OlderThan'
+            Change      = { param($f) $f.Tasks[2] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\folder\a.txt') }
+            Message     = "Property 'Tasks[2].ExcludeFiles' can only be used together with 'Tasks[2].OlderThan'"
+        }
+        @{
+            Description = 'Tasks[1].ExcludeFiles contains an empty path'
+            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('') }
+            Message     = "Property 'Tasks[1].ExcludeFiles' needs to be an array of file paths, the value '' is not supported."
+        }
+        @{
+            Description = 'Tasks[1].ExcludeFiles is not below a folder'
+            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\other\a.txt') }
+            Message     = "Property 'Tasks[1].ExcludeFiles' contains 'z:\other\a.txt', which is not a file of a path in 'Tasks[1].Folders'"
+        }
     ) {
         $testNewInputFile = Copy-ObjectHC $testInputFile
         & $Change $testNewInputFile
@@ -670,6 +690,32 @@ Describe 'execute script' {
             }
         }
     }
+    Context 'ExcludeFiles' {
+        BeforeAll {
+            $testNewInputFile = Copy-ObjectHC $testInputFile
+            $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
+            $testNewInputFile.Tasks[0].Folders = @('z:\a', 'z:\b')
+            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\a\keep.txt', 'z:\a\sub\keep.json')
+
+            Test-NewJsonFileHC $testNewInputFile
+
+            .$testScript @testParams
+        }
+        It 'are passed to the job of the folder they are in' {
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                ($ArgumentList[0] -eq 'FilesInFolder') -and
+                ($ArgumentList[1] -eq 'z:\a') -and
+                (($ArgumentList[6] -join '|') -eq 'z:\a\keep.txt|z:\a\sub\keep.json')
+            }
+        }
+        It 'are not passed to the jobs of other folders' {
+            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                ($ArgumentList[0] -eq 'FilesInFolder') -and
+                ($ArgumentList[1] -eq 'z:\b') -and
+                (@($ArgumentList[6]).Count -eq 0)
+            }
+        }
+    }
     Context 'PSSessionConfiguration' {
         It 'is used for the remote session' {
             $testNewInputFile = Copy-ObjectHC $testInputFile
@@ -814,6 +860,8 @@ Describe 'with the real Remove items script on the local computer' {
         $testKeepFile = New-Item "$testRoot\folder\keep\PrintHistory.json" -ItemType File -Force
         $testKeepFile.CreationTime = (Get-Date).AddDays(-10)
         $testKeepEmptyFolder = New-Item "$testRoot\folder\keep\empty" -ItemType Directory
+        $testKeepSingleFile = New-Item "$testRoot\folder\state.json" -ItemType File
+        $testKeepSingleFile.CreationTime = (Get-Date).AddDays(-10)
 
         $testNewInputFile = Copy-ObjectHC $testInputFile
         $testNewInputFile.Tasks = @(
@@ -826,6 +874,7 @@ Describe 'with the real Remove items script on the local computer' {
                 ComputerName       = 'localhost'
                 Folders            = @("$testRoot\folder")
                 ExcludeFolders     = @("$testRoot\folder\keep")
+                ExcludeFiles       = @("$testRoot\folder\state.json")
                 OlderThan          = @{ Quantity = 5; Unit = 'Day' }
                 Recurse            = $true
                 RemoveEmptyFolders = $true
@@ -855,6 +904,9 @@ Describe 'with the real Remove items script on the local computer' {
     It 'keeps the old files and empty folders in an excluded folder' {
         $testKeepFile.FullName | Should -Exist
         $testKeepEmptyFolder.FullName | Should -Exist
+    }
+    It 'keeps an excluded old file' {
+        $testKeepSingleFile.FullName | Should -Exist
     }
     It 'removes the folders that became empty' {
         "$testRoot\folder\sub" | Should -Not -Exist

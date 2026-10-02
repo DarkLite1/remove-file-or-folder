@@ -418,3 +418,31 @@ Describe 'ExcludeFolder' {
         }
     }
 }
+Describe 'ExcludeFile' {
+    BeforeEach {
+        $testRoot = (New-Item "TestDrive:/excludeFile_$([guid]::NewGuid())" -ItemType Directory).FullName
+
+        $testKeepFile = New-Item "$testRoot\sub\PrintHistory.json" -ItemType File -Force
+        $testRemoveFile = New-Item "$testRoot\sub\other.json" -ItemType File
+        $testRemoveTopFile = New-Item "$testRoot\top.txt" -ItemType File
+
+        $testParams = @{
+            Type              = 'FilesInFolder'
+            Path              = $testRoot
+            OlderThanUnit     = 'Day'
+            OlderThanQuantity = 0
+            Recurse           = $true
+            ExcludeFile       = @($testKeepFile.FullName.ToUpper())
+        }
+
+        $actual = . $testScript @testParams
+    }
+    It 'does not remove the excluded file, regardless of casing' {
+        $testKeepFile.FullName | Should -Exist
+        $actual.FullName | Should -Not -Contain $testKeepFile.FullName
+    }
+    It 'removes the other files' {
+        $testRemoveFile.FullName | Should -Not -Exist
+        $testRemoveTopFile.FullName | Should -Not -Exist
+    }
+}

@@ -45,6 +45,15 @@
       "RemoveEmptyFolders": true
     },
     {
+      "?": "Clean up a drop folder, but keep the state file the application needs to keep working.",
+      "ComputerName": "SERVER2",
+      "Folders": ["E:\\Drop"],
+      "ExcludeFiles": ["E:\\Drop\\State\\last-run.json"],
+      "OlderThan": { "Quantity": 14, "Unit": "Day" },
+      "Recurse": true,
+      "RemoveEmptyFolders": true
+    },
+    {
       "?": "Clean up scanner folders on shares, each shown with a friendly name in the e-mail.",
       "ComputerName": null,
       "Folders": [
@@ -119,6 +128,7 @@
         "Files": "(Mandatory 'Files' or 'Folders') An array of file paths to remove. Each item is a path string, or an object { \"Name\": \"...\", \"Path\": \"...\" } where 'Name' is shown in the e-mail instead of the path. A path is a local path when 'ComputerName' is used, or a UNC path.",
         "Folders": "(Mandatory 'Files' or 'Folders') An array of folder paths, in the same format as 'Files'. All settings of the task apply to every folder.",
         "ExcludeFolders": "(Optional, only for 'Folders') An array of folder paths to skip. The files and folders inside an excluded folder are never removed, and the excluded folder itself is never removed when it is empty. Every path needs to be a subfolder of a path in 'Folders', in the same format (local path or UNC path).",
+        "ExcludeFiles": "(Optional, only for 'Folders' with 'OlderThan') An array of file paths that are never removed, regardless of their age. Every path needs to be a file below a path in 'Folders', in the same format (local path or UNC path).",
         "OlderThan": {
           "?": "(Mandatory for 'Files', optional for 'Folders') Remove the files with a creation date older than this. Leave it out for 'Folders' to only remove empty folders.",
           "Quantity": "(Mandatory) Number of units. Value 0 removes all files regardless of their creation date.",
