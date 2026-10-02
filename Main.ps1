@@ -356,7 +356,7 @@ Begin {
                         $tasksToExecute += [PSCustomObject]@{
                             Name           = $name
                             ComputerName   = $computerName
-                            Path           = $path.ToLower()
+                            Path           = $path
                             Type           = $type
                             OlderThan      = if ($type -ne 'RemoveEmptyFolders') { $task.OlderThan }
                             Recurse        = $task.Recurse
@@ -966,86 +966,28 @@ End {
         $counter.totalErrors = $counter.removalErrors + $counter.jobErrors +
         $counter.systemErrors
 
-        #region Create html lists
-        $systemErrorsHtmlList = if ($counter.systemErrors) {
-            '<p>Detected <b>{0} system error{1}</b>:{2}</p>' -f
-            $counter.systemErrors,
-            $(if ($counter.systemErrors -ne 1) { 's' }),
-            $($systemErrors.Message | Where-Object { $_ } | ConvertTo-HtmlListHC)
-        }
+        #region Create mail rows
+        $mailJobs = foreach ($task in $tasksToExecute) {
+            $isUncPath = $task.Path -match '^\\\\([^\\]+)'
 
-        $jobResultsHtmlListItems = foreach (
-            $task in
-            $tasksToExecute |
-            Sort-Object -Property 'Name', 'Path', 'ComputerName'
-        ) {
-            "{0}<br>{1}<br>Removed: {2}{3}" -f
-            $(
-                if ($task.Path -match '^\\\\') {
-                    '<a href="{0}">{1}</a>' -f $task.Path, $(
-                        if ($task.Name) { $task.Name }
-                        else { $task.Path }
-                    )
+            [PSCustomObject]@{
+                ComputerName = if ($isUncPath) { $Matches[1] } else { $task.ComputerName }
+                Name         = $task.Name
+                Path         = $task.Path
+                LinkPath     = if ($isUncPath) {
+                    $task.Path
                 }
                 else {
-                    $uncPath = $task.Path -Replace '^.{2}', (
-                        '\\{0}\{1}$' -f $task.ComputerName, $task.Path[0]
-                    )
-                    '<a href="{0}">{1}</a>' -f $uncPath, $(
-                        if ($task.Name) { $task.Name }
-                        else { $uncPath }
-                    )
+                    $task.Path -replace '^(.):', ('\\{0}\$1$' -f $task.ComputerName)
                 }
-            ),
-            $(
-                $description = switch ($task.Type) {
-                    'RemoveFile' {
-                        'Remove file'
-                        break
-                    }
-                    'RemoveFilesInFolder' {
-                        'Remove files in folder'
-                        break
-                    }
-                    'RemoveEmptyFolders' {
-                        'Remove empty folders'
-                        break
-                    }
-                    Default {
-                        throw "Type '$_' not supported"
-                    }
-                }
-
-                if ($task.OlderThan.Quantity) {
-                    $description += ' older than {0} {1}{2}' -f
-                    $($task.OlderThan.Quantity),
-                    $($task.OlderThan.Unit.ToLower()),
-                    $(
-                        if ($task.OlderThan.Quantity -ne 1) { 's' }
-                    )
-                }
-
-                $description
-            ),
-            $(
-                (
-                    $task.Job.Results |
-                    Where-Object { $_.Action -eq 'Removed' } |
-                    Measure-Object
+                Description  = Get-TaskDescriptionHC -Task $task
+                Removed      = @(
+                    $task.Job.Results | Where-Object { $_.Action -eq 'Removed' }
                 ).Count
-            ),
-            $(
-                if ($errorCount = (
-                        $task.Job.Results | Where-Object { $_.Error } |
-                        Measure-Object
-                    ).Count + $task.Job.Errors.Count) {
-                    ', <b style="color:red;">errors: {0}</b>' -f $errorCount
-                }
-            )
-        }
-
-        $jobResultsHtmlList = if ($jobResultsHtmlListItems) {
-            $jobResultsHtmlListItems | ConvertTo-HtmlListHC
+                Errors       = @(
+                    $task.Job.Results | Where-Object { $_.Error }
+                ).Count + @($task.Job.Errors | Where-Object { $_ }).Count
+            }
         }
         #endregion
 
@@ -1087,137 +1029,18 @@ End {
                     $mailParams.Subject, $sendMail.Subject
                 }
 
-                $mailParams.Body = @"
-<!DOCTYPE html>
-<html>
-<head>
-<style type="text/css">
-    body {
-        font-family:verdana;
-        font-size:14px;
-        background-color:white;
-    }
-    h1 {
-        margin-bottom: 0;
-    }
-    table {
-        border-collapse:collapse;
-        border:0px none;
-        padding:3px;
-        text-align:left;
-    }
-    td, th {
-        border-collapse:collapse;
-        border:1px none;
-        padding:3px;
-        text-align:left;
-    }
-    #aboutTable th {
-        color: rgb(143, 140, 140);
-        font-weight: normal;
-    }
-    #aboutTable td {
-        color: rgb(143, 140, 140);
-        font-weight: normal;
-    }
-</style>
-</head>
-<body>
-<table>
-    <h1>$scriptName</h1>
-    <hr size="2" color="#06cc7a">
-
-    $($sendMail.Body)
-
-    <table>
-        <tr>
-            <th>Removed</th>
-            <td>$($counter.removedItems)</td>
-        </tr>
-        $(
-            $counter.removalErrors ?
-            "<tr style=`"background-color: #ffe5ec;`">
-                <th>Removal errors</th>
-                <td>$($counter.removalErrors)</td>
-            </tr>" : ''
-        )
-        $(
-            $counter.jobErrors ?
-            "<tr style=`"background-color: #ffe5ec;`">
-                <th>Job errors</th>
-                <td>$($counter.jobErrors)</td>
-            </tr>" : ''
-        )
-        $(
-            $counter.systemErrors ?
-            "<tr style=`"background-color: #ffe5ec;`">
-                <th>System errors</th>
-                <td>$($counter.systemErrors)</td>
-            </tr>" : ''
-        )
-    </table>
-
-    $systemErrorsHtmlList
-
-    $(if ($jobResultsHtmlList) { "<p>Summary:</p>$jobResultsHtmlList" })
-
-    $(
-        if ($allLogFilePaths) {
-            '<p><i>* Check the attachment(s) for details</i></p>'
-        }
-    )
-
-    <hr size="2" color="#06cc7a">
-    <table id="aboutTable">
-        $(
-            '<tr>
-                <th>Start time</th>
-                <td>{0:00}/{1:00}/{2:00} {3:00}:{4:00} ({5})</td>
-            </tr>' -f
-            $scriptStartTime.Day,
-            $scriptStartTime.Month,
-            $scriptStartTime.Year,
-            $scriptStartTime.Hour,
-            $scriptStartTime.Minute,
-            $scriptStartTime.DayOfWeek
-        )
-        $(
-            $runTime = New-TimeSpan -Start $scriptStartTime -End (Get-Date)
-            '<tr>
-                <th>Duration</th>
-                <td>{0:00}:{1:00}:{2:00}</td>
-            </tr>' -f
-            $runTime.Hours, $runTime.Minutes, $runTime.Seconds
-        )
-        $(
-            if ($logFolderPath) {
-                '<tr>
-                    <th>Log files</th>
-                    <td><a href="{0}">Open log folder</a></td>
-                </tr>' -f $logFolderPath
-            }
-        )
-        <tr>
-            <th>Host</th>
-            <td>$($host.Name)</td>
-        </tr>
-        <tr>
-            <th>PowerShell</th>
-            <td>$($PSVersionTable.PSVersion.ToString())</td>
-        </tr>
-        <tr>
-            <th>Computer</th>
-            <td>$env:COMPUTERNAME</td>
-        </tr>
-        <tr>
-            <th>Account</th>
-            <td>$env:USERDNSDOMAIN\$env:USERNAME</td>
-        </tr>
-    </table>
-</table>
-</body>
-</html>
-"@
+                $bodyParams = @{
+                    ScriptName      = $scriptName
+                    Body            = $sendMail.Body
+                    Job             = @($mailJobs | Where-Object { $_ })
+                    Removed         = $counter.removedItems
+                    Errors          = $counter.totalErrors
+                    SystemError     = @($systemErrors.Message)
+                    LogFolderPath   = $logFolderPath
+                    HasAttachments  = [bool]$allLogFilePaths
+                    ScriptStartTime = $scriptStartTime
+                }
+                $mailParams.Body = Get-MailBodyHtmlHC @bodyParams
 
                 if ($sendMail.FromDisplayName) {
                     $mailParams.FromDisplayName = Get-StringValueHC $sendMail.FromDisplayName

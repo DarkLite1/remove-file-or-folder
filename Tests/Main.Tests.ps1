@@ -527,7 +527,7 @@ Describe 'an incorrect input file' {
 
         Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
             ($Priority -eq 'High') -and
-            ($Body -like "*Property 'Tasks``[0``].Files``[0``]' needs a path*")
+            ($Body -like "*Property &#39;Tasks``[0``].Files``[0``]&#39; needs a path*")
         }
         Should -Invoke Write-EventLog -Scope It -ParameterFilter {
             ($EntryType -eq 'Error') -and
@@ -1172,15 +1172,14 @@ Describe 'send an e-mail' {
     }
     It 'with the correct body' {
         Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
+            ($Body -like '*<h1>Test (Brecht)</h1>*') -and
             ($Body -like '*Email body*') -and
-            ($Body -like (
-                "*<a href=`"{0}`">{1}</a><br>Remove file older than 1 day<br>Removed: 1, <b style=`"color:red;`">errors: 1*" -f $(
-                    "\\$($testNewInputFile.Tasks[0].ComputerName)\z$\$($testNewInputFile.Tasks[0].Files[0].Path.Substring(3))"
-                ),
-                $(
-                    $testNewInputFile.Tasks[0].Files[0].Name
-                )
-            ))
+            # a card for the computer, with a link to the file over its admin share
+            ($Body -like '*>PC1</p>*') -and
+            ($Body -like "*href='file:////PC1/z$/file.txt'*>FTP log file</a>*") -and
+            ($Body -like '*Remove file older than 1 day (creation time)*') -and
+            ($Body -like '*1 removed<br>1 error*') -and
+            ($Body -like '*Started*Ended*Duration*')
         }
     }
     It 'with Settings.SendMail.Subject added to the subject' {

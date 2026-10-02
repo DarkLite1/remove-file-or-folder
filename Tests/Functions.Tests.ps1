@@ -4,23 +4,144 @@
 BeforeAll {
     . (Join-Path -Path (Split-Path $PSScriptRoot) -ChildPath 'Functions.ps1')
 }
-Describe 'ConvertTo-HtmlListHC' {
-    It 'creates a list item for every message' {
-        $actual = 'a', 'b' | ConvertTo-HtmlListHC
-
-        $actual | Should -BeLike '*<ul>*<li style="margin: 10px 0;">a</li>*<li style="margin: 10px 0;">b</li>*</ul>*'
+Describe 'ConvertTo-FileUrlHC' {
+    It 'converts <Path>' -ForEach @(
+        @{ Path = '\\server\share\my folder'; Expected = 'file:////server/share/my%20folder' }
+        @{ Path = 'C:\Temp'; Expected = 'file://C:/Temp' }
+        @{ Path = ''; Expected = '' }
+    ) {
+        ConvertTo-FileUrlHC -Path $Path | Should -Be $Expected
     }
-    It 'adds a header and a foot note when given' {
-        $actual = ConvertTo-HtmlListHC -Message 'a' -Header 'Title' -FootNote 'Note'
+}
+Describe 'New-PillHtmlHC' {
+    It 'renders a browser span and an Outlook VML shape' {
+        $actual = New-PillHtmlHC -Text 'Error' -Bg '#dc2626'
 
-        $actual | Should -BeLike '*<h3>Title</h3>*'
-        $actual | Should -BeLike '*<i><font size="2">* Note</font></i>*'
+        $actual | Should -BeLike '*<!--`[if mso`]>*<v:roundrect*fillcolor="#dc2626"*>ERROR</center>*<!`[endif`]-->*'
+        $actual | Should -BeLike '*<!--`[if !mso`]><!-->*background-color:#dc2626*>Error</span>*'
     }
-    It 'adds no header or foot note when not given' {
-        $actual = ConvertTo-HtmlListHC -Message 'a'
+    It 'renders nothing without text' {
+        New-PillHtmlHC -Text '' -Bg '#dc2626' | Should -BeNullOrEmpty
+    }
+}
+Describe 'Get-TaskDescriptionHC' {
+    It '<Expected>' -ForEach @(
+        @{
+            Task     = @{ Type = 'RemoveFile'; OlderThan = @{ Quantity = 7; Unit = 'Day'; BasedOn = 'LastWriteTime' } }
+            Expected = 'Remove file older than 7 days (last write time)'
+        }
+        @{
+            Task     = @{ Type = 'RemoveFile'; OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' } }
+            Expected = 'Remove file'
+        }
+        @{
+            Task     = @{ Type = 'RemoveFilesInFolder'; Recurse = $true; OlderThan = @{ Quantity = 1; Unit = 'Month'; BasedOn = 'CreationTime' } }
+            Expected = 'Remove files older than 1 month (creation time), including subfolders'
+        }
+        @{
+            Task     = @{ Type = 'RemoveFilesInFolder'; Recurse = $false; OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' } }
+            Expected = 'Remove all files'
+        }
+        @{
+            Task     = @{ Type = 'RemoveFilesInFolder'; Recurse = $true; OlderThan = @{ Quantity = 3; Unit = 'Year'; BasedOn = 'CreationTime' }; ExcludeFolders = @('a', 'b'); ExcludeFiles = @('c') }
+            Expected = 'Remove files older than 3 years (creation time), including subfolders, excluding 2 folders and 1 file'
+        }
+        @{
+            Task     = @{ Type = 'RemoveEmptyFolders'; ExcludeFolders = @('a'); ExcludeFiles = @('c') }
+            Expected = 'Remove empty folders, excluding 1 folder'
+        }
+    ) {
+        Get-TaskDescriptionHC -Task ([PSCustomObject]$Task) | Should -Be $Expected
+    }
+}
+Describe 'Get-MailBodyHtmlHC' {
+    BeforeAll {
+        $testTheme = Get-MailThemeHC
 
-        $actual | Should -Not -BeLike '*<h3>*'
-        $actual | Should -Not -BeLike '*<font*'
+        $testJobs = @(
+            [PSCustomObject]@{ ComputerName = 'PC-OK'; Name = 'Logs'; Path = 'D:\Logs'; LinkPath = '\\PC-OK\D$\Logs'; Description = 'Remove all files'; Removed = 3; Errors = 0 }
+            [PSCustomObject]@{ ComputerName = 'PC-OK'; Name = $null; Path = 'D:\Idle'; LinkPath = '\\PC-OK\D$\Idle'; Description = 'Remove empty folders'; Removed = 0; Errors = 0 }
+            [PSCustomObject]@{ ComputerName = 'PC-ERR'; Name = $null; Path = 'E:\<Data>'; LinkPath = '\\PC-ERR\E$\<Data>'; Description = 'Remove all files'; Removed = 1; Errors = 2 }
+            [PSCustomObject]@{ ComputerName = 'PC-IDLE'; Name = $null; Path = 'F:\Empty'; LinkPath = '\\PC-IDLE\F$\Empty'; Description = 'Remove all files'; Removed = 0; Errors = 0 }
+        )
+
+        $testParams = @{
+            ScriptName      = 'Remove <test>'
+            Body            = '<p>Custom body</p>'
+            Job             = $testJobs
+            Removed         = 4
+            Errors          = 3
+            SystemError     = @('Oops & co')
+            LogFolderPath   = 'C:\Log folder'
+            HasAttachments  = $true
+            ScriptStartTime = Get-Date '2026-10-02 07:00'
+            ScriptEndTime   = Get-Date '2026-10-02 08:30:15'
+        }
+
+        $actual = Get-MailBodyHtmlHC @testParams
+    }
+    It 'shows the encoded script name as title and the user body as is' {
+        $actual | Should -BeLike '*<h1>Remove &lt;test&gt;</h1>*'
+        $actual | Should -BeLike '*<p>Custom body</p>*'
+    }
+    It 'has a fixed width for Outlook' {
+        $actual | Should -BeLike "*<!--``[if mso``]>*width=`"$($testTheme.BodyWidth)`"*"
+    }
+    It 'shows the totals as pills' {
+        $actual | Should -BeLike '*>4 Removed</span>*'
+        $actual | Should -BeLike '*>3 Errors</span>*'
+    }
+    It 'shows the encoded system errors' {
+        $actual | Should -BeLike '*System Errors (1)*Oops &amp; co*'
+    }
+    It 'links the log folder and mentions the attachments' {
+        $actual | Should -BeLike "*href='file://C:/Log%20folder'*Open log folder*details in the attachments*"
+    }
+    It 'shows a card per computer, the one with errors first and the idle one last' {
+        $errIndex = $actual.IndexOf('>PC-ERR</p>')
+        $okIndex = $actual.IndexOf('>PC-OK</p>')
+        $idleIndex = $actual.IndexOf('>PC-IDLE</p>')
+
+        $errIndex | Should -BeGreaterThan 0
+        $errIndex | Should -BeLessThan $okIndex
+        $okIndex | Should -BeLessThan $idleIndex
+    }
+    It 'colors the card headers by result' {
+        $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradError[0])*>PC-ERR</p>*"
+        $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradSuccess[0])*>PC-OK</p>*"
+        $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradIdle[0])*>PC-IDLE</p>*"
+    }
+    It 'shows the totals in the card header' {
+        $actual | Should -BeLike '*>PC-ERR</p>*1 removed &middot; 2 errors*'
+        $actual | Should -BeLike '*>PC-OK</p>*2 paths*3 removed*'
+    }
+    It 'shows a row per path with name, path, description and result' {
+        $actual | Should -BeLike "*href='file:////PC-OK/D$/Logs'*>Logs</a>*D:\Logs*Remove all files*3 removed*"
+        $actual | Should -BeLike '*E:\&lt;Data&gt;*1 removed<br>2 errors*>Error</span>*'
+    }
+    It 'colors the row border by result' {
+        $actual | Should -BeLike "*border-left:3px solid $($testTheme.AccentError)*E:\&lt;Data&gt;*"
+        $actual | Should -BeLike "*border-left:3px solid $($testTheme.AccentSuccess)*>Logs</a>*"
+        $actual | Should -BeLike "*border-left:3px solid $($testTheme.AccentIdle)*D:\Idle*"
+    }
+    It 'shows the run times in the footer' {
+        $actual | Should -BeLike '*Started*02/10/2026 07:00*Ended*02/10/2026 08:30*Duration*01:30:15*'
+    }
+    It 'shows a message when there are no jobs' {
+        $testNewParams = $testParams.Clone()
+        $testNewParams.Job = @()
+
+        Get-MailBodyHtmlHC @testNewParams | Should -BeLike '*No tasks were executed.*'
+    }
+    It 'shows a grey removed pill and no error pill when nothing happened' {
+        $testNewParams = $testParams.Clone()
+        $testNewParams.Removed = 0
+        $testNewParams.Errors = 0
+
+        $result = Get-MailBodyHtmlHC @testNewParams
+
+        $result | Should -BeLike "*background-color:$($testTheme.AccentIdle)*>0 Removed</span>*"
+        $result | Should -Not -BeLike '*Errors</span>*'
     }
 }
 Describe 'Get-LogFolderHC' {
