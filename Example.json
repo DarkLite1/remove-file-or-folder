@@ -16,18 +16,13 @@
     {
       "?": "Remove a file on a server when it is older than 7 days, shown with a friendly name in the e-mail.",
       "ComputerName": "SERVER1",
-      "Files": [
-        { "Name": "FTP log file", "Path": "D:\\FTP\\ftp.log" }
-      ],
+      "Files": [{ "Name": "FTP log file", "Path": "D:\\FTP\\ftp.log" }],
       "OlderThan": { "Quantity": 7, "Unit": "Day" }
     },
     {
       "?": "Remove all files older than 30 days in folders and their subfolders, then remove the folders that became empty.",
       "ComputerName": "SERVER1",
-      "Folders": [
-        "D:\\Application\\Logs",
-        "D:\\Application\\Archive"
-      ],
+      "Folders": ["D:\\Application\\Logs", "D:\\Application\\Archive"],
       "OlderThan": { "Quantity": 30, "Unit": "Day" },
       "Recurse": true,
       "RemoveEmptyFolders": true
@@ -44,7 +39,10 @@
       "?": "Clean up scanner folders on shares, each shown with a friendly name in the e-mail.",
       "ComputerName": null,
       "Folders": [
-        { "Name": "Scanner Brussels", "Path": "\\\\contoso\\brussels\\scanner" },
+        {
+          "Name": "Scanner Brussels",
+          "Path": "\\\\contoso\\brussels\\scanner"
+        },
         { "Name": "Scanner Gent", "Path": "\\\\contoso\\gent\\scanner" }
       ],
       "OlderThan": { "Quantity": 7, "Unit": "Day" },
