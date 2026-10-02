@@ -636,6 +636,16 @@ Describe 'excluded subtree traversal' {
         Should -Invoke Get-ChildItem -Times 1 -Exactly -Scope It -ParameterFilter {
             $LiteralPath -eq "$testRoot\Other"
         }
+        if ($testType -eq 'EmptyFolders') {
+            Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
+                -not $PesterBoundParameters['Directory']
+            }
+        }
+        else {
+            Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
+                $PesterBoundParameters.ContainsKey('Directory')
+            }
+        }
     }
 
     It 'does not follow a junction outside the tree' {

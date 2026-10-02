@@ -98,11 +98,12 @@ function Get-IncludedChildItemHC {
     $rootPath = Get-NormalizedPathHC $Root
     if (Test-IsExcludedHC $rootPath) { return }
     $pending.Push($rootPath)
+    $directoryFilter = if ($Directories) { @{ Directory = $true } } else { @{} }
 
     while ($pending.Count) {
         $directoryPath = $pending.Pop()
         $enumerationErrors = @()
-        Get-ChildItem -LiteralPath $directoryPath -Force -ErrorAction SilentlyContinue -ErrorVariable enumerationErrors |
+        Get-ChildItem -LiteralPath $directoryPath -Force @directoryFilter -ErrorAction SilentlyContinue -ErrorVariable enumerationErrors |
         ForEach-Object {
             if ($_.PSIsContainer) {
                 if (-not (Test-IsExcludedHC $_.FullName)) {

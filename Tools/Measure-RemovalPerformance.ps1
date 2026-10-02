@@ -9,8 +9,8 @@ param (
     [int]$Depth = 80,
     [ValidateRange(1, 100)]
     [int]$Branches = 4,
-    [ValidateSet('DeepTree', 'ExcludedTree', 'FileFiltering', 'WideDirectory', 'FileDeletion')]
-    [string[]]$Scenario = @('DeepTree', 'ExcludedTree', 'FileFiltering', 'WideDirectory', 'FileDeletion'),
+    [ValidateSet('DeepTree', 'ExcludedTree', 'FileFiltering', 'WideDirectory', 'PrunedWideDirectory', 'FileDeletion')]
+    [string[]]$Scenario = @('DeepTree', 'ExcludedTree', 'FileFiltering', 'WideDirectory', 'PrunedWideDirectory', 'FileDeletion'),
     [ValidateRange(1, 1000000)]
     [int]$FileCount = 10000,
     [ValidateRange(0, 1000000)]
@@ -35,7 +35,7 @@ try {
         $excludedFilePaths = [System.Collections.Generic.List[string]]::new()
         if ($scenarioName -ne 'DeepTree') {
             foreach ($fileIndex in 1..$FileCount) {
-                $bucketName = if ($scenarioName -eq 'WideDirectory') {
+                $bucketName = if ($scenarioName -in 'WideDirectory', 'PrunedWideDirectory') {
                     'Files'
                 }
                 else { "Keep/$([int][math]::Floor(($fileIndex - 1) / 100))" }
@@ -87,6 +87,12 @@ try {
                     }
                     'WideDirectory' {
                         $workerParams = @{ Type = 'EmptyFolders'; Path = $root }
+                    }
+                    'PrunedWideDirectory' {
+                        $workerParams = @{
+                            Type = 'EmptyFolders'; Path = $root
+                            ExcludeFolder = @(Join-Path $root 'Excluded')
+                        }
                     }
                     'FileDeletion' {
                         foreach ($filePath in $filePaths) { [System.IO.File]::WriteAllText($filePath, '') }
