@@ -480,7 +480,7 @@ Process {
                         $false, @(), $task.OlderThan.BasedOn
                     )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{4}'" -f
+                    $M = "Prepared job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{4}'" -f
                     $task.ComputerName,
                     $argumentList[1], $argumentList[3], $argumentList[4],
                     $argumentList[7]
@@ -494,7 +494,7 @@ Process {
                         $task.Recurse, $task.ExcludeFiles, $task.OlderThan.BasedOn
                     )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{7}' Recurse '{4}' ExcludeFolders '{5}' ExcludeFiles '{6}'" -f
+                    $M = "Prepared job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{7}' Recurse '{4}' ExcludeFolders '{5}' ExcludeFiles '{6}'" -f
                     $task.ComputerName,
                     $argumentList[1], $argumentList[3], $argumentList[4],
                     $argumentList[5], ($task.ExcludeFolders -join "', '"),
@@ -507,7 +507,7 @@ Process {
                         'EmptyFolders', $task.Path, $task.ExcludeFolders
                     )
 
-                    $M = "Start job '$_' on '{0}' with Path '{1}' ExcludeFolders '{2}'" -f
+                    $M = "Prepared job '$_' on '{0}' with Path '{1}' ExcludeFolders '{2}'" -f
                     $task.ComputerName, $argumentList[1],
                     ($task.ExcludeFolders -join "', '")
 
@@ -561,9 +561,13 @@ Process {
                 [Parameter(Mandatory)]
                 [Int]$MaxAttempts,
                 [Parameter(Mandatory)]
-                [Int]$RetryDelaySeconds
+                [Int]$RetryDelaySeconds,
+                [Parameter(Mandatory)]
+                [System.Management.Automation.ActionPreference]$WorkerVerbosePreference
             )
 
+            $VerbosePreference = $WorkerVerbosePreference
+            $writeVerbose = $VerbosePreference -notin 'SilentlyContinue', 'Ignore'
             $sessionOption = New-PSSessionOption -MaximumReceivedObjectSize ([Int32]::MaxValue)
 
             # TryDequeue is atomic, so workers of the same computer share one queue
@@ -584,6 +588,9 @@ Process {
                     $needsRetry = $false
 
                     try {
+                        if ($writeVerbose) {
+                            Write-Verbose "Starting job '$($dto.Type)' on '$($dto.ComputerName)' for '$($dto.ArgumentList[1])' (attempt $attempt of $MaxAttempts)"
+                        }
                         if ($dto.ComputerName -eq $env:COMPUTERNAME) {
                             $arguments = $dto.ArgumentList
                             $result.Results = @(& $dto.FilePath @arguments)
@@ -602,6 +609,7 @@ Process {
                                 FilePath     = $dto.FilePath
                                 ArgumentList = $dto.ArgumentList
                                 ErrorAction  = 'Stop'
+                                Verbose      = $writeVerbose
                             }
                             $result.Results = @(Invoke-Command @invokeParams)
                         }
@@ -630,6 +638,9 @@ Process {
                     }
 
                     if ($needsRetry) {
+                        if ($writeVerbose) {
+                            Write-Verbose "Retrying job '$($dto.Type)' on '$($dto.ComputerName)' for '$($dto.ArgumentList[1])' after WinRM abort; attempt $($attempt + 1) of $MaxAttempts in $RetryDelaySeconds seconds"
+                        }
                         Start-Sleep -Seconds $RetryDelaySeconds
                         continue
                     }
@@ -644,7 +655,7 @@ Process {
         $params = @{
             ScriptBlock   = $workerScriptBlock
             ThrottleLimit = $maxConcurrentJobsTotal
-            ArgumentList  = $PSSessionConfiguration, 3, 5
+            ArgumentList  = $PSSessionConfiguration, 3, 5, $VerbosePreference
         }
 
         # empty folders can only be removed after the files are removed
@@ -689,8 +700,8 @@ Process {
                 $task.Job.Errors += $jobError
 
                 Write-Warning (
-                    'Error for {0} : {1}' -f
-                    @($taskDtos)[$jobResult.ID].StartMessage, $jobError
+                    "Job '{0}' failed on '{1}' for '{2}': {3}" -f
+                    $task.Type, $task.ComputerName, $task.Path, $jobError
                 )
             }
         }
@@ -1157,6 +1168,9 @@ End {
             $null = Out-LogFileHC @params
         }
         #endregion
+
+        Write-Verbose ('Run summary: {0} removed, {1} errors' -f
+            ([int]$counter.removedItems), ($systemErrors.Count + $jobErrors.Count))
 
         if ($systemErrors -or $jobErrors) {
             Write-Warning 'Exit script with error code 1'

@@ -32,6 +32,59 @@ Describe 'OlderThanUnit, OlderThanQuantity and OlderThanBasedOn are required for
         Should -Throw "*Parameters 'OlderThanUnit', 'OlderThanQuantity' and 'OlderThanBasedOn' are mandatory for type '$_'*"
     }
 }
+Describe 'worker diagnostic messages' {
+    It 'does not invoke Write-Verbose for a quiet run of 1000 files' {
+        $testRoot = (New-Item 'TestDrive:/quiet-files' -ItemType Directory).FullName
+        foreach ($fileIndex in 1..1000) {
+            [System.IO.File]::WriteAllText((Join-Path $testRoot "$fileIndex.txt"), '')
+        }
+        Mock Write-Verbose
+
+        $actual = @(& $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Verbose:$false)
+
+        $actual | Should -HaveCount 1000
+        @($actual | Where-Object Action -EQ Removed) | Should -HaveCount 1000
+        Should -Not -Invoke Write-Verbose -Scope It
+    }
+
+    It 'shows the exact calendar cutoff and logs only completed file removals' {
+        $testRoot = (New-Item 'TestDrive:/verbose-files' -ItemType Directory).FullName
+        $testOld = New-Item "$testRoot/old.txt" -ItemType File
+        $testOld.LastWriteTime = [datetime]'2026-10-01T23:59:59'
+        $testKeep = New-Item "$testRoot/keep.txt" -ItemType File
+        $testKeep.LastWriteTime = [datetime]'2026-10-02T00:00:00'
+        Mock Get-Date { [datetime]'2026-10-02T12:00:00' }
+
+        $actual = @(& $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 1 -OlderThanBasedOn LastWriteTime -Verbose 4>&1)
+        $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
+
+        $messages | Should -HaveCount 2
+        $messages[0] | Should -BeLike '*LastWriteTime before 2026-10-02 00:00:00 (exclusive calendar cutoff, local time)*'
+        $messages[1] | Should -Be "Removed file '$($testOld.FullName)'"
+        $testOld.FullName | Should -Not -Exist
+        $testKeep.FullName | Should -Exist
+    }
+
+    It 'describes quantity zero as disabled age filtering' {
+        $testFile = New-Item 'TestDrive:/verbose-zero.txt' -ItemType File
+        $actual = @(& $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -Verbose 4>&1)
+        $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
+
+        $messages[0] | Should -Be "Age filtering disabled for '$($testFile.FullName)'; exclusions and Recurse still apply"
+        $messages[1] | Should -Be "Removed file '$($testFile.FullName)'"
+    }
+
+    It 'does not invoke Write-Verbose for quiet empty-folder cleanup' {
+        $testRoot = (New-Item 'TestDrive:/quiet-folders/empty' -ItemType Directory -Force).Parent.FullName
+        Mock Write-Verbose
+
+        $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -Verbose:$false)
+
+        $actual | Should -HaveCount 1
+        $actual[0].Action | Should -Be Removed
+        Should -Not -Invoke Write-Verbose -Scope It
+    }
+}
 Describe 'age validation' {
     It 'rejects negative quantity <_> without deleting the file' -ForEach @(-1, [int]::MinValue) {
         $testFile = New-Item "TestDrive:/negative_$_.txt" -ItemType File
@@ -305,16 +358,18 @@ Describe 'Type EmptyFolders' {
 
             # simulates a file arriving between finding and removing the folder
             $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace(
-                'Write-Verbose "Remove empty folder ''$emptyFolder''"',
-                'if ($emptyFolder.Name -eq ''Race'') { New-Item -Path (Join-Path $emptyFolder.FullName ''late.txt'') -ItemType File -Force | Out-Null }'
+                '$emptyFolder.Delete()',
+                'if ($emptyFolder.Name -eq ''Race'') { New-Item -Path (Join-Path $emptyFolder.FullName ''late.txt'') -ItemType File -Force | Out-Null }; $emptyFolder.Delete()'
             )
             $testScriptText | Should -BeLike '*late.txt*'
 
-            $actual = & ([scriptblock]::Create($testScriptText)) @testParams
+            $testWarnings = @()
+            $actual = & ([scriptblock]::Create($testScriptText)) @testParams -WarningVariable testWarnings -WarningAction SilentlyContinue
 
             $testFile | Should -Exist
             ($actual | Where-Object FullName -EQ $testFolder.FullName).Error |
             Should -Not -BeNullOrEmpty
+            ($testWarnings -join ' ') | Should -BeLike "*Failed to remove empty folder '$($testFolder.FullName)'*"
         }
     }
     Context 'a subfolder that cannot be read' {
@@ -516,15 +571,19 @@ Describe 'streamed file processing' {
         $testFile = New-Item "$testRoot/active.txt" -ItemType File
         $testFile.LastWriteTime = [datetime]::Now.AddDays(-100)
         $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace(
-            'Write-Verbose "Remove file ''$($fileToRemove.FullName)''"',
-            '[System.IO.File]::SetLastWriteTime($fileToRemove.FullName, [datetime]::Now)'
+            '$fileToRemove.Refresh()',
+            '[System.IO.File]::SetLastWriteTime($fileToRemove.FullName, [datetime]::Now); $fileToRemove.Refresh()'
         )
         $testScriptText | Should -BeLike '*SetLastWriteTime*'
 
-        $actual = @(& ([scriptblock]::Create($testScriptText)) -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 30 -OlderThanBasedOn LastWriteTime)
+        $testVerbose = @()
+        $actual = @(& ([scriptblock]::Create($testScriptText)) -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 30 -OlderThanBasedOn LastWriteTime -Verbose 4>&1)
+        $testVerbose = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] })
+        $actual = @($actual | Where-Object { $_ -isnot [System.Management.Automation.VerboseRecord] })
 
         $actual | Should -HaveCount 0
         $testFile.FullName | Should -Exist
+        @($testVerbose | Where-Object { $_.Message -like 'Removed file*' }) | Should -HaveCount 0
     }
 
     It 'removes a file before enumeration produces the next file' {

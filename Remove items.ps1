@@ -275,6 +275,8 @@ function Get-IncludedChildItemHC {
     }
 }
 
+$writeVerbose = $VerbosePreference -notin 'SilentlyContinue', 'Ignore'
+
 if ($Type -eq 'EmptyFolders') {
     $getErrors = [System.Collections.Generic.List[object]]::new()
     $unreadableFolders = @{}
@@ -326,8 +328,6 @@ if ($Type -eq 'EmptyFolders') {
     $folderCandidates | Where-Object { Test-IsEmptyFolderHC $_ } | ForEach-Object {
         $emptyFolder = $_
         try {
-            Write-Verbose "Remove empty folder '$emptyFolder'"
-
             $result = [PSCustomObject]@{
                 DateTime     = [datetime]::Now
                 ComputerName = $env:COMPUTERNAME
@@ -344,9 +344,10 @@ if ($Type -eq 'EmptyFolders') {
             }
             $emptyFolder.Delete()
             $result.Action = 'Removed'
+            if ($writeVerbose) { Write-Verbose "Removed empty folder '$($emptyFolder.FullName)'" }
         }
         catch {
-            Write-Verbose "Failed to remove empty folder '$emptyFolder': $_"
+            Write-Warning "Failed to remove empty folder '$($emptyFolder.FullName)': $_"
 
             $result.Error = $_
             $Error.RemoveAt(0)
@@ -396,10 +397,14 @@ if (-not (Test-Path -LiteralPath $Path -PathType $pathType)) {
 #endregion
 
 #region Select files older than
-Write-Verbose "Select files with a $OlderThanBasedOn older than '$OlderThanQuantity $OlderThanUnit'"
-
 if ($OlderThanQuantity -ne 0) {
     $cutoffExclusive = Get-ExclusiveCutoffHC -ReferenceDate (Get-Date) -Unit $OlderThanUnit -Quantity $OlderThanQuantity
+    if ($writeVerbose) {
+        Write-Verbose "Select files in '$Path' with $OlderThanBasedOn before $($cutoffExclusive.ToString('yyyy-MM-dd HH:mm:ss')) (exclusive calendar cutoff, local time)"
+    }
+}
+elseif ($writeVerbose) {
+    Write-Verbose "Age filtering disabled for '$Path'; exclusions and Recurse still apply"
 }
 #endregion
 
@@ -424,8 +429,6 @@ $getErrors = [System.Collections.Generic.List[object]]::new()
     if (($OlderThanQuantity -ne 0) -and ($fileToRemove.$OlderThanBasedOn -ge $cutoffExclusive)) { return }
 
     try {
-        Write-Verbose "Remove file '$($fileToRemove.FullName)'"
-
         $result = [PSCustomObject]@{
             DateTime      = [datetime]::Now
             ComputerName  = $env:COMPUTERNAME
@@ -453,6 +456,7 @@ $getErrors = [System.Collections.Generic.List[object]]::new()
         $fileToRemove.Delete()
 
         $result.Action = 'Removed'
+        if ($writeVerbose) { Write-Verbose "Removed file '$($fileToRemove.FullName)'" }
     }
     catch {
         Write-Warning "Failed to remove file '$($result.FullName)': $_"

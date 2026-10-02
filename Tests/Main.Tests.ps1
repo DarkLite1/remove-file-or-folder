@@ -823,6 +823,22 @@ Describe 'retry a remote job' {
         Get-ExcelSheetInfo -Path $testExcelFile.FullName |
         Where-Object Name -EQ 'Errors' | Should -BeNullOrEmpty
     }
+    It 'shows attempt, path and delay messages when verbose is enabled' {
+        $script:testAttempt = 0
+        Mock Invoke-Command {
+            $script:testAttempt++
+            if ($script:testAttempt -eq 1) { throw $testTransientError }
+            $testData[0]
+        }
+
+        $actual = @(& $testScript @testParams -Verbose 4>&1)
+        $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
+        $messages | Should -Contain "Starting job 'RemoveFile' on 'PC1' for 'z:\file.txt' (attempt 1 of 3)"
+        $messages | Should -Contain "Retrying job 'RemoveFile' on 'PC1' for 'z:\file.txt' after WinRM abort; attempt 2 of 3 in 5 seconds"
+        $messages | Should -Contain "Starting job 'RemoveFile' on 'PC1' for 'z:\file.txt' (attempt 2 of 3)"
+        $messages | Should -Contain 'Run summary: 1 removed, 0 errors'
+        Should -Invoke Invoke-Command -Times 2 -Exactly -ParameterFilter { $PesterBoundParameters.Verbose -eq $true }
+    }
     It 'not on other errors' {
         Mock Invoke-Command { throw 'Oops' }
 
@@ -831,6 +847,60 @@ Describe 'retry a remote job' {
         Should -Invoke Invoke-Command -Times 1 -Exactly
         Should -Invoke Remove-PSSession -Times 1 -Exactly
         Should -Not -Invoke Start-Sleep
+    }
+    It 'shows final error counts and a direct failure warning without preparation text' {
+        Mock Invoke-Command { throw 'Permanent failure' }
+        $testWarnings = @()
+
+        $actual = @(& $testScript @testParams -Verbose -WarningVariable testWarnings -WarningAction SilentlyContinue 4>&1)
+        $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
+
+        $messages | Should -Contain 'Run summary: 0 removed, 1 errors'
+        ($testWarnings -join ' ') | Should -BeLike "*Job 'RemoveFile' failed on 'PC1' for 'z:\file.txt': Permanent failure*"
+        @($messages | Where-Object { $_ -like 'Retrying job*' }) | Should -HaveCount 0
+    }
+}
+Describe 'main diagnostic messages with the real worker' {
+    It 'respects Verbose <VerboseEnabled> with JobsTotal <JobsTotal> without contaminating results' -ForEach @(
+        foreach ($jobsTotal in 1, 3) {
+            foreach ($verboseEnabled in $false, $true) {
+                @{ JobsTotal = $jobsTotal; VerboseEnabled = $verboseEnabled }
+            }
+        }
+    ) {
+        Clear-TestLogFolderHC
+        $testRoot = (New-Item "TestDrive:/messages-$JobsTotal-$VerboseEnabled" -ItemType Directory).FullName
+        $testFile = New-Item "$testRoot/file.txt" -ItemType File
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Settings.SendMail.When = 'Never'
+        $testNewInputFile.Settings.SaveInEventLog.Save = $false
+        $testNewInputFile.MaxConcurrent.JobsTotal = $JobsTotal
+        $testNewInputFile.Tasks = @([pscustomobject]@{
+                ComputerName = 'localhost'
+                Files = @($testFile.FullName)
+                OlderThan = @{ Unit = 'Day'; Quantity = 0; BasedOn = 'CreationTime' }
+            })
+        Test-NewJsonFileHC $testNewInputFile
+        $global:LASTEXITCODE = 0
+
+        $actual = @(& $testScript -ConfigurationJsonFile $testOutParams.FilePath -Verbose:$VerboseEnabled 4>&1)
+        $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
+
+        $LASTEXITCODE | Should -Be 0
+        $testFile.FullName | Should -Not -Exist
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
+        $rows | Should -HaveCount 1
+        $rows[0].Action | Should -Be Removed
+        $rows[0].Path | Should -Be $testFile.FullName
+        if ($VerboseEnabled) {
+            @($messages | Where-Object { $_ -like "Prepared job 'RemoveFile'*" }) | Should -HaveCount 1
+            $startMessage = "Starting job 'RemoveFile' on '$env:COMPUTERNAME' for '$($testFile.FullName)' (attempt 1 of 3)"
+            $messages | Should -Contain $startMessage
+            $messages | Should -Contain "Removed file '$($testFile.FullName)'"
+            $messages | Should -Contain 'Run summary: 1 removed, 0 errors'
+            [array]::IndexOf($messages, $startMessage) | Should -BeLessThan ([array]::IndexOf($messages, "Removed file '$($testFile.FullName)'"))
+        }
+        else { $messages | Should -HaveCount 0 }
     }
 }
 Describe 'MaxConcurrent' {
