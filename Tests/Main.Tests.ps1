@@ -1750,6 +1750,17 @@ Describe 'send an e-mail' {
             (-not ($Attachments -like '* - System errors log.json'))
         }
     }
+    It 'saves the exact email body with the same log prefix without attaching it' {
+        $testExcelFile = Get-TestExcelFileHC
+        $testHtmlPath = Join-Path $testLogFolder ($testExcelFile.Name.Replace(' - Log.xlsx', ' - Mail.html'))
+        $testHtmlPath | Should -Exist
+        $testHtmlBody = Get-Content -LiteralPath $testHtmlPath -Raw -Encoding utf8
+
+        Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
+            ($Body -ceq $testHtmlBody) -and
+            (-not ($Attachments -like '* - Mail.html'))
+        }
+    }
     It 'with the correct body' {
         Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($Body -like '*<h1>Test (Brecht)</h1>*') -and
@@ -1771,6 +1782,57 @@ Describe 'send an e-mail' {
         Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope It -ParameterFilter {
             $Subject -eq '1 removed, 1 error, Custom'
         }
+    }
+}
+Describe 'save email HTML' {
+    BeforeEach {
+        Clear-TestLogFolderHC
+        Mock Invoke-Command
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
+        $testNewInputFile.Settings.SaveInEventLog.Save = $false
+        $global:LASTEXITCODE = 0
+    }
+    It 'does not save HTML when <_> suppresses email' -ForEach @('Never', 'OnError', 'OnErrorOrAction') {
+        $testNewInputFile.Settings.SendMail.When = $_
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 0
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html') | Should -HaveCount 0
+        Should -Not -Invoke Send-MailKitMessageHC -Scope It
+    }
+    It 'does not write HTML when file logging is disabled' {
+        $testNewInputFile.Settings.SaveLogFiles.Where.Folder = $null
+        Mock Set-Content -ParameterFilter { $LiteralPath -like '* - Mail.html' }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 0
+        Should -Not -Invoke Set-Content -Scope It -ParameterFilter { $LiteralPath -like '* - Mail.html' }
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It
+    }
+    It 'retains the HTML when sending fails' {
+        Mock Send-MailKitMessageHC { throw 'SMTP unavailable' }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html') | Should -HaveCount 1
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike '*Failed sending email: SMTP unavailable*'
+    }
+    It 'still sends email and logs the error when saving HTML fails' {
+        Mock Set-Content { throw 'HTML write denied' } -ParameterFilter { $LiteralPath -like '* - Mail.html' }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike '*Failed saving email HTML: HTML write denied*'
     }
 }
 Describe 'Settings.SaveInEventLog' {

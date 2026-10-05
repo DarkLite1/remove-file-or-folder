@@ -1123,6 +1123,21 @@ End {
                 }
                 $mailParams.Body = Get-MailBodyHtmlHC @bodyParams
 
+                if ($baseLogName) {
+                    try {
+                        Set-Content -LiteralPath "$baseLogName - Mail.html" -Value $mailParams.Body -Encoding utf8 -NoNewline -ErrorAction Stop
+                    }
+                    catch {
+                        $systemErrors.Add(
+                            [PSCustomObject]@{
+                                DateTime = Get-Date
+                                Message  = "Failed saving email HTML: $_"
+                            }
+                        )
+                        Write-Warning $systemErrors[-1].Message
+                    }
+                }
+
                 if ($sendMail.FromDisplayName) {
                     $mailParams.FromDisplayName = Get-StringValueHC $sendMail.FromDisplayName
                 }
