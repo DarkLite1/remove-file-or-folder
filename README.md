@@ -84,6 +84,8 @@ Replace the computer names and paths before running this example. It disables em
 - **Log files:** Set `Settings.SaveLogFiles.Where.Folder`. Omit it or leave it empty to disable file logging.
 - **Event log:** Always include `Settings.SaveInEventLog.Save`. When it is `true`, also provide `LogName`.
 
+Missing or inaccessible paths and item-removal failures appear in the Excel **Overview** worksheet's **Error** column. Job-execution failures appear in the **Errors** worksheet with **Stage**, **TargetObject**, **FullyQualifiedErrorId**, **ExceptionType**, **ScriptStackTrace** and **PositionMessage** diagnostics when available. **Path** identifies the configured task root; **TargetObject** identifies the object associated with the original error. Neither kind of error is duplicated in JSON. The system errors JSON log is reserved for script, configuration and reporting failures. All errors still count toward error notifications and exit code 1.
+
 `Example.json` enables email, file logging and event logging. Its server names, addresses and assembly paths are placeholders to adjust for your environment.
 
 ### 📋 Tasks

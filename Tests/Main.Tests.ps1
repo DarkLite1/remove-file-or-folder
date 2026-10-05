@@ -1130,16 +1130,7 @@ Describe 'end-to-end filesystem scenarios' {
             else {
                 @(Get-TestExcelFileHC) | Should -HaveCount 0
             }
-            if ($ExpectedErrorPaths.Count) {
-                $errors = @(Get-TestSystemErrorsHC)
-                $errors | Should -HaveCount $ExpectedErrorPaths.Count
-                foreach ($errorPath in $ExpectedErrorPaths) {
-                    @($errors | Where-Object { $_.Message.Contains($errorPath) }) | Should -HaveCount 1
-                }
-            }
-            else {
-                @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log*') | Should -HaveCount 0
-            }
+            @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log*') | Should -HaveCount 0
         }
     }
 
@@ -1413,6 +1404,43 @@ Describe 'end-to-end filesystem scenarios' {
         Should -Invoke Remove-PSSession -Exactly -Times 2 -Scope It
     }
 }
+Describe 'report inaccessible paths' {
+    It 'keeps the path error in Excel without a system errors log' {
+        Clear-TestLogFolderHC
+        Mock Invoke-Command {
+            [pscustomobject]@{
+                DateTime = Get-Date
+                ComputerName = 'PC1'
+                Type = 'File'
+                FullName = 'z:\file.txt'
+                CreationTime = $null
+                Action = $null
+                Error = 'Access to the path is denied.'
+            }
+        }
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
+        $testNewInputFile.Settings.SendMail.When = 'OnError'
+        Test-NewJsonFileHC $testNewInputFile
+        $global:LASTEXITCODE = 0
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
+        $rows | Should -HaveCount 1
+        $rows[0].Path | Should -Be 'z:\file.txt'
+        $rows[0].Error | Should -Be 'Access to the path is denied.'
+        $rows[0].Action | Should -BeNullOrEmpty
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($Priority -eq 'High') -and
+            ($Subject -eq '0 removed, 1 error') -and
+            ($Attachments -like '*Log.xlsx') -and
+            (-not ($Attachments -like '*System errors log.json'))
+        }
+    }
+}
 Describe 'create an Excel file' {
     BeforeAll {
         Clear-TestLogFolderHC
@@ -1547,6 +1575,85 @@ Describe 'create an Excel file' {
             $actual.OlderThan | Should -Be $testRow.OlderThan
             $actual.Error | Should -Be $testRow.Error
         }
+        It 'includes execution diagnostics' {
+            $actual.Stage | Should -Be 'Run remote worker'
+            $actual.TargetObject | Should -Be 'Oops'
+            $actual.FullyQualifiedErrorId | Should -Be 'Oops'
+            $actual.ExceptionType | Should -Be 'System.Management.Automation.RuntimeException'
+            $actual.ScriptStackTrace | Should -Not -BeNullOrEmpty
+            $actual.PositionMessage | Should -BeLike '*throw*Oops*'
+        }
+        It 'does not duplicate execution or item errors in JSON' {
+            @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+        }
+    }
+}
+Describe 'job failure diagnostics' {
+    BeforeEach {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[0])
+        $testNewInputFile.Settings.SendMail.When = 'Never'
+        $testNewInputFile.Settings.SaveInEventLog.Save = $false
+        $global:LASTEXITCODE = 0
+    }
+    It 'distinguishes session setup from worker execution' {
+        Mock New-PSSession { throw 'Session setup failed' }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Errors)
+        $rows | Should -HaveCount 1
+        $rows[0].Stage | Should -Be 'Open remote session'
+        $rows[0].Error | Should -Be 'Session setup failed'
+        $rows[0].FullyQualifiedErrorId | Should -Be 'Session setup failed'
+        Should -Not -Invoke Invoke-Command -Scope It
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+    }
+    It 'distinguishes the failed target from the configured path' {
+        Mock Invoke-Command {
+            Write-Error -Exception ([System.IO.FileNotFoundException]::new('The system cannot find the file specified.')) -ErrorId 'MissingChild' -Category ObjectNotFound -TargetObject 'z:\child.txt' -ErrorAction Stop
+        }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Errors)
+        $rows | Should -HaveCount 1
+        $rows[0].Path | Should -Be 'z:\file.txt'
+        $rows[0].TargetObject | Should -Be 'z:\child.txt'
+        $rows[0].Stage | Should -Be 'Run remote worker'
+        $rows[0].ExceptionType | Should -Be 'System.IO.FileNotFoundException'
+        $rows[0].FullyQualifiedErrorId | Should -BeLike '*MissingChild*'
+        $rows[0].Error | Should -Be 'The system cannot find the file specified.'
+        $rows[0].ScriptStackTrace | Should -Not -BeNullOrEmpty
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+    }
+    It 'preserves real worker diagnostics with JobsTotal <_>' -ForEach @(1, 3) {
+        $testFile = New-Item "TestDrive:/diagnostics-$_.txt" -ItemType File
+        $testNewInputFile.MaxConcurrent.JobsTotal = $_
+        $testNewInputFile.Tasks[0].ComputerName = 'localhost'
+        $testNewInputFile.Tasks[0].Files = @($testFile.FullName)
+        $testNewInputFile.Tasks[0].OlderThan.Unit = 'Year'
+        $testNewInputFile.Tasks[0].OlderThan.Quantity = [int]::MaxValue
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript -ConfigurationJsonFile $testOutParams.FilePath
+
+        $LASTEXITCODE | Should -Be 1
+        $testFile.FullName | Should -Exist
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Errors)
+        $rows | Should -HaveCount 1
+        $rows[0].Stage | Should -Be 'Run local worker'
+        $rows[0].Error | Should -BeLike '*Invalid retention period*'
+        $rows[0].ExceptionType | Should -Be 'System.Management.Automation.RuntimeException'
+        $rows[0].FullyQualifiedErrorId | Should -BeLike '*Invalid retention period*'
+        $rows[0].ScriptStackTrace | Should -BeLike '*Get-ExclusiveCutoffHC*Remove items.ps1*'
+        $rows[0].PositionMessage | Should -BeLike '*Remove items.ps1*'
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
     }
 }
 Describe 'Settings.SendMail.When' {
@@ -1640,7 +1747,7 @@ Describe 'send an e-mail' {
             ($Priority -eq 'High') -and
             ($Subject -eq '1 removed, 1 error') -and
             ($Attachments -like '*Log.xlsx') -and
-            ($Attachments -like '* - System errors log.json')
+            (-not ($Attachments -like '* - System errors log.json'))
         }
     }
     It 'with the correct body' {

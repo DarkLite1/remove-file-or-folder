@@ -592,10 +592,12 @@ Process {
                             Write-Verbose "Starting job '$($dto.Type)' on '$($dto.ComputerName)' for '$($dto.ArgumentList[1])' (attempt $attempt of $MaxAttempts)"
                         }
                         if ($dto.ComputerName -eq $env:COMPUTERNAME) {
+                            $jobStage = 'Run local worker'
                             $arguments = $dto.ArgumentList
                             $result.Results = @(& $dto.FilePath @arguments)
                         }
                         else {
+                            $jobStage = 'Open remote session'
                             $sessionParams = @{
                                 ComputerName      = $dto.ComputerName
                                 ConfigurationName = $SessionConfiguration
@@ -604,6 +606,7 @@ Process {
                             }
                             $session = New-PSSession @sessionParams
 
+                            $jobStage = 'Run remote worker'
                             $invokeParams = @{
                                 Session      = $session
                                 FilePath     = $dto.FilePath
@@ -625,6 +628,7 @@ Process {
                             $needsRetry = $true
                         }
                         else {
+                            $_ | Add-Member -NotePropertyName JobStage -NotePropertyValue $jobStage -Force
                             $result.Errors = @($_)
                         }
 
@@ -896,6 +900,37 @@ End {
             @{
                 Name       = 'Error'
                 Expression = { $_ -join ', ' }
+            },
+            @{
+                Name       = 'Stage'
+                Expression = { $_.JobStage }
+            },
+            @{
+                Name       = 'TargetObject'
+                Expression = { "$($_.TargetObject)" }
+            },
+            'FullyQualifiedErrorId',
+            @{
+                Name       = 'ExceptionType'
+                Expression = {
+                    $exception = $_.Exception
+                    if ($exception.SerializedRemoteException) {
+                        $exception = $exception.SerializedRemoteException
+                    }
+                    if ($exception) {
+                        $exception.PSTypeNames[0] -replace '^Deserialized\.', ''
+                    }
+                }
+            },
+            'ScriptStackTrace',
+            @{
+                Name       = 'PositionMessage'
+                Expression = {
+                    if ($_.Exception.SerializedRemoteInvocationInfo.PositionMessage) {
+                        $_.Exception.SerializedRemoteInvocationInfo.PositionMessage
+                    }
+                    else { $_.InvocationInfo.PositionMessage }
+                }
             }
         }
 
@@ -995,11 +1030,9 @@ End {
         #endregion
 
         #region Create system errors log file
-        $errorsToLog = @($systemErrors) + @($jobErrors)
-
-        if ($baseLogName -and $errorsToLog) {
+        if ($baseLogName -and $systemErrors) {
             $params = @{
-                DataToExport   = $errorsToLog
+            DataToExport   = @($systemErrors)
                 PartialPath    = "$baseLogName - System errors log"
                 FileExtensions = '.json'
                 Append         = $true
