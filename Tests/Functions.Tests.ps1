@@ -103,16 +103,21 @@ Describe 'Get-MailBodyHtmlHC' {
     It 'links the log folder and mentions the attachments' {
         $actual | Should -BeLike "*href='C:\Log folder'*Open log folder*details in the attachments*"
     }
-    It 'uses an encoded Windows folder link without a browser target' {
+    It 'uses client-specific folder links for <Path>' -ForEach @(
+        @{ Path = '\\server\Logs\Team A & B'; Url = 'file://server/Logs/Team%20A%20&amp;%20B' }
+        @{ Path = 'C:\Log folder\Run #1'; Url = 'file:///C:/Log%20folder/Run%20%231' }
+    ) {
         $testNewParams = $testParams.Clone()
-        $testNewParams.LogFolderPath = '\\server\Logs\Team A & B'
+        $testNewParams.LogFolderPath = $Path
 
         $html = Get-MailBodyHtmlHC @testNewParams
 
-        $link = [regex]::Match($html, '<a [^>]+>Open log folder</a>').Value
-        $link | Should -BeLike "*href='\\server\Logs\Team A &amp; B'*"
-        $link | Should -Not -BeLike '*target=*'
-        $link | Should -Not -BeLike '*file://*'
+        $outlookLink = [regex]::Match($html, '<!--\[if mso\]>(<a [^>]+>Open log folder</a>)<!\[endif\]-->').Groups[1].Value
+        $browserLink = [regex]::Match($html, '<!--\[if !mso\]><!-->(<a [^>]+>Open log folder</a>)<!--<!\[endif\]-->').Groups[1].Value
+        $outlookLink.Contains("href='$([System.Net.WebUtility]::HtmlEncode($Path))'") | Should -BeTrue
+        $outlookLink | Should -Not -BeLike '*target=*'
+        $outlookLink | Should -Not -BeLike '*file://*'
+        $browserLink.Contains("href='$Url'") | Should -BeTrue
     }
     It 'shows an encoded browser-view link only inside an Outlook conditional row' {
         $testNewParams = $testParams.Clone()

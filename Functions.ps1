@@ -483,7 +483,11 @@ function Get-MailBodyHtmlHC {
 
     if ($LogFolderPath) {
         $folderPath = [System.Net.WebUtility]::HtmlEncode($LogFolderPath)
-        $links += "<a href='$folderPath' title='$folderPath' style='$linkStyle'>Open log folder</a>"
+        $folderUrl = [System.Net.WebUtility]::HtmlEncode(([uri]$LogFolderPath).AbsoluteUri)
+        $links += @"
+<!--[if mso]><a href='$folderPath' title='$folderPath' style='$linkStyle'>Open log folder</a><![endif]-->
+<!--[if !mso]><!--><a href='$folderUrl' title='$folderPath' style='$linkStyle'>Open log folder</a><!--<![endif]-->
+"@
     }
     if ($HasAttachments) {
         $links += 'details in the attachments'
