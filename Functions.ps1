@@ -358,9 +358,9 @@ function Build-MailComputerCardHC {
                     ) / 2)
             }) -join '')
 
-    $headerLabel = '{0} removed' -f $removed
+    $headerLabel = '{0}&nbsp;removed' -f $removed
     if ($errors) {
-        $headerLabel += ' &middot; {0} error{1}' -f $errors, $(if ($errors -ne 1) { 's' })
+        $headerLabel += ' &middot; {0}&nbsp;error{1}' -f $errors, $(if ($errors -ne 1) { 's' })
     }
 
     # rows with errors first, then rows that removed something

@@ -112,8 +112,8 @@ Describe 'Get-MailBodyHtmlHC' {
         $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradIdle[0])*>PC-IDLE</p>*"
     }
     It 'shows the totals in the card header' {
-        $actual | Should -BeLike '*>PC-ERR</p>*1 removed &middot; 2 errors*'
-        $actual | Should -BeLike '*>PC-OK</p>*2 paths*3 removed*'
+        $actual | Should -BeLike '*>PC-ERR</p>*1&nbsp;removed &middot; 2&nbsp;errors*'
+        $actual | Should -BeLike '*>PC-OK</p>*2 paths*3&nbsp;removed*'
     }
     It 'shows a row per path with name, path, description and result' {
         $actual | Should -BeLike "*href='file:////PC-OK/D$/Logs'*>Logs</a>*D:\Logs*Remove all files*3 removed*"
@@ -142,6 +142,30 @@ Describe 'Get-MailBodyHtmlHC' {
 
         $result | Should -BeLike "*background-color:$($testTheme.AccentIdle)*>0 Removed</span>*"
         $result | Should -Not -BeLike '*Errors</span>*'
+    }
+}
+Describe 'Outlook header count wrapping' {
+    It 'keeps count and label together for <Removed> removals and <Errors> errors' -ForEach @(
+        @{ Removed = 0; Errors = 0 }
+        @{ Removed = 1; Errors = 1 }
+        @{ Removed = 2; Errors = 2 }
+        @{ Removed = 60013; Errors = 1200 }
+    ) {
+        $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job @(
+            [pscustomobject]@{
+                Path = 'C:\Logs'
+                LinkPath = '\\PC1\C$\Logs'
+                Description = 'Remove all files'
+                Removed = $Removed
+                Errors = $Errors
+            }
+        )
+        $header = [regex]::Match($html, "<td[^>]*width='140'[^>]*>(.*?)</td>").Groups[1].Value
+        $expected = "$Removed&nbsp;removed"
+        if ($Errors) {
+            $expected += " &middot; $Errors&nbsp;error$(if ($Errors -ne 1) { 's' })"
+        }
+        $header | Should -Be $expected
     }
 }
 Describe 'Get-LogFolderHC' {
