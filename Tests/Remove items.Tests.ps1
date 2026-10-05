@@ -700,6 +700,74 @@ Describe 'calendar cutoff boundaries' {
         $testFile.FullName | Should -Exist
     }
 }
+Describe 'disappearing empty subfolders' {
+    It 'skips an enumeration error only after confirming the subfolder is missing' {
+        $testRoot = (New-Item 'TestDrive:/disappeared-enumeration' -ItemType Directory).FullName
+        $testGone = New-Item "$testRoot/Gone" -ItemType Directory
+        $testOther = New-Item "$testRoot/Other" -ItemType Directory
+        Mock Get-ChildItem {
+            $testGone.Delete()
+            Write-Error 'Folder disappeared during enumeration' -Category ObjectNotFound -TargetObject $testGone.FullName
+            $testOther
+        }
+        $testWarnings = @()
+
+        $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -WarningVariable testWarnings -WarningAction SilentlyContinue 2>&1)
+
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testOther.FullName
+        $actual[0].Action | Should -Be 'Removed'
+        $testWarnings | Should -BeNullOrEmpty
+    }
+    It 'still reports a missing configured root' {
+        $testRoot = Join-Path $TestDrive 'missing-root'
+        $testWarnings = @()
+
+        $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -WarningVariable testWarnings -WarningAction SilentlyContinue)
+
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testRoot
+        $actual[0].Error | Should -Not -BeNullOrEmpty
+        $testWarnings | Should -Not -BeNullOrEmpty
+    }
+    It 'keeps the error when the configured root also disappears' {
+        $testRoot = (New-Item 'TestDrive:/disappeared-root' -ItemType Directory).FullName
+        $testGone = New-Item "$testRoot/Gone" -ItemType Directory
+        $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace(
+            '$iterator = $Folder.EnumerateFileSystemInfos().GetEnumerator()',
+            '$Folder.Delete(); $Folder.Parent.Delete(); $iterator = $Folder.EnumerateFileSystemInfos().GetEnumerator()'
+        )
+
+        $actual = @(& ([scriptblock]::Create($testScriptText)) -Type EmptyFolders -Path $testRoot -WarningAction SilentlyContinue)
+
+        $testRoot | Should -Not -Exist
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testGone.FullName
+        $actual[0].Error | Should -Not -BeNullOrEmpty
+    }
+    It 'skips a folder that disappears before <Stage> and continues cleanup' -ForEach @(
+        @{ Stage = 'inspection'; Anchor = '$iterator = $Folder.EnumerateFileSystemInfos().GetEnumerator()'; Injection = 'if ($Folder.Name -eq ''Gone'') { $Folder.Delete() }; ' }
+        @{ Stage = 'deletion'; Anchor = '$emptyFolder.Delete()'; Injection = 'if ($emptyFolder.Name -eq ''Gone'') { $emptyFolder.Delete() }; ' }
+    ) {
+        $testRoot = (New-Item "TestDrive:/disappeared-$Stage" -ItemType Directory).FullName
+        $testGone = New-Item "$testRoot/Gone" -ItemType Directory
+        $testOther = New-Item "$testRoot/Other" -ItemType Directory
+        $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace($Anchor, "$Injection$Anchor")
+        $testScriptText | Should -Not -Be (Get-Content -LiteralPath $testScript -Raw)
+        $testWarnings = @()
+
+        $actual = @(& ([scriptblock]::Create($testScriptText)) -Type EmptyFolders -Path $testRoot -WarningVariable testWarnings -WarningAction SilentlyContinue 2>&1)
+
+        $testRoot | Should -Exist
+        $testGone.FullName | Should -Not -Exist
+        $testOther.FullName | Should -Not -Exist
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testOther.FullName
+        $actual[0].Action | Should -Be 'Removed'
+        $testWarnings | Should -BeNullOrEmpty
+        @($actual | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) | Should -HaveCount 0
+    }
+}
 Describe 'lazy emptiness checks' {
     It 'checks one entry and disposes the iterator, including failure: <_>' -ForEach @($false, $true) {
         $testRoot = (New-Item "TestDrive:/lazy_$_" -ItemType Directory).FullName

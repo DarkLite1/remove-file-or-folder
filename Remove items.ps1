@@ -281,6 +281,41 @@ if ($Type -eq 'EmptyFolders') {
     $getErrors = [System.Collections.Generic.List[object]]::new()
     $unreadableFolders = @{}
 
+    function Test-IsMissingSubfolderHC {
+        <#
+        .SYNOPSIS
+            Confirm a failed subfolder is gone while its task root is accessible.
+
+        .DESCRIPTION
+            Existing paths, root paths and inconclusive access checks return
+            false so their original errors remain visible.
+        #>
+        param ([string]$FullName)
+
+        try {
+            $rootPath = (Get-NormalizedPathHC $Path).TrimEnd('\')
+            $folderPath = Get-NormalizedPathHC $FullName
+            if (-not $folderPath.StartsWith("$rootPath\", [StringComparison]::OrdinalIgnoreCase)) {
+                return $false
+            }
+
+            try {
+                $null = [System.IO.File]::GetAttributes($folderPath)
+                return $false
+            }
+            catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] {
+                $Error.RemoveAt(0)
+            }
+
+            $rootAttributes = [System.IO.File]::GetAttributes($rootPath)
+            return [bool]($rootAttributes -band [System.IO.FileAttributes]::Directory)
+        }
+        catch {
+            $Error.RemoveAt(0)
+            return $false
+        }
+    }
+
     function Test-IsEmptyFolderHC {
         <#
         .SYNOPSIS
@@ -347,13 +382,17 @@ if ($Type -eq 'EmptyFolders') {
             if ($writeVerbose) { Write-Verbose "Removed empty folder '$($emptyFolder.FullName)'" }
         }
         catch {
-            Write-Warning "Failed to remove empty folder '$($emptyFolder.FullName)': $_"
-
-            $result.Error = $_
+            if (Test-IsMissingSubfolderHC $emptyFolder.FullName) {
+                $result = $null
+            }
+            else {
+                Write-Warning "Failed to remove empty folder '$($emptyFolder.FullName)': $_"
+                $result.Error = $_
+            }
             $Error.RemoveAt(0)
         }
         finally {
-            $result
+            if ($null -ne $result) { $result }
         }
     }
 
@@ -370,6 +409,7 @@ if ($Type -eq 'EmptyFolders') {
     Where-Object { -not (Test-IsExcludedHC $_.Key) } |
     Sort-Object -Property Key |
     ForEach-Object {
+        if (Test-IsMissingSubfolderHC $_.Key) { return }
         Write-Warning "Failed to read '$($_.Key)': $($_.Value)"
 
         New-ReadErrorResultHC -FullName $_.Key -ItemType $Type -Message $_.Value
