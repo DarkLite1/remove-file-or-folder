@@ -88,6 +88,8 @@ Missing or inaccessible paths and item-removal failures appear in the Excel **Ov
 
 `Example.json` enables email, file logging and event logging. Its server names, addresses and assembly paths are placeholders to adjust for your environment.
 
+The email and saved HTML show one row per entry in `Tasks`, listing its paths once and combining the removal/error counts and descriptions of its file and empty-folder jobs. Separate task entries remain separate even when they target the same path. A task spanning multiple UNC servers appears once under a combined server heading. Excel retains the detailed per-item and per-job records.
+
 ### 📋 Tasks
 
 Every task targets one computer and applies the same settings to a list of paths. Choose either `Files` or `Folders` in each task, never both. Use as many tasks as needed, for example one per computer and retention period.

@@ -391,6 +391,7 @@ Begin {
 
                     foreach ($type in $types) {
                         $tasksToExecute += [PSCustomObject]@{
+                            TaskIndex      = $i
                             Name           = $name
                             ComputerName   = $computerName
                             Path           = $path
@@ -1048,26 +1049,40 @@ End {
         $counter.systemErrors
 
         #region Create mail rows
-        $mailJobs = foreach ($task in $tasksToExecute) {
-            $isUncPath = $task.Path -match '^\\\\([^\\]+)'
+        $mailJobs = foreach ($taskGroup in ($tasksToExecute | Group-Object -Property TaskIndex)) {
+            $entries = @(
+                foreach ($pathGroup in ($taskGroup.Group | Group-Object -Property Path)) {
+                    $task = $pathGroup.Group[0]
+                    $isUncPath = $task.Path -match '^\\\\([^\\]+)'
+
+                    [PSCustomObject]@{
+                        ComputerName = if ($isUncPath) { $Matches[1] } else { $task.ComputerName }
+                        Name         = $task.Name
+                        Path         = $task.Path
+                        LinkPath     = if ($isUncPath) {
+                            $task.Path
+                        }
+                        else {
+                            $task.Path -replace '^(.):', ('\\{0}\$1$' -f $task.ComputerName)
+                        }
+                    }
+                }
+            )
+            $descriptions = foreach ($task in $taskGroup.Group) {
+                Get-TaskDescriptionHC -Task $task
+            }
 
             [PSCustomObject]@{
-                ComputerName = if ($isUncPath) { $Matches[1] } else { $task.ComputerName }
-                Name         = $task.Name
-                Path         = $task.Path
-                LinkPath     = if ($isUncPath) {
-                    $task.Path
-                }
-                else {
-                    $task.Path -replace '^(.):', ('\\{0}\$1$' -f $task.ComputerName)
-                }
-                Description  = Get-TaskDescriptionHC -Task $task
+                ComputerName = ($entries.ComputerName | Sort-Object -Unique) -join ', '
+                Entries      = $entries
+                Path         = $entries[0].Path
+                Description  = ($descriptions | Select-Object -Unique) -join '; '
                 Removed      = @(
-                    $task.Job.Results | Where-Object { $_.Action -eq 'Removed' }
+                    $taskGroup.Group.Job.Results | Where-Object { $_.Action -eq 'Removed' }
                 ).Count
                 Errors       = @(
-                    $task.Job.Results | Where-Object { $_.Error }
-                ).Count + @($task.Job.Errors | Where-Object { $_ }).Count
+                    $taskGroup.Group.Job.Results | Where-Object { $_.Error }
+                ).Count + @($taskGroup.Group.Job.Errors | Where-Object { $_ }).Count
             }
         }
         #endregion

@@ -257,11 +257,12 @@ function Build-MailSystemErrorsBlockHC {
 function Build-MailJobRowHC {
     <#
     .SYNOPSIS
-        One row per path in a computer card: what was done and the result.
+        One row per input task in a computer card: what was done and the result.
 
     .PARAMETER Job
-        Object containing Name, Path, LinkPath, Description, Removed and
-        Errors. Name is optional and appears above Path, not in place of it.
+        Object containing Entries, Description, Removed and Errors. Each entry
+        contains Name, Path and LinkPath. A single-path job can supply those
+        properties directly. Name is optional and appears above Path.
         Removed and Errors are counts. Text is HTML-encoded before rendering.
     #>
     param (
@@ -281,17 +282,21 @@ function Build-MailJobRowHC {
         $theme.AccentIdle, ''
     }
 
-    $href = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $Job.LinkPath))
-    $path = [System.Net.WebUtility]::HtmlEncode($Job.Path)
     $description = [System.Net.WebUtility]::HtmlEncode($Job.Description)
 
-    $titleHtml = if ($Job.Name) {
-        "<div style='margin:0; font-weight:700; color:$($theme.TextMain); font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$($theme.TextMain);'>$([System.Net.WebUtility]::HtmlEncode($Job.Name))</a></div>" +
-        "<div style='margin:0; font-family:$($theme.MonoStack); font-size:11px; color:$($theme.TextMuted); line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$path</div>"
-    }
-    else {
-        "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:700; font-size:12px; color:$($theme.TextMain); line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$($theme.TextMain);'>$path</a></div>"
-    }
+    $entries = if ($Job.Entries) { $Job.Entries } else { @($Job) }
+    $titleHtml = (@(foreach ($entry in $entries) {
+        $href = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $entry.LinkPath))
+        $path = [System.Net.WebUtility]::HtmlEncode($entry.Path)
+
+        if ($entry.Name) {
+            "<div style='margin:0; font-weight:700; color:$($theme.TextMain); font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$($theme.TextMain);'>$([System.Net.WebUtility]::HtmlEncode($entry.Name))</a></div>" +
+            "<div style='margin:0; font-family:$($theme.MonoStack); font-size:11px; color:$($theme.TextMuted); line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$path</div>"
+        }
+        else {
+            "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:700; font-size:12px; color:$($theme.TextMain); line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$($theme.TextMain);'>$path</a></div>"
+        }
+    })) -join ''
 
     $resultText = '{0} removed' -f $Job.Removed
     if ($Job.Errors) {
@@ -316,7 +321,7 @@ function Build-MailJobRowHC {
 function Build-MailComputerCardHC {
     <#
     .SYNOPSIS
-        A card per computer: a colored header and a row per path.
+        A card per computer or computer set: a header and a row per input task.
 
     .DESCRIPTION
         The header is red when a job failed, green when something was
@@ -365,7 +370,9 @@ function Build-MailComputerCardHC {
             Build-MailJobRowHC -Job $_
         }) -join '<!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#ffffff"><tr><td bgcolor="#ffffff" height="4" style="font-size:0; line-height:4px; mso-line-height-rule:exactly;">&#160;</td></tr></table><![endif]-->'
 
-    $pathCount = @($Job.Path | Sort-Object -Unique).Count
+    $pathCount = @($Job | ForEach-Object {
+        if ($_.Entries) { $_.Entries.Path } else { $_.Path }
+    } | Sort-Object -Unique).Count
 
     @"
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="$($theme.BgWhite)" style="border-collapse:separate; margin:0 0 16px 0; table-layout:fixed; width:100%; background-color:$($theme.BgWhite); border:1px solid $($theme.BorderLight); border-radius:10px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.06);">
@@ -408,8 +415,9 @@ function Get-MailBodyHtmlHC {
         a fluid one capped at 900px.
 
     .PARAMETER Job
-        Objects with: ComputerName, Name, Path, LinkPath, Description, Removed
-        and Errors.
+        Objects with ComputerName, Entries, Path (sort key), Description,
+        Removed and Errors. Entries contain Name, Path and LinkPath; legacy
+        single-path objects may supply these properties directly.
 
     .PARAMETER Body
         Optional HTML shown below the title. Used as supplied, without HTML

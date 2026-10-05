@@ -1784,6 +1784,65 @@ Describe 'send an e-mail' {
         }
     }
 }
+Describe 'email rows per input task' {
+    It 'combines paths and cleanup phases without merging separate tasks (<Label>)' -ForEach @(
+        @{ Label = 'local paths'; FirstPath = 'z:\first'; SecondPath = 'z:\second'; ComputerLabel = 'PC1' }
+        @{ Label = 'multiple UNC servers'; FirstPath = '\\SERVER1\Logs'; SecondPath = '\\SERVER2\Logs'; ComputerLabel = 'SERVER1, SERVER2' }
+    ) {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @(
+            [pscustomobject]@{
+                ComputerName = 'PC1'
+                Folders = @(
+                    @{ Name = 'First & primary'; Path = $FirstPath }
+                    @{ Name = 'Second'; Path = $SecondPath }
+                )
+                OlderThan = @{ Quantity = 1; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $true
+            }
+            [pscustomobject]@{
+                ComputerName = 'PC1'
+                Folders = @(@{ Name = 'Separate task'; Path = $FirstPath })
+                RemoveEmptyFolders = $true
+            }
+        )
+        Mock Invoke-Command {
+            if (($ArgumentList[0] -eq 'EmptyFolders') -and ($ArgumentList[1] -eq $SecondPath)) {
+                throw 'Folder job failed'
+            }
+            [pscustomobject]@{
+                DateTime = Get-Date
+                ComputerName = 'PC1'
+                Type = $ArgumentList[0]
+                FullName = $ArgumentList[1]
+                Action = if ($ArgumentList[0] -eq 'FilesInFolder') { 'Removed' }
+                Error = if ($ArgumentList[0] -eq 'EmptyFolders') { 'Access denied' }
+            }
+        }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        Should -Invoke Invoke-Command -Exactly -Times 5 -Scope It
+        $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
+        $testHtmlFile | Should -HaveCount 1
+        $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
+        [regex]::Matches($html, 'border-left:3px solid').Count | Should -Be 2
+        [regex]::Matches($html, '>First &amp; primary</a>').Count | Should -Be 1
+        [regex]::Matches($html, '>Second</a>').Count | Should -Be 1
+        [regex]::Matches($html, '>Separate task</a>').Count | Should -Be 1
+        $html | Should -BeLike '*Remove files older than 1 day (last write time), including subfolders; Remove empty folders*'
+        $html | Should -BeLike '*2 removed<br>2 errors*'
+        $html | Should -BeLike '*0 removed<br>1 error*'
+        $html | Should -BeLike "*>$ComputerLabel</p>*"
+        $html | Should -BeLike '*2 paths</p>*'
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($Subject -eq '2 removed, 3 errors') -and ($Body -ceq $html)
+        }
+    }
+}
 Describe 'save email HTML' {
     BeforeEach {
         Clear-TestLogFolderHC
