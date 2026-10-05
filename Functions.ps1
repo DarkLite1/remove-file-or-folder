@@ -427,6 +427,10 @@ function Get-MailBodyHtmlHC {
         Optional HTML shown below the title. Used as supplied, without HTML
         encoding. Summary counts and task results are rendered separately,
         even when Body is empty.
+
+    .PARAMETER BrowserViewFilePath
+        Saved mail HTML path. Shows the browser-view link in classic Outlook
+        only; omit when no HTML copy is available.
     #>
     param (
         [Parameter(Mandatory)]
@@ -441,7 +445,8 @@ function Get-MailBodyHtmlHC {
         [Boolean]$HasAttachments,
         [Parameter(Mandatory)]
         [DateTime]$ScriptStartTime,
-        [DateTime]$ScriptEndTime = (Get-Date)
+        [DateTime]$ScriptEndTime = (Get-Date),
+        [String]$BrowserViewFilePath
     )
 
     $theme = Get-MailThemeHC
@@ -464,9 +469,21 @@ function Get-MailBodyHtmlHC {
     #region Links
     $linkStyle = "color:$($theme.LinkColor); text-decoration:none; font-weight:600;"
     $links = @()
+    $browserViewRow = ''
+
+    if (-not [string]::IsNullOrWhiteSpace($BrowserViewFilePath)) {
+        $browserUrl = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $BrowserViewFilePath))
+        $browserTitle = [System.Net.WebUtility]::HtmlEncode($BrowserViewFilePath)
+        $browserViewRow = @"
+<!--[if mso]>
+<tr><td style='padding:0 0 8px 0; color:$($theme.TextMuted); font-size:12px;'><p style='margin:0; mso-line-height-rule:exactly; line-height:17px;'>If this mail is not visible, please <a href='$browserUrl' title="$browserTitle" target='_blank' rel='noopener noreferrer' style='$linkStyle'>click here to view it in the browser</a>.</p></td></tr>
+<![endif]-->
+"@
+    }
 
     if ($LogFolderPath) {
-        $links += "<a href='$([System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $LogFolderPath)))' target='_blank' rel='noopener noreferrer' style='$linkStyle'>Open log folder</a>"
+        $folderPath = [System.Net.WebUtility]::HtmlEncode($LogFolderPath)
+        $links += "<a href='$folderPath' title='$folderPath' style='$linkStyle'>Open log folder</a>"
     }
     if ($HasAttachments) {
         $links += 'details in the attachments'
@@ -543,6 +560,7 @@ function Get-MailBodyHtmlHC {
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="mail-root" style="border-collapse:collapse; width:100%; margin:0 auto; text-align:left;">
                 <tr><td style="padding:0 0 4px 0;"><h1>$([System.Net.WebUtility]::HtmlEncode($ScriptName))</h1></td></tr>
                 <tr><td style="padding:0 0 16px 0; color:$($theme.TextMuted); font-size:13px; line-height:1.6;">$Body</td></tr>
+                $browserViewRow
                 <tr><td style="padding:0;">$linksBlock</td></tr>
                 <tr><td style="padding:0;">$banner</td></tr>
                 <tr><td style="padding:0;">$systemErrorsBlock</td></tr>

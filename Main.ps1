@@ -1195,11 +1195,13 @@ End {
                     HasAttachments  = [bool]$allLogFilePaths
                     ScriptStartTime = $scriptStartTime
                 }
+                $mailHtmlPath = if ($baseLogName) { "$baseLogName - Mail.html" }
+                $bodyParams.BrowserViewFilePath = $mailHtmlPath
                 $mailParams.Body = Get-MailBodyHtmlHC @bodyParams
 
-                if ($baseLogName) {
+                if ($mailHtmlPath) {
                     try {
-                        Set-Content -LiteralPath "$baseLogName - Mail.html" -Value $mailParams.Body -Encoding utf8 -NoNewline -ErrorAction Stop
+                        Set-Content -LiteralPath $mailHtmlPath -Value $mailParams.Body -Encoding utf8 -NoNewline -ErrorAction Stop
                     }
                     catch {
                         $systemErrors.Add(
@@ -1209,6 +1211,8 @@ End {
                             }
                         )
                         Write-Warning $systemErrors[-1].Message
+                        $bodyParams.BrowserViewFilePath = $null
+                        $mailParams.Body = Get-MailBodyHtmlHC @bodyParams
                     }
                 }
 

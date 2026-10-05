@@ -2026,6 +2026,9 @@ Describe 'send an e-mail' {
         $testHtmlPath = Join-Path $testLogFolder ($testExcelFile.Name.Replace(' - Log.xlsx', ' - Mail.html'))
         $testHtmlPath | Should -Exist
         $testHtmlBody = Get-Content -LiteralPath $testHtmlPath -Raw -Encoding utf8
+        $testBrowserUrl = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $testHtmlPath))
+        $testHtmlBody | Should -BeLike '*If this mail is not visible*'
+        $testHtmlBody.Contains("href='$testBrowserUrl'") | Should -BeTrue
 
         Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($Body -ceq $testHtmlBody) -and
@@ -2142,7 +2145,9 @@ Describe 'save email HTML' {
 
         $LASTEXITCODE | Should -Be 0
         Should -Not -Invoke Set-Content -Scope It -ParameterFilter { $LiteralPath -like '* - Mail.html' }
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Body -notlike '*If this mail is not visible*'
+        }
     }
     It 'retains the HTML when sending fails' {
         Mock Send-MailKitMessageHC { throw 'SMTP unavailable' }
@@ -2161,7 +2166,9 @@ Describe 'save email HTML' {
         & $testScript @testParams
 
         $LASTEXITCODE | Should -Be 1
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Body -notlike '*If this mail is not visible*'
+        }
         ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike '*Failed saving email HTML: HTML write denied*'
     }
 }

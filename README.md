@@ -84,6 +84,10 @@ Replace the computer names and paths before running this example. It disables em
 - **Log files:** Set `Settings.SaveLogFiles.Where.Folder`. Omit it or leave it empty to disable file logging. When an email is generated, its exact HTML body is saved in this folder as `<yyyy_MM_dd_HHmmss> - <ScriptName> (<configuration name>) - Mail.html`, using the same prefix as the other logs. This copy is not attached to the email and remains available if sending fails.
 - **Event log:** Always include `Settings.SaveInEventLog.Save`. When it is `true`, also provide `LogName`.
 
+When the HTML copy is saved, classic Outlook shows "If this mail is not visible, please click here to view it in the browser." The link opens that run's saved mail HTML. Like the permission-matrix email, this line is hidden in browsers and non-Word mail clients. It is omitted when file logging is disabled or saving the HTML fails.
+
+"Open log folder" uses a Windows path link without a browser-window target, allowing desktop Outlook to hand it to File Explorer. HTML cannot force an application: Edge, webmail and client security policies may handle or block file links differently. Use a UNC log folder accessible to recipients; a local drive path refers to the recipient's computer when clicked.
+
 Missing or inaccessible paths and item-removal failures appear in the Excel **Overview** worksheet's **Error** column. Job-execution failures appear in the **Errors** worksheet with **Stage**, **TargetObject**, **FullyQualifiedErrorId**, **ExceptionType**, **ScriptStackTrace** and **PositionMessage** diagnostics when available. **Path** identifies the configured task root; **TargetObject** identifies the object associated with the original error. Neither kind of error is duplicated in JSON. The system errors JSON log is reserved for script, configuration and reporting failures. All errors still count toward error notifications and exit code 1.
 
 `Example.json` enables email, file logging and event logging. Its server names, addresses and assembly paths are placeholders to adjust for your environment.

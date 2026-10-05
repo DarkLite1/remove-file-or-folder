@@ -101,7 +101,31 @@ Describe 'Get-MailBodyHtmlHC' {
         $actual | Should -BeLike '*System Errors (1)*Oops &amp; co*'
     }
     It 'links the log folder and mentions the attachments' {
-        $actual | Should -BeLike "*href='file://C:/Log%20folder'*Open log folder*details in the attachments*"
+        $actual | Should -BeLike "*href='C:\Log folder'*Open log folder*details in the attachments*"
+    }
+    It 'uses an encoded Windows folder link without a browser target' {
+        $testNewParams = $testParams.Clone()
+        $testNewParams.LogFolderPath = '\\server\Logs\Team A & B'
+
+        $html = Get-MailBodyHtmlHC @testNewParams
+
+        $link = [regex]::Match($html, '<a [^>]+>Open log folder</a>').Value
+        $link | Should -BeLike "*href='\\server\Logs\Team A &amp; B'*"
+        $link | Should -Not -BeLike '*target=*'
+        $link | Should -Not -BeLike '*file://*'
+    }
+    It 'shows an encoded browser-view link only inside an Outlook conditional row' {
+        $testNewParams = $testParams.Clone()
+        $testNewParams.BrowserViewFilePath = '\\server\Logs\Team A & B - Mail.html'
+
+        $html = Get-MailBodyHtmlHC @testNewParams
+
+        $html | Should -Match '(?s)<!--\[if mso\]>\s*<tr><td[^>]*><p[^>]*>If this mail is not visible, please <a[^>]+>click here to view it in the browser</a>\.</p></td></tr>\s*<!\[endif\]-->'
+        $html | Should -BeLike "*href='file:////server/Logs/Team%20A%20&amp;%20B%20-%20Mail.html'*"
+        $html | Should -BeLike '*title="\\server\Logs\Team A &amp; B - Mail.html"*'
+    }
+    It 'omits the browser-view link without a saved HTML path' {
+        $actual | Should -Not -BeLike '*If this mail is not visible*'
     }
     It 'shows a card per computer, the one with errors first and the idle one last' {
         $errIndex = $actual.IndexOf('>PC-ERR</p>')
