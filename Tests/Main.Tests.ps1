@@ -1405,6 +1405,57 @@ Describe 'end-to-end filesystem scenarios' {
     }
 }
 Describe 'report inaccessible paths' {
+    It 'counts repeated read errors once with file logging <SaveLogs>' -ForEach @(
+        @{ SaveLogs = $true }
+        @{ SaveLogs = $false }
+    ) {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
+        $testNewInputFile.Tasks[0].RemoveEmptyFolders = $true
+        $testNewInputFile.Settings.SendMail.When = 'OnError'
+        if (-not $SaveLogs) { $testNewInputFile.Settings.SaveLogFiles.Where.Folder = $null }
+        Mock Invoke-Command {
+            [pscustomobject]@{
+                DateTime = Get-Date
+                ComputerName = 'PC2'
+                Type = $ArgumentList[0]
+                FullName = 'z:\folder\System Volume Information'
+                CreationTime = $null
+                Action = $null
+                Error = 'Access denied'
+            }
+        }
+        Test-NewJsonFileHC $testNewInputFile
+        $global:LASTEXITCODE = 0
+
+        $output = @(& $testScript @testParams -Verbose 4>&1)
+
+        $LASTEXITCODE | Should -Be 1
+        Should -Invoke Invoke-Command -Exactly -Times 2 -Scope It
+        if ($SaveLogs) {
+            $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
+            $rows | Should -HaveCount 1
+            $rows[0].Path | Should -Be 'z:\folder\System Volume Information'
+            $rows[0].Error | Should -Be 'Access denied'
+            $rows[0].Type | Should -Be 'FilesInFolder, EmptyFolders'
+            $rows[0].OlderThan | Should -Be '1 Day'
+            $rows[0].OlderThanBasedOn | Should -Be 'LastWriteTime'
+        }
+        else { @(Get-ChildItem -LiteralPath $testLogFolder) | Should -HaveCount 0 }
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($Subject -eq '0 removed, 1 error') -and
+            ($Priority -eq 'High') -and
+            ($Body -like '*>1 Error</span>*') -and
+            ($Body -like '*0&nbsp;removed &middot; 1&nbsp;error*') -and
+            ($Body -like '*0 removed<br>1 error*')
+        }
+        Should -Invoke Write-EventLog -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($EntryType -eq 'Error') -and ($Message -like '*Access denied*')
+        }
+        @($output | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }).Message |
+        Should -Contain 'Run summary: 0 removed, 1 errors'
+    }
     It 'keeps the path error in Excel without a system errors log' {
         Clear-TestLogFolderHC
         Mock Invoke-Command {
@@ -1438,6 +1489,50 @@ Describe 'report inaccessible paths' {
             ($Subject -eq '0 removed, 1 error') -and
             ($Attachments -like '*Log.xlsx') -and
             (-not ($Attachments -like '*System errors log.json'))
+        }
+    }
+    It 'preserves separate rows for <Case>' -ForEach @(
+        @{ Case = 'different errors' }
+        @{ Case = 'different paths' }
+        @{ Case = 'separate input tasks' }
+        @{ Case = 'successful removals' }
+        @{ Case = 'deletion failures' }
+    ) {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
+        if ($Case -eq 'separate input tasks') {
+            $testNewInputFile.Tasks += Copy-ObjectHC $testNewInputFile.Tasks[0]
+        }
+        else { $testNewInputFile.Tasks[0].RemoveEmptyFolders = $true }
+
+        Mock Invoke-Command {
+            [pscustomobject]@{
+                DateTime = Get-Date
+                ComputerName = 'PC2'
+                Type = if ($Case -eq 'deletion failures') { 'File' } else { $ArgumentList[0] }
+                FullName = if (($Case -eq 'different paths') -and ($ArgumentList[0] -eq 'EmptyFolders')) {
+                    'z:\folder\other'
+                }
+                else { 'z:\folder\denied' }
+                CreationTime = $null
+                Action = if ($Case -eq 'successful removals') { 'Removed' }
+                Error = if ($Case -eq 'successful removals') { $null }
+                elseif (($Case -eq 'different errors') -and ($ArgumentList[0] -eq 'EmptyFolders')) {
+                    'Path no longer exists'
+                }
+                else { 'Access denied' }
+            }
+        }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
+        $rows | Should -HaveCount 2
+        $expectedSubject = if ($Case -eq 'successful removals') { '2 removed' } else { '0 removed, 2 errors' }
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Subject -eq $expectedSubject
         }
     }
 }

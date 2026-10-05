@@ -742,6 +742,33 @@ End {
         $baseLogName = $null
         $logFolderPath = $null
 
+        #region Prepare reporting results
+        $reportedReadErrors = @{}
+        foreach ($task in $tasksToExecute) {
+            $task.Job.ReportedResults = @(
+                foreach ($result in $task.Job.Results) {
+                    if ($result.Error -and -not $result.Action -and ($result.Type -in 'FilesInFolder', 'EmptyFolders')) {
+                        $errorKey = ConvertTo-Json -InputObject @(
+                            $task.TaskIndex, $result.ComputerName, $result.FullName, "$($result.Error)"
+                        ) -Compress
+
+                        if ($reportedReadErrors.ContainsKey($errorKey)) {
+                            $existingResult = $reportedReadErrors[$errorKey]
+                            $existingResult.Type = (@($existingResult.Type -split ', ') + $result.Type |
+                                Select-Object -Unique) -join ', '
+                        }
+                        else {
+                            $reportedResult = $result | Select-Object -Property *
+                            $reportedReadErrors[$errorKey] = $reportedResult
+                            $reportedResult
+                        }
+                    }
+                    else { $result }
+                }
+            )
+        }
+        #endregion
+
         #region Get job errors
         $jobErrors = [System.Collections.Generic.List[PSObject]]::new()
 
@@ -758,7 +785,7 @@ End {
                 )
             }
 
-            foreach ($result in $task.Job.Results.Where({ $_.Error })) {
+            foreach ($result in $task.Job.ReportedResults.Where({ $_.Error })) {
                 $M = "{0} on '{1}' with Path '{2}': {3}" -f
                 $task.Type, $task.ComputerName, $result.FullName, $result.Error
 
@@ -778,7 +805,7 @@ End {
                 $tasksToExecute.Job.Results | Where-Object { $_.Action -eq 'Removed' }
             ).Count
             removalErrors = @(
-                $tasksToExecute.Job.Results | Where-Object { $_.Error }
+                $tasksToExecute.Job.ReportedResults | Where-Object { $_.Error }
             ).Count
             jobErrors     = @($tasksToExecute.Job.Errors | Where-Object { $_ }).Count
             systemErrors  = $systemErrors.Count
@@ -836,7 +863,7 @@ End {
             $task in
             $tasksToExecute
         ) {
-            $task.Job.Results | Select-Object -Property 'DateTime',
+            $task.Job.ReportedResults | Select-Object -Property 'DateTime',
             'ComputerName',
             'Type',
             @{
@@ -1081,7 +1108,7 @@ End {
                     $taskGroup.Group.Job.Results | Where-Object { $_.Action -eq 'Removed' }
                 ).Count
                 Errors       = @(
-                    $taskGroup.Group.Job.Results | Where-Object { $_.Error }
+                    $taskGroup.Group.Job.ReportedResults | Where-Object { $_.Error }
                 ).Count + @($taskGroup.Group.Job.Errors | Where-Object { $_ }).Count
             }
         }

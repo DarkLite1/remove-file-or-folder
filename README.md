@@ -90,6 +90,8 @@ Missing or inaccessible paths and item-removal failures appear in the Excel **Ov
 
 The email and saved HTML show one row per entry in `Tasks`, listing its paths once and combining the removal/error counts and descriptions of its file and empty-folder jobs. Separate task entries remain separate even when they target the same path. A task spanning multiple UNC servers appears once under a combined server heading. Excel retains the detailed per-item and per-job records.
 
+Identical folder-read errors for the same computer and path within one input task are counted once across Excel, email and event reporting. In Excel **Overview**, **Type** lists the affected operations, such as `FilesInFolder, EmptyFolders`; the first occurrence's timestamp and retention settings are retained. Different errors, separate input tasks, deletion failures and successful removals stay separate. Email totals include the unique item errors in **Overview** plus job failures in **Errors**. Script, configuration and reporting failures are counted additionally and listed separately in the email and system errors JSON log.
+
 ### 📋 Tasks
 
 Every task targets one computer and applies the same settings to a list of paths. Choose either `Files` or `Folders` in each task, never both. Use as many tasks as needed, for example one per computer and retention period.
