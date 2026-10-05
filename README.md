@@ -103,9 +103,9 @@ Every task targets one computer and applies the same settings to a list of paths
 | `ComputerName`       | The computer that executes the removal. Required for local paths like `D:\Logs`, use `null` for UNC paths and `localhost` for this computer. |
 | `Files`              | The files to remove. Requires `OlderThan`.                                                                                                |
 | `Folders`            | The folders to clean up. Requires `RemoveEmptyFolders`, and `Recurse` when `OlderThan` is used.                                          |
-| `ExcludeFolders`     | Optional subfolders of `Folders` to skip. Nothing inside them is removed, and they are never removed as empty folders.                   |
-| `ExcludeFiles`       | Optional files below `Folders` that are never removed, regardless of their age. Requires `OlderThan`.                                    |
-| `ExcludeAttributes`  | Optional array: `[]`, `["Hidden"]`, `["System"]` or `["Hidden", "System"]`. Protects matching files and skips matching folder trees. Defaults to `[]`. |
+| `Exclude.Folders`    | Optional subfolders of `Folders` to skip. Nothing inside them is removed, and they are never removed as empty folders.                   |
+| `Exclude.Files`      | Optional files below `Folders` that are never removed, regardless of their age. Requires `OlderThan`.                                    |
+| `Exclude.Attributes` | Optional array: `[]`, `["Hidden"]`, `["System"]` or `["Hidden", "System"]`. Protects matching files and skips matching folder trees. Defaults to `[]`. |
 | `OlderThan`          | Remove the files older than this, based on their `CreationTime` or `LastWriteTime`. Leave it out for `Folders` to only remove empty folders. |
 | `Recurse`            | Required only for `Folders` with `OlderThan`. `true` includes files in subfolders; `false` selects files directly in the folder. Not allowed on other tasks. |
 | `RemoveEmptyFolders` | Required for `Folders` only. `true` removes empty subfolders at every depth after the file-removal phase, independently of `Recurse`. The root folder is never removed. |
@@ -114,15 +114,21 @@ A path in `Files` or `Folders` is a plain string, or an object `{ "Name": "...",
 
 Every path is processed as a separate job, so `MaxConcurrent` applies per path. Empty folders are always removed after all file removals have finished.
 
-To skip hidden or system items, add this property to the relevant task:
+Group exclusions in an optional `Exclude` object on the relevant task. For a task targeting `D:\Application\Logs`:
 
 ```json
-"ExcludeAttributes": ["Hidden", "System"]
+"Exclude": {
+  "Attributes": ["Hidden", "System"],
+  "Folders": ["D:\\Application\\Logs\\Keep"],
+  "Files": ["D:\\Application\\Logs\\state.json"]
+}
 ```
+
+Each property is optional and takes an array. Omit unused properties or use `[]`; omitting `Exclude` or using `{}` adds no exclusions. `Exclude.Folders` and `Exclude.Files` only apply to tasks targeting folders; `Exclude.Files` also requires `OlderThan`. Paths must be below a configured task folder. Unknown properties and invalid values are rejected before cleanup starts.
 
 Matching **either** attribute is enough. Matching files are not deleted; matching folders and all their contents are skipped before traversal in both cleanup phases. This also skips a configured root folder when its attributes match. Explicit `Files` entries are checked against the file's own attributes, not its ancestors. Retained hidden/system files still make a folder nonempty, so its parent is not removed by empty-folder cleanup.
 
-Omitting the setting or using `[]` preserves the existing behavior, including hidden and system items. Use `["System"]` to protect system items while still cleaning hidden application logs. Exclusions are shown in the email description; skipped items do not count as removals or errors. Access errors on other paths, or failures to read a path's attributes, remain visible. Attribute exclusions work alongside `ExcludeFiles` and `ExcludeFolders` and still apply when `OlderThan.Quantity` is `0`.
+Omitting `Exclude.Attributes` or using `[]` preserves the existing behavior, including hidden and system items. Use `["System"]` to protect system items while still cleaning hidden application logs. Exclusions are shown in the email description; skipped items do not count as removals or errors. Access errors on other paths, or failures to read a path's attributes, remain visible. Attribute exclusions work alongside `Exclude.Files` and `Exclude.Folders` and still apply when `OlderThan.Quantity` is `0`.
 
 ### 🔄 Converting input files from the old format
 

@@ -198,22 +198,35 @@ Begin {
                 $taskProperties = $task.PSObject.Properties.Name
 
                 foreach ($name in $taskProperties) {
-                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'ExcludeFolders', 'ExcludeFiles', 'ExcludeAttributes', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
+                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'Exclude', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
                         throw "Property '$prefix.$name' is not supported"
                     }
                 }
 
-                $excludeAttributes = @()
-                if ($taskProperties -contains 'ExcludeAttributes') {
-                    if ($task.ExcludeAttributes -isnot [array]) {
-                        throw "Property '$prefix.ExcludeAttributes' needs an array containing 'Hidden' and/or 'System'"
+                $exclusionProperties = @()
+                if ($taskProperties -contains 'Exclude') {
+                    if ($task.Exclude -isnot [pscustomobject]) {
+                        throw "Property '$prefix.Exclude' needs an object containing 'Attributes', 'Folders' and/or 'Files'"
                     }
-                    foreach ($attribute in $task.ExcludeAttributes) {
-                        if (($attribute -isnot [string]) -or ($attribute -notin 'Hidden', 'System')) {
-                            throw "Property '$prefix.ExcludeAttributes' supports only 'Hidden' and 'System'"
+                    $exclusionProperties = $task.Exclude.PSObject.Properties.Name
+                    foreach ($name in $exclusionProperties) {
+                        if ($name -notin '?', 'Attributes', 'Folders', 'Files') {
+                            throw "Property '$prefix.Exclude.$name' is not supported"
                         }
                     }
-                    $excludeAttributes = @($task.ExcludeAttributes | Select-Object -Unique)
+                }
+
+                $excludeAttributes = @()
+                if ($exclusionProperties -contains 'Attributes') {
+                    if ($task.Exclude.Attributes -isnot [array]) {
+                        throw "Property '$prefix.Exclude.Attributes' needs an array containing 'Hidden' and/or 'System'"
+                    }
+                    foreach ($attribute in $task.Exclude.Attributes) {
+                        if (($attribute -isnot [string]) -or ($attribute -notin 'Hidden', 'System')) {
+                            throw "Property '$prefix.Exclude.Attributes' supports only 'Hidden' and 'System'"
+                        }
+                    }
+                    $excludeAttributes = @($task.Exclude.Attributes | Select-Object -Unique)
                 }
 
                 #region Files or Folders
@@ -314,28 +327,32 @@ Begin {
                 $entries = @($task.$listName)
                 $folderPaths = @()
 
-                #region ExcludeFolders and ExcludeFiles
+                #region Exclude.Folders and Exclude.Files
                 $excludes = @{
-                    ExcludeFolders = @()
-                    ExcludeFiles   = @()
+                    Folders = @()
+                    Files   = @()
                 }
 
-                foreach ($excludeName in 'ExcludeFolders', 'ExcludeFiles') {
-                    if ($taskProperties -notcontains $excludeName) { continue }
+                foreach ($excludeName in 'Folders', 'Files') {
+                    if ($exclusionProperties -notcontains $excludeName) { continue }
+                    $excludePrefix = "$prefix.Exclude.$excludeName"
 
                     if ($listName -eq 'Files') {
-                        throw "Property '$prefix.$excludeName' can only be used with '$prefix.Folders'"
+                        throw "Property '$excludePrefix' can only be used with '$prefix.Folders'"
                     }
-                    if (($excludeName -eq 'ExcludeFiles') -and (-not $removeFiles)) {
-                        throw "Property '$prefix.ExcludeFiles' can only be used together with '$prefix.OlderThan'"
+                    if (($excludeName -eq 'Files') -and (-not $removeFiles)) {
+                        throw "Property '$excludePrefix' can only be used together with '$prefix.OlderThan'"
                     }
 
-                    $excludes[$excludeName] = @($task.$excludeName)
+                    if ($task.Exclude.$excludeName -isnot [array]) {
+                        throw "Property '$excludePrefix' needs an array of paths"
+                    }
+                    $excludes[$excludeName] = @($task.Exclude.$excludeName)
 
                     foreach ($excludePath in $excludes[$excludeName]) {
                         if (($excludePath -isnot [string]) -or (-not $excludePath)) {
-                            $kind = if ($excludeName -eq 'ExcludeFiles') { 'file' } else { 'folder' }
-                            throw "Property '$prefix.$excludeName' needs to be an array of $kind paths, the value '$excludePath' is not supported."
+                            $kind = if ($excludeName -eq 'Files') { 'file' } else { 'folder' }
+                            throw "Property '$excludePrefix' needs to be an array of $kind paths, the value '$excludePath' is not supported."
                         }
                     }
                     $excludes[$excludeName] = @(
@@ -394,7 +411,7 @@ Begin {
                     $pathPrefix = "$($path.TrimEnd('\'))\"
                     $pathExcludes = @{}
 
-                    foreach ($excludeName in 'ExcludeFolders', 'ExcludeFiles') {
+                    foreach ($excludeName in 'Folders', 'Files') {
                         $pathExcludes[$excludeName] = @(
                             $excludes[$excludeName].Where({
                                     $_.TrimEnd('\').StartsWith($pathPrefix, [StringComparison]::OrdinalIgnoreCase)
@@ -411,8 +428,8 @@ Begin {
                             Type           = $type
                             OlderThan      = if ($type -ne 'RemoveEmptyFolders') { $task.OlderThan }
                             Recurse        = $task.Recurse
-                            ExcludeFolders = $pathExcludes.ExcludeFolders
-                            ExcludeFiles   = $pathExcludes.ExcludeFiles
+                            ExcludeFolders = $pathExcludes.Folders
+                            ExcludeFiles   = $pathExcludes.Files
                             ExcludeAttributes = $excludeAttributes
                             Job            = @{
                                 Results = @()
@@ -422,15 +439,15 @@ Begin {
                     }
                 }
 
-                foreach ($excludeName in 'ExcludeFolders', 'ExcludeFiles') {
+                foreach ($excludeName in 'Folders', 'Files') {
                     foreach ($excludePath in $excludes[$excludeName]) {
                         $isBelowFolder = $folderPaths.Where({
                                 $excludePath.TrimEnd('\').StartsWith("$_\", [StringComparison]::OrdinalIgnoreCase)
                             })
 
                         if (-not $isBelowFolder) {
-                            $kind = if ($excludeName -eq 'ExcludeFiles') { 'a file' } else { 'a subfolder' }
-                            throw "Property '$prefix.$excludeName' contains '$excludePath', which is not $kind of a path in '$prefix.Folders'"
+                            $kind = if ($excludeName -eq 'Files') { 'a file' } else { 'a subfolder' }
+                            throw "Property '$prefix.Exclude.$excludeName' contains '$excludePath', which is not $kind of a path in '$prefix.Folders'"
                         }
                     }
                 }

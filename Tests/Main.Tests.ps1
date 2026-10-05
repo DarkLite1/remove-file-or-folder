@@ -214,14 +214,90 @@ Describe 'the mandatory parameters are' {
         Should -BeTrue
     }
 }
-Describe 'ExcludeAttributes configuration' {
+Describe 'grouped Exclude configuration' {
+    BeforeEach {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+    }
+    It 'routes grouped exclusions to each worker type' {
+        $testNewInputFile.Tasks[0] | Add-Member Exclude @{ Attributes = @('Hidden') }
+        $testNewInputFile.Tasks[1].RemoveEmptyFolders = $true
+        $testNewInputFile.Tasks[1] | Add-Member Exclude @{
+            Attributes = @('Hidden', 'System')
+            Folders = @('z:\folder\keep')
+            Files = @('z:\folder\state.json')
+        }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($ArgumentList[0] -eq 'File') -and (($ArgumentList[8] -join ',') -eq 'Hidden')
+        }
+        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($ArgumentList[0] -eq 'FilesInFolder') -and
+            (($ArgumentList[2] -join ',') -eq 'z:\folder\keep') -and
+            (($ArgumentList[6] -join ',') -eq 'z:\folder\state.json') -and
+            (($ArgumentList[8] -join ',') -eq 'Hidden,System')
+        }
+        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($ArgumentList[0] -eq 'EmptyFolders') -and ($ArgumentList[1] -eq 'z:\folder') -and
+            (($ArgumentList[2] -join ',') -eq 'z:\folder\keep') -and
+            (($ArgumentList[8] -join ',') -eq 'Hidden,System')
+        }
+    }
+    It 'accepts empty grouped settings <Label>' -ForEach @(
+        @{ Label = 'object'; Value = @{} }
+        @{ Label = 'arrays'; Value = @{ Attributes = @(); Folders = @(); Files = @() } }
+    ) {
+        $testNewInputFile.Tasks[1] | Add-Member Exclude $Value
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($ArgumentList[0] -eq 'FilesInFolder') -and
+            ($ArgumentList[2].Count -eq 0) -and ($ArgumentList[6].Count -eq 0) -and ($ArgumentList[8].Count -eq 0)
+        }
+    }
+    It 'rejects invalid grouped settings <Label>' -ForEach @(
+        @{ Label = 'null'; Value = $null; Property = 'Exclude' }
+        @{ Label = 'array'; Value = @(); Property = 'Exclude' }
+        @{ Label = 'string'; Value = 'Hidden'; Property = 'Exclude' }
+        @{ Label = 'unknown key'; Value = @{ Attribute = @('Hidden') }; Property = 'Exclude.Attribute' }
+        @{ Label = 'invalid attribute'; Value = @{ Attributes = @('ReadOnly') }; Property = 'Exclude.Attributes' }
+        @{ Label = 'scalar attributes'; Value = @{ Attributes = 'Hidden' }; Property = 'Exclude.Attributes' }
+        @{ Label = 'null folders'; Value = @{ Folders = $null }; Property = 'Exclude.Folders' }
+        @{ Label = 'scalar files'; Value = @{ Files = 'z:\folder\keep.txt' }; Property = 'Exclude.Files' }
+        @{ Label = 'outside folder'; Value = @{ Folders = @('z:\other') }; Property = 'Exclude.Folders' }
+        @{ Label = 'outside file'; Value = @{ Files = @('z:\other\keep.txt') }; Property = 'Exclude.Files' }
+    ) {
+        $testNewInputFile.Tasks[1] | Add-Member Exclude $Value
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike "*$([WildcardPattern]::Escape("Tasks[1].$Property"))*"
+        Should -Invoke Invoke-Command -Times 0 -Exactly -Scope It
+    }
+    It 'rejects unsupported flat <_>' -ForEach @('ExcludeAttributes', 'ExcludeFolders', 'ExcludeFiles') {
+        $testNewInputFile.Tasks[1] | Add-Member $_ @()
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike "*$([WildcardPattern]::Escape("Tasks[1].$_"))*is not supported*"
+        Should -Invoke Invoke-Command -Times 0 -Exactly -Scope It
+    }
+}
+Describe 'Exclude.Attributes configuration' {
     BeforeEach {
         Clear-TestLogFolderHC
         $testNewInputFile = Copy-ObjectHC $testInputFile
     }
     It 'passes attributes to all worker types' {
         foreach ($task in $testNewInputFile.Tasks) {
-            $task | Add-Member -NotePropertyName ExcludeAttributes -NotePropertyValue @('Hidden', 'System')
+            $task | Add-Member Exclude @{ Attributes = @('Hidden', 'System') }
         }
         Test-NewJsonFileHC $testNewInputFile
 
@@ -233,24 +309,35 @@ Describe 'ExcludeAttributes configuration' {
             }
         }
     }
-    It 'protects matching items with the real worker and JobsTotal <_>' -ForEach @(1, 3) {
-        $testRoot = (New-Item "TestDrive:/main-attributes-$_" -ItemType Directory).FullName
+    It 'protects matching items with the real worker and JobsTotal <JobsTotal>' -ForEach @(
+        @{ JobsTotal = 1 }
+        @{ JobsTotal = 3 }
+    ) {
+        $testRoot = (New-Item "TestDrive:/main-attributes-$JobsTotal" -ItemType Directory).FullName
         $testProtected = New-Item "$testRoot/system" -ItemType Directory
         $testInside = New-Item "$testRoot/system/keep.txt" -ItemType File
         $testHidden = New-Item "$testRoot/hidden.txt" -ItemType File
+        $testExcludedFolder = New-Item "$testRoot/keep" -ItemType Directory
+        $testExcludedInside = New-Item "$testRoot/keep/inside.txt" -ItemType File
+        $testExcludedFile = New-Item "$testRoot/state.json" -ItemType File
         $testRemove = New-Item "$testRoot/remove.txt" -ItemType File
         $testEmpty = New-Item "$testRoot/empty" -ItemType Directory
         $testProtected.Attributes = $testProtected.Attributes -bor [System.IO.FileAttributes]::System
         $testHidden.Attributes = $testHidden.Attributes -bor [System.IO.FileAttributes]::Hidden
-        $testNewInputFile.MaxConcurrent.JobsTotal = $_
+        $testNewInputFile.MaxConcurrent.JobsTotal = $JobsTotal
         $testNewInputFile.Tasks = @([pscustomobject]@{
             ComputerName = 'localhost'
             Folders = @($testRoot)
             OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'LastWriteTime' }
             Recurse = $true
             RemoveEmptyFolders = $true
-            ExcludeAttributes = @('Hidden', 'System')
         })
+        $testExclusions = @{
+            Attributes = @('Hidden', 'System')
+            Folders = @($testExcludedFolder.FullName)
+            Files = @($testExcludedFile.FullName)
+        }
+        $testNewInputFile.Tasks[0] | Add-Member Exclude $testExclusions
         Test-NewJsonFileHC $testNewInputFile
         $global:LASTEXITCODE = 0
 
@@ -259,17 +346,19 @@ Describe 'ExcludeAttributes configuration' {
         $LASTEXITCODE | Should -Be 0
         $testInside.FullName | Should -Exist
         $testHidden.FullName | Should -Exist
+        $testExcludedInside.FullName | Should -Exist
+        $testExcludedFile.FullName | Should -Exist
         $testRemove.FullName | Should -Not -Exist
         $testEmpty.FullName | Should -Not -Exist
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
         $rows | Should -HaveCount 2
         @($rows | Where-Object Error) | Should -HaveCount 0
         Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
-            ($Subject -eq '2 removed') -and ($Body -like '*excluding hidden/system items*')
+            ($Subject -eq '2 removed') -and ($Body -like '*excluding 1 folder and 1 file and hidden/system items*')
         }
     }
     It 'accepts an empty list and defaults omitted settings to no exclusions' {
-        $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName ExcludeAttributes -NotePropertyValue @()
+        $testNewInputFile.Tasks[0] | Add-Member Exclude @{ Attributes = @() }
         Test-NewJsonFileHC $testNewInputFile
 
         & $testScript @testParams
@@ -285,13 +374,13 @@ Describe 'ExcludeAttributes configuration' {
         @{ Label = 'a numeric attribute'; Value = @(2) }
         @{ Label = 'an empty attribute'; Value = @('') }
     ) {
-        $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName ExcludeAttributes -NotePropertyValue $Value
+        $testNewInputFile.Tasks[0] | Add-Member Exclude @{ Attributes = $Value }
         Test-NewJsonFileHC $testNewInputFile
 
         & $testScript @testParams
 
         $LASTEXITCODE | Should -Be 1
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -Match 'Tasks\[0\]\.ExcludeAttributes'
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -Match 'Tasks\[0\]\.Exclude\.Attributes'
         Should -Not -Invoke Invoke-Command -Scope It
     }
 }
@@ -539,54 +628,54 @@ Describe 'an incorrect input file' {
             Message     = "Property 'Tasks[1].ComputerName' not found, it is required for the local path 'z:\folder'"
         }
         @{
-            Description = 'Tasks[0].ExcludeFolders used with Files'
-            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\a') }
-            Message     = "Property 'Tasks[0].ExcludeFolders' can only be used with 'Tasks[0].Folders'"
+            Description = 'Tasks[0].Exclude.Folders used with Files'
+            Change      = { param($f) $f.Tasks[0] | Add-Member Exclude @{ Folders = @('z:\a') } }
+            Message     = "Property 'Tasks[0].Exclude.Folders' can only be used with 'Tasks[0].Folders'"
         }
         @{
-            Description = 'Tasks[1].ExcludeFolders contains an empty path'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('') }
-            Message     = "Property 'Tasks[1].ExcludeFolders' needs to be an array of folder paths, the value '' is not supported."
+            Description = 'Tasks[1].Exclude.Folders contains an empty path'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Folders = @('') } }
+            Message     = "Property 'Tasks[1].Exclude.Folders' needs to be an array of folder paths, the value '' is not supported."
         }
         @{
-            Description = 'Tasks[1].ExcludeFolders contains a number'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @(5) }
-            Message     = "Property 'Tasks[1].ExcludeFolders' needs to be an array of folder paths, the value '5' is not supported."
+            Description = 'Tasks[1].Exclude.Folders contains a number'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Folders = @(5) } }
+            Message     = "Property 'Tasks[1].Exclude.Folders' needs to be an array of folder paths, the value '5' is not supported."
         }
         @{
-            Description = 'Tasks[1].ExcludeFolders is not below a folder'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\other\keep') }
-            Message     = "Property 'Tasks[1].ExcludeFolders' contains 'z:\other\keep', which is not a subfolder of a path in 'Tasks[1].Folders'"
+            Description = 'Tasks[1].Exclude.Folders is not below a folder'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Folders = @('z:\other\keep') } }
+            Message     = "Property 'Tasks[1].Exclude.Folders' contains 'z:\other\keep', which is not a subfolder of a path in 'Tasks[1].Folders'"
         }
         @{
-            Description = 'Tasks[1].ExcludeFolders is the folder itself'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\folder') }
-            Message     = "Property 'Tasks[1].ExcludeFolders' contains 'z:\folder', which is not a subfolder of a path in 'Tasks[1].Folders'"
+            Description = 'Tasks[1].Exclude.Folders is the folder itself'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Folders = @('z:\folder') } }
+            Message     = "Property 'Tasks[1].Exclude.Folders' contains 'z:\folder', which is not a subfolder of a path in 'Tasks[1].Folders'"
         }
         @{
-            Description = 'Tasks[1].ExcludeFolders escapes the folder with dot segments'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\folder\..\other') }
-            Message     = "Property 'Tasks[1].ExcludeFolders' contains 'z:\other', which is not a subfolder of a path in 'Tasks[1].Folders'"
+            Description = 'Tasks[1].Exclude.Folders escapes the folder with dot segments'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Folders = @('z:\folder\..\other') } }
+            Message     = "Property 'Tasks[1].Exclude.Folders' contains 'z:\other', which is not a subfolder of a path in 'Tasks[1].Folders'"
         }
         @{
-            Description = 'Tasks[0].ExcludeFiles used with Files'
-            Change      = { param($f) $f.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\a.txt') }
-            Message     = "Property 'Tasks[0].ExcludeFiles' can only be used with 'Tasks[0].Folders'"
+            Description = 'Tasks[0].Exclude.Files used with Files'
+            Change      = { param($f) $f.Tasks[0] | Add-Member Exclude @{ Files = @('z:\a.txt') } }
+            Message     = "Property 'Tasks[0].Exclude.Files' can only be used with 'Tasks[0].Folders'"
         }
         @{
-            Description = 'Tasks[2].ExcludeFiles used without OlderThan'
-            Change      = { param($f) $f.Tasks[2] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\folder\a.txt') }
-            Message     = "Property 'Tasks[2].ExcludeFiles' can only be used together with 'Tasks[2].OlderThan'"
+            Description = 'Tasks[2].Exclude.Files used without OlderThan'
+            Change      = { param($f) $f.Tasks[2] | Add-Member Exclude @{ Files = @('z:\folder\a.txt') } }
+            Message     = "Property 'Tasks[2].Exclude.Files' can only be used together with 'Tasks[2].OlderThan'"
         }
         @{
-            Description = 'Tasks[1].ExcludeFiles contains an empty path'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('') }
-            Message     = "Property 'Tasks[1].ExcludeFiles' needs to be an array of file paths, the value '' is not supported."
+            Description = 'Tasks[1].Exclude.Files contains an empty path'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Files = @('') } }
+            Message     = "Property 'Tasks[1].Exclude.Files' needs to be an array of file paths, the value '' is not supported."
         }
         @{
-            Description = 'Tasks[1].ExcludeFiles is not below a folder'
-            Change      = { param($f) $f.Tasks[1] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\other\a.txt') }
-            Message     = "Property 'Tasks[1].ExcludeFiles' contains 'z:\other\a.txt', which is not a file of a path in 'Tasks[1].Folders'"
+            Description = 'Tasks[1].Exclude.Files is not below a folder'
+            Change      = { param($f) $f.Tasks[1] | Add-Member Exclude @{ Files = @('z:\other\a.txt') } }
+            Message     = "Property 'Tasks[1].Exclude.Files' contains 'z:\other\a.txt', which is not a file of a path in 'Tasks[1].Folders'"
         }
     ) {
         $testNewInputFile = Copy-ObjectHC $testInputFile
@@ -764,13 +853,13 @@ Describe 'execute script' {
             }
         }
     }
-    Context 'ExcludeFolders' {
+    Context 'Exclude.Folders' {
         BeforeAll {
             $testNewInputFile = Copy-ObjectHC $testInputFile
             $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
             $testNewInputFile.Tasks[0].Folders = @('z:\a', 'z:\b')
             $testNewInputFile.Tasks[0].RemoveEmptyFolders = $true
-            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:\a\keep', 'z:\a\also keep')
+            $testNewInputFile.Tasks[0] | Add-Member Exclude @{ Folders = @('z:\a\keep', 'z:\a\also keep') }
 
             Test-NewJsonFileHC $testNewInputFile
 
@@ -795,12 +884,12 @@ Describe 'execute script' {
             }
         }
     }
-    Context 'ExcludeFiles' {
+    Context 'Exclude.Files' {
         BeforeAll {
             $testNewInputFile = Copy-ObjectHC $testInputFile
             $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
             $testNewInputFile.Tasks[0].Folders = @('z:\a', 'z:\b')
-            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:\a\keep.txt', 'z:\a\sub\keep.json')
+            $testNewInputFile.Tasks[0] | Add-Member Exclude @{ Files = @('z:\a\keep.txt', 'z:\a\sub\keep.json') }
 
             Test-NewJsonFileHC $testNewInputFile
 
@@ -826,8 +915,10 @@ Describe 'execute script' {
             $testNewInputFile = Copy-ObjectHC $testInputFile
             $testNewInputFile.Tasks = @($testNewInputFile.Tasks[1])
             $testNewInputFile.Tasks[0].Folders = @('z:/a/.', 'z:/b')
-            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFolders' -NotePropertyValue @('z:/b/../a/keep')
-            $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName 'ExcludeFiles' -NotePropertyValue @('z:/a/sub/../state.json')
+            $testNewInputFile.Tasks[0] | Add-Member Exclude @{
+                Folders = @('z:/b/../a/keep')
+                Files = @('z:/a/sub/../state.json')
+            }
 
             Test-NewJsonFileHC $testNewInputFile
             .$testScript @testParams
@@ -1072,8 +1163,10 @@ Describe 'with the real Remove items script on the local computer' {
             [PSCustomObject]@{
                 ComputerName       = 'localhost'
                 Folders            = @("$testRoot\folder")
-                ExcludeFolders     = @("$testRoot\folder\keep")
-                ExcludeFiles       = @("$testRoot\folder\state.json")
+                Exclude            = @{
+                    Folders = @("$testRoot\folder\keep")
+                    Files = @("$testRoot\folder\state.json")
+                }
                 OlderThan          = @{ Quantity = 5; Unit = 'Day'; BasedOn = 'CreationTime' }
                 Recurse            = $true
                 RemoveEmptyFolders = $true
@@ -1258,13 +1351,13 @@ Describe 'end-to-end filesystem scenarios' {
                     $null = Add-E2EFolderHC "$relativeRoot\empty\deep" -Removed:$task.RemoveEmptyFolders
                     $null = Add-E2EFolderHC "$relativeRoot\empty" -Removed:$task.RemoveEmptyFolders
 
-                    if ($task.ExcludeFolders) {
-                        $task.ExcludeFolders = @(Add-E2EFolderHC "$relativeRoot\protected")
+                    if ($task.Exclude.Folders) {
+                        $task.Exclude.Folders = @(Add-E2EFolderHC "$relativeRoot\protected")
                         $null = Add-E2EFolderHC "$relativeRoot\protected\empty"
                         $null = Add-E2EFileHC "$relativeRoot\protected\history.json" -CreationTime $oldDate -LastWriteTime $oldDate
                     }
-                    if ($task.ExcludeFiles) {
-                        $task.ExcludeFiles = @(Add-E2EFileHC "$relativeRoot\State\last-run.json" -CreationTime $oldDate -LastWriteTime $oldDate)
+                    if ($task.Exclude.Files) {
+                        $task.Exclude.Files = @(Add-E2EFileHC "$relativeRoot\State\last-run.json" -CreationTime $oldDate -LastWriteTime $oldDate)
                         $null = Add-E2EFileHC "$relativeRoot\State\other.json" -CreationTime $oldDate -LastWriteTime $oldDate -Removed
                     }
                     if ($entry -is [string]) { $folderPath }
@@ -1346,8 +1439,10 @@ Describe 'end-to-end filesystem scenarios' {
         $e2eConfiguration.Tasks = @([pscustomobject]@{
                 ComputerName = 'localhost'
                 Folders = @("$firstRoot\unused\..", "$secondRoot\.")
-                ExcludeFolders = @("$firstRoot\unused\..\PROTECTED\")
-                ExcludeFiles = @("$firstRoot\STATE.JSON", "$firstRoot\state.json")
+                Exclude = @{
+                    Folders = @("$firstRoot\unused\..\PROTECTED\")
+                    Files = @("$firstRoot\STATE.JSON", "$firstRoot\state.json")
+                }
                 OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'LastWriteTime' }
                 Recurse = $true
                 RemoveEmptyFolders = $true
@@ -1474,7 +1569,7 @@ Describe 'end-to-end filesystem scenarios' {
         $e2eConfiguration.Tasks = @([pscustomobject]@{
                 ComputerName = 'E2E-MOCK-REMOTE'
                 Folders = @($rootPath)
-                ExcludeFiles = @(Join-Path $rootPath 'keep.json')
+                Exclude = @{ Files = @(Join-Path $rootPath 'keep.json') }
                 OlderThan = @{ Quantity = 30; Unit = 'Day'; BasedOn = 'LastWriteTime' }
                 Recurse = $true
                 RemoveEmptyFolders = $true
