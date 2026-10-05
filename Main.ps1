@@ -198,9 +198,22 @@ Begin {
                 $taskProperties = $task.PSObject.Properties.Name
 
                 foreach ($name in $taskProperties) {
-                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'ExcludeFolders', 'ExcludeFiles', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
+                    if ($name -notin '?', 'ComputerName', 'Files', 'Folders', 'ExcludeFolders', 'ExcludeFiles', 'ExcludeAttributes', 'OlderThan', 'Recurse', 'RemoveEmptyFolders') {
                         throw "Property '$prefix.$name' is not supported"
                     }
+                }
+
+                $excludeAttributes = @()
+                if ($taskProperties -contains 'ExcludeAttributes') {
+                    if ($task.ExcludeAttributes -isnot [array]) {
+                        throw "Property '$prefix.ExcludeAttributes' needs an array containing 'Hidden' and/or 'System'"
+                    }
+                    foreach ($attribute in $task.ExcludeAttributes) {
+                        if (($attribute -isnot [string]) -or ($attribute -notin 'Hidden', 'System')) {
+                            throw "Property '$prefix.ExcludeAttributes' supports only 'Hidden' and 'System'"
+                        }
+                    }
+                    $excludeAttributes = @($task.ExcludeAttributes | Select-Object -Unique)
                 }
 
                 #region Files or Folders
@@ -400,6 +413,7 @@ Begin {
                             Recurse        = $task.Recurse
                             ExcludeFolders = $pathExcludes.ExcludeFolders
                             ExcludeFiles   = $pathExcludes.ExcludeFiles
+                            ExcludeAttributes = $excludeAttributes
                             Job            = @{
                                 Results = @()
                                 Errors  = @()
@@ -478,7 +492,7 @@ Process {
                     $argumentList = @(
                         'File', $task.Path, @(),
                         $task.OlderThan.Unit, $task.OlderThan.Quantity,
-                        $false, @(), $task.OlderThan.BasedOn
+                        $false, @(), $task.OlderThan.BasedOn, $task.ExcludeAttributes
                     )
 
                     $M = "Prepared job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{4}'" -f
@@ -492,7 +506,7 @@ Process {
                     $argumentList = @(
                         'FilesInFolder', $task.Path, $task.ExcludeFolders,
                         $task.OlderThan.Unit, $task.OlderThan.Quantity,
-                        $task.Recurse, $task.ExcludeFiles, $task.OlderThan.BasedOn
+                        $task.Recurse, $task.ExcludeFiles, $task.OlderThan.BasedOn, $task.ExcludeAttributes
                     )
 
                     $M = "Prepared job '$_' on '{0}' with Path '{1}' OlderThan.Quantity '{3}' OlderThan.Unit '{2}' OlderThan.BasedOn '{7}' Recurse '{4}' ExcludeFolders '{5}' ExcludeFiles '{6}'" -f
@@ -505,7 +519,8 @@ Process {
                 }
                 'RemoveEmptyFolders' {
                     $argumentList = @(
-                        'EmptyFolders', $task.Path, $task.ExcludeFolders
+                        'EmptyFolders', $task.Path, $task.ExcludeFolders,
+                        'Day', 0, $false, @(), 'CreationTime', $task.ExcludeAttributes
                     )
 
                     $M = "Prepared job '$_' on '{0}' with Path '{1}' ExcludeFolders '{2}'" -f

@@ -13,8 +13,9 @@
     are calendar cutoffs, not elapsed time. For example, 1 Day at 00:05 can
     select a file written at 23:55 yesterday. Quantity 0 disables this filter.
 
-    Hidden and read-only items are included. Excluded folder trees are not
-    traversed. Directory links encountered during traversal are not followed.
+    Hidden, system and read-only items are included by default. ExcludeAttributes
+    can protect Hidden or System items. Excluded folder trees are not traversed.
+    Directory links encountered during traversal are not followed.
     Empty subfolders are processed deepest first; the root is never removed.
 
     Deletes items immediately; there is no preview or WhatIf mode. Main.ps1
@@ -59,6 +60,12 @@
     timestamp to compare: CreationTime or LastWriteTime. Ignored for
     EmptyFolders.
 
+.PARAMETER ExcludeAttributes
+    Optional Hidden and/or System attributes. An item matching either is
+    skipped. Matching folders, including a matching root, are not entered.
+    For File, checks the selected file's own attributes. An empty list keeps
+    the default behavior. Does not suppress genuine access errors.
+
 .OUTPUTS
     PSCustomObject. One result per removal or error, not per skipped item.
     Results contain DateTime, ComputerName, Type, FullName, CreationTime,
@@ -94,8 +101,16 @@ param (
     [AllowEmptyCollection()]
     [String[]]$ExcludeFile = @(),
     [ValidateSet('CreationTime', 'LastWriteTime')]
-    [String]$OlderThanBasedOn
+    [String]$OlderThanBasedOn,
+    [AllowEmptyCollection()]
+    [ValidateSet('Hidden', 'System')]
+    [String[]]$ExcludeAttributes = @()
 )
+
+$excludedAttributeMask = [System.IO.FileAttributes]0
+foreach ($attribute in $ExcludeAttributes) {
+    $excludedAttributeMask = $excludedAttributeMask -bor [System.IO.FileAttributes]$attribute
+}
 
 function Get-NormalizedPathHC {
     <#
@@ -227,8 +242,10 @@ function Get-IncludedChildItemHC {
         Enumerate files or folders without entering excluded folder trees.
 
     .DESCRIPTION
-        Uses the worker's excludedPaths list. Includes hidden items, but
-        does not recurse into directory links. The root is never returned.
+        Uses the worker's excludedPaths and excludedAttributeMask. Includes
+        hidden items unless excluded, but does not recurse into directory
+        links. Matching attribute-excluded folders are not entered, including
+        the root. The root is never returned.
 
     .PARAMETER Root
         Folder to enumerate. An excluded root produces no candidates.
@@ -258,9 +275,22 @@ function Get-IncludedChildItemHC {
 
     while ($pending.Count) {
         $directoryPath = $pending.Pop()
+        if ($excludedAttributeMask) {
+            try {
+                if ([System.IO.File]::GetAttributes($directoryPath) -band $excludedAttributeMask) { continue }
+            }
+            catch {
+                $ReadErrors.Add([System.Management.Automation.ErrorRecord]::new(
+                    $_.Exception, $_.FullyQualifiedErrorId, $_.CategoryInfo.Category, $directoryPath
+                ))
+                $Error.RemoveAt(0)
+                continue
+            }
+        }
         $enumerationErrors = @()
         Get-ChildItem -LiteralPath $directoryPath -Force @directoryFilter -ErrorAction SilentlyContinue -ErrorVariable enumerationErrors |
         ForEach-Object {
+            if ($_.Attributes -band $excludedAttributeMask) { return }
             if ($_.PSIsContainer) {
                 if (-not (Test-IsExcludedHC $_.FullName)) {
                     if ($Recursive -and -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
@@ -330,6 +360,10 @@ if ($Type -eq 'EmptyFolders') {
 
         $iterator = $null
         try {
+            if ($excludedAttributeMask) {
+                $Folder.Refresh()
+                if ($Folder.Exists -and ($Folder.Attributes -band $excludedAttributeMask)) { return $false }
+            }
             $iterator = $Folder.EnumerateFileSystemInfos().GetEnumerator()
             -not $iterator.MoveNext()
         }
@@ -352,7 +386,7 @@ if ($Type -eq 'EmptyFolders') {
         ErrorVariable = '+getErrors'
     }
 
-    $folderCandidates = if ($excludedPaths) {
+    $folderCandidates = if ($excludedPaths -or $excludedAttributeMask) {
         Get-IncludedChildItemHC -Root $Path -Recursive $true -Directories -ReadErrors $getErrors |
         Sort-Object { $_.FullName.Length } -Descending
     }
@@ -373,6 +407,13 @@ if ($Type -eq 'EmptyFolders') {
                 Error        = $null
             }
 
+            if ($excludedAttributeMask) {
+                $emptyFolder.Refresh()
+                if ($emptyFolder.Exists -and ($emptyFolder.Attributes -band $excludedAttributeMask)) {
+                    $result = $null
+                    return
+                }
+            }
             # non-recursive delete fails when the folder is no longer empty
             if ($emptyFolder.Attributes -band [System.IO.FileAttributes]::ReadOnly) {
                 $emptyFolder.Attributes = $emptyFolder.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
@@ -455,7 +496,7 @@ $getErrors = [System.Collections.Generic.List[object]]::new()
     if ($Type -eq 'File') {
         Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue -ErrorVariable fileReadErrors
     }
-    elseif ($excludedPaths) {
+    elseif ($excludedPaths -or $excludedAttributeMask) {
         Get-IncludedChildItemHC -Root $Path -Recursive $Recurse -ReadErrors $getErrors
     }
     else {
@@ -464,6 +505,7 @@ $getErrors = [System.Collections.Generic.List[object]]::new()
     foreach ($readError in $fileReadErrors) { $getErrors.Add($readError) }
 } | ForEach-Object {
     $fileToRemove = $_
+    if ($fileToRemove.Attributes -band $excludedAttributeMask) { return }
     if ($excludedFiles.Contains($fileToRemove.FullName)) { return }
     if (($Type -eq 'File') -and $excludedPaths -and (Test-IsExcludedHC $fileToRemove.FullName)) { return }
     if (($OlderThanQuantity -ne 0) -and ($fileToRemove.$OlderThanBasedOn -ge $cutoffExclusive)) { return }
@@ -483,6 +525,10 @@ $getErrors = [System.Collections.Generic.List[object]]::new()
         $fileToRemove.Refresh()
         if (-not $fileToRemove.Exists) {
             throw [System.IO.FileNotFoundException]::new('File no longer exists', $fileToRemove.FullName)
+        }
+        if ($fileToRemove.Attributes -band $excludedAttributeMask) {
+            $result = $null
+            return
         }
         if (($OlderThanQuantity -ne 0) -and ($fileToRemove.$OlderThanBasedOn -ge $cutoffExclusive)) {
             $result = $null

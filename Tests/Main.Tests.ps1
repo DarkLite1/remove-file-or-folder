@@ -214,6 +214,87 @@ Describe 'the mandatory parameters are' {
         Should -BeTrue
     }
 }
+Describe 'ExcludeAttributes configuration' {
+    BeforeEach {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+    }
+    It 'passes attributes to all worker types' {
+        foreach ($task in $testNewInputFile.Tasks) {
+            $task | Add-Member -NotePropertyName ExcludeAttributes -NotePropertyValue @('Hidden', 'System')
+        }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        foreach ($type in 'File', 'FilesInFolder', 'EmptyFolders') {
+            Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+                ($ArgumentList[0] -eq $type) -and (($ArgumentList[8] -join ',') -eq 'Hidden,System')
+            }
+        }
+    }
+    It 'protects matching items with the real worker and JobsTotal <_>' -ForEach @(1, 3) {
+        $testRoot = (New-Item "TestDrive:/main-attributes-$_" -ItemType Directory).FullName
+        $testProtected = New-Item "$testRoot/system" -ItemType Directory
+        $testInside = New-Item "$testRoot/system/keep.txt" -ItemType File
+        $testHidden = New-Item "$testRoot/hidden.txt" -ItemType File
+        $testRemove = New-Item "$testRoot/remove.txt" -ItemType File
+        $testEmpty = New-Item "$testRoot/empty" -ItemType Directory
+        $testProtected.Attributes = $testProtected.Attributes -bor [System.IO.FileAttributes]::System
+        $testHidden.Attributes = $testHidden.Attributes -bor [System.IO.FileAttributes]::Hidden
+        $testNewInputFile.MaxConcurrent.JobsTotal = $_
+        $testNewInputFile.Tasks = @([pscustomobject]@{
+            ComputerName = 'localhost'
+            Folders = @($testRoot)
+            OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+            Recurse = $true
+            RemoveEmptyFolders = $true
+            ExcludeAttributes = @('Hidden', 'System')
+        })
+        Test-NewJsonFileHC $testNewInputFile
+        $global:LASTEXITCODE = 0
+
+        & $testScript -ConfigurationJsonFile $testOutParams.FilePath
+
+        $LASTEXITCODE | Should -Be 0
+        $testInside.FullName | Should -Exist
+        $testHidden.FullName | Should -Exist
+        $testRemove.FullName | Should -Not -Exist
+        $testEmpty.FullName | Should -Not -Exist
+        $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
+        $rows | Should -HaveCount 2
+        @($rows | Where-Object Error) | Should -HaveCount 0
+        Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
+            ($Subject -eq '2 removed') -and ($Body -like '*excluding hidden/system items*')
+        }
+    }
+    It 'accepts an empty list and defaults omitted settings to no exclusions' {
+        $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName ExcludeAttributes -NotePropertyValue @()
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        Should -Invoke Invoke-Command -Exactly -Times 3 -Scope It -ParameterFilter {
+            @($ArgumentList[8]).Count -eq 0
+        }
+    }
+    It 'rejects <Label>' -ForEach @(
+        @{ Label = 'a string'; Value = 'Hidden' }
+        @{ Label = 'null'; Value = $null }
+        @{ Label = 'an unsupported attribute'; Value = @('ReadOnly') }
+        @{ Label = 'a numeric attribute'; Value = @(2) }
+        @{ Label = 'an empty attribute'; Value = @('') }
+    ) {
+        $testNewInputFile.Tasks[0] | Add-Member -NotePropertyName ExcludeAttributes -NotePropertyValue $Value
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -Match 'Tasks\[0\]\.ExcludeAttributes'
+        Should -Not -Invoke Invoke-Command -Scope It
+    }
+}
 Describe 'an incorrect input file' {
     BeforeEach {
         Clear-TestLogFolderHC

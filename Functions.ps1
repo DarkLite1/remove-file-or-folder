@@ -103,6 +103,7 @@ function Get-TaskDescriptionHC {
         An internal task created by Main.ps1, not a raw JSON task. Type is
         RemoveFile, RemoveFilesInFolder or RemoveEmptyFolders. Optional
         ExcludeFolders and ExcludeFiles lists add exclusion counts.
+        ExcludeAttributes lists the protected attribute names.
     #>
     param (
         [Parameter(Mandatory)]
@@ -150,6 +151,9 @@ function Get-TaskDescriptionHC {
     }
     if ($fileCount -and ($Task.Type -eq 'RemoveFilesInFolder')) {
         $excluded += '{0} file{1}' -f $fileCount, $(if ($fileCount -ne 1) { 's' })
+    }
+    if ($Task.ExcludeAttributes) {
+        $excluded += (($Task.ExcludeAttributes | ForEach-Object { $_.ToLower() } | Select-Object -Unique) -join '/') + ' items'
     }
     if ($excluded) {
         $description += ', excluding ' + ($excluded -join ' and ')

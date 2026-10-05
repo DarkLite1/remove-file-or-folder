@@ -25,6 +25,12 @@ Describe 'New-PillHtmlHC' {
     }
 }
 Describe 'Get-TaskDescriptionHC' {
+    It 'shows active attribute exclusions' {
+        Get-TaskDescriptionHC -Task ([pscustomobject]@{
+            Type = 'RemoveFilesInFolder'
+            ExcludeAttributes = @('Hidden', 'System')
+        }) | Should -Be 'Remove all files, excluding hidden/system items'
+    }
     It '<Expected>' -ForEach @(
         @{
             Task     = @{ Type = 'RemoveFile'; OlderThan = @{ Quantity = 7; Unit = 'Day'; BasedOn = 'LastWriteTime' } }

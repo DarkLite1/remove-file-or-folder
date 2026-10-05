@@ -85,6 +85,123 @@ Describe 'worker diagnostic messages' {
         Should -Not -Invoke Write-Verbose -Scope It
     }
 }
+Describe 'attribute exclusions' {
+    It 'protects <Attribute> items and prunes their folder trees for <Type>' -ForEach @(
+        foreach ($attribute in 'Hidden', 'System') {
+            foreach ($type in 'FilesInFolder', 'EmptyFolders') {
+                @{ Attribute = $attribute; Type = $type }
+            }
+        }
+    ) {
+        $testRoot = (New-Item "TestDrive:/attributes-$Attribute-$Type" -ItemType Directory).FullName
+        $testProtected = New-Item "$testRoot/protected" -ItemType Directory
+        $testNested = New-Item "$testRoot/protected/child.txt" -ItemType File
+        $testHiddenFile = New-Item "$testRoot/protected.txt" -ItemType File
+        $testOrdinary = New-Item "$testRoot/ordinary.txt" -ItemType File
+        $testEmpty = New-Item "$testRoot/empty" -ItemType Directory
+        $testProtected.Attributes = $testProtected.Attributes -bor [System.IO.FileAttributes]$Attribute
+        $testHiddenFile.Attributes = $testHiddenFile.Attributes -bor [System.IO.FileAttributes]$Attribute
+        $testGetChildItem = Get-Command Get-ChildItem -CommandType Cmdlet
+        Mock Get-ChildItem {
+            $parameters = @{ LiteralPath = $LiteralPath; Force = $true }
+            if ($PesterBoundParameters.Directory) { $parameters.Directory = $true }
+            & $testGetChildItem @parameters
+        }
+
+        $actual = @(& $testScript -Type $Type -Path $testRoot -ExcludeAttributes @($Attribute) -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Recurse $true)
+
+        $testProtected.FullName | Should -Exist
+        $testNested.FullName | Should -Exist
+        $testHiddenFile.FullName | Should -Exist
+        @($actual | Where-Object Error) | Should -HaveCount 0
+        Should -Not -Invoke Get-ChildItem -Scope It -ParameterFilter { $LiteralPath -eq $testProtected.FullName }
+        if ($Type -eq 'FilesInFolder') { $testOrdinary.FullName | Should -Not -Exist }
+        else { $testEmpty.FullName | Should -Not -Exist }
+    }
+    It 'protects an explicitly selected <_> file' -ForEach @('Hidden', 'System') {
+        $testFile = New-Item "TestDrive:/explicit-$_.txt" -ItemType File
+        $testFile.Attributes = $testFile.Attributes -bor [System.IO.FileAttributes]$_
+
+        $actual = @(& $testScript -Type File -Path $testFile.FullName -ExcludeAttributes @($_) -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime)
+
+        $actual | Should -HaveCount 0
+        $testFile.FullName | Should -Exist
+    }
+    It 'skips a matching root for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
+        $testRoot = New-Item "TestDrive:/excluded-root-$_" -ItemType Directory
+        $testFile = New-Item "$($testRoot.FullName)/keep.txt" -ItemType File
+        $testEmpty = New-Item "$($testRoot.FullName)/empty" -ItemType Directory
+        $testRoot.Attributes = $testRoot.Attributes -bor [System.IO.FileAttributes]::System
+        Mock Get-ChildItem { throw 'Excluded root must not be enumerated' }
+
+        $actual = @(& $testScript -Type $_ -Path $testRoot.FullName -ExcludeAttributes @('Hidden', 'System') -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Recurse $true)
+
+        $actual | Should -HaveCount 0
+        $testFile.FullName | Should -Exist
+        $testEmpty.FullName | Should -Exist
+        Should -Not -Invoke Get-ChildItem -Scope It
+    }
+    It 'keeps a folder nonempty when only an excluded file remains' {
+        $testRoot = (New-Item 'TestDrive:/nonempty-attributes/child' -ItemType Directory -Force).Parent.FullName
+        $testFile = New-Item "$testRoot/child/keep.txt" -ItemType File
+        $testFile.Attributes = $testFile.Attributes -bor [System.IO.FileAttributes]::Hidden
+
+        $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -ExcludeAttributes @('Hidden', 'System'))
+
+        $actual | Should -HaveCount 0
+        $testFile.FullName | Should -Exist
+    }
+    It 'continues to remove system files with an empty exclusion list' {
+        $testFile = New-Item 'TestDrive:/default-system.txt' -ItemType File
+        $testFile.Attributes = $testFile.Attributes -bor [System.IO.FileAttributes]::System
+
+        $actual = @(& $testScript -Type File -Path $testFile.FullName -ExcludeAttributes @() -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime)
+
+        $actual[0].Action | Should -Be Removed
+        $testFile.FullName | Should -Not -Exist
+    }
+    It 'rechecks attributes immediately before deleting <Type>' -ForEach @(
+        @{ Type = 'File'; Anchor = '$fileToRemove.Refresh()'; Target = '$fileToRemove.FullName' }
+        @{ Type = 'EmptyFolders'; Anchor = '$emptyFolder.Refresh()'; Target = '$emptyFolder.FullName' }
+    ) {
+        $testRoot = (New-Item "TestDrive:/attribute-race-$Type" -ItemType Directory).FullName
+        $testItem = if ($Type -eq 'File') {
+            New-Item "$testRoot/item.txt" -ItemType File
+        }
+        else { New-Item "$testRoot/empty" -ItemType Directory }
+        $testPath = if ($Type -eq 'File') { $testItem.FullName } else { $testRoot }
+        $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace(
+            $Anchor,
+            "[System.IO.File]::SetAttributes($Target, [System.IO.File]::GetAttributes($Target) -bor [System.IO.FileAttributes]::Hidden); $Anchor"
+        )
+        $testScriptText | Should -Not -Be (Get-Content -LiteralPath $testScript -Raw)
+
+        $actual = @(& ([scriptblock]::Create($testScriptText)) -Type $Type -Path $testPath -ExcludeAttributes @('Hidden') -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime)
+
+        $testItem.FullName | Should -Exist
+        $actual | Should -HaveCount 0
+    }
+    It 'still reports non-excluded access failures for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
+        $testRoot = (New-Item "TestDrive:/attribute-denied-$_" -ItemType Directory).FullName
+        $testDenied = (New-Item "$testRoot/denied" -ItemType Directory).FullName
+        $testUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $testRule = [System.Security.AccessControl.FileSystemAccessRule]::new($testUser, 'ListDirectory', 'Deny')
+        $testAcl = Get-Acl -LiteralPath $testDenied
+        $testAcl.AddAccessRule($testRule)
+        Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+        try {
+            $actual = @(& $testScript -Type $_ -Path $testRoot -ExcludeAttributes @('Hidden', 'System') -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Recurse $true -WarningAction SilentlyContinue)
+        }
+        finally {
+            $testAcl.RemoveAccessRule($testRule) | Out-Null
+            Set-Acl -LiteralPath $testDenied -AclObject $testAcl
+        }
+
+        $actual | Should -HaveCount 1
+        $actual[0].FullName | Should -Be $testDenied
+        $actual[0].Error | Should -Not -BeNullOrEmpty
+    }
+}
 Describe 'age validation' {
     It 'rejects negative quantity <_> without deleting the file' -ForEach @(-1, [int]::MinValue) {
         $testFile = New-Item "TestDrive:/negative_$_.txt" -ItemType File
