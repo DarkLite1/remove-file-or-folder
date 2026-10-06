@@ -1112,10 +1112,11 @@ End {
             $entries = @(
                 foreach ($pathGroup in ($taskGroup.Group | Group-Object -Property Path)) {
                     $task = $pathGroup.Group[0]
-                    $isUncPath = $task.Path -match '^\\\\([^\\]+)'
+                    $isUncPath = $task.Path -match '^\\\\'
 
                     [PSCustomObject]@{
-                        ComputerName = if ($isUncPath) { $Matches[1] } else { $task.ComputerName }
+                        # the computer executing the removal, not the file server in a UNC path
+                        ComputerName = $task.ComputerName
                         Name         = $task.Name
                         Path         = $task.Path
                         LinkPath     = if ($isUncPath) {

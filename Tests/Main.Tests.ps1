@@ -2061,7 +2061,7 @@ Describe 'send an e-mail' {
 Describe 'email rows per input task' {
     It 'combines paths and cleanup phases without merging separate tasks (<Label>)' -ForEach @(
         @{ Label = 'local paths'; FirstPath = 'z:\first'; SecondPath = 'z:\second'; ComputerLabel = 'PC1' }
-        @{ Label = 'multiple UNC servers'; FirstPath = '\\SERVER1\Logs'; SecondPath = '\\SERVER2\Logs'; ComputerLabel = 'SERVER1, SERVER2' }
+        @{ Label = 'multiple UNC servers'; FirstPath = '\\SERVER1\Logs'; SecondPath = '\\SERVER2\Logs'; ComputerLabel = 'PC1' }
     ) {
         Clear-TestLogFolderHC
         $testNewInputFile = Copy-ObjectHC $testInputFile
