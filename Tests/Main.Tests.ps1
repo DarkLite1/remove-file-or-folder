@@ -290,6 +290,86 @@ Describe 'grouped Exclude configuration' {
         Should -Invoke Invoke-Command -Times 0 -Exactly -Scope It
     }
 }
+Describe 'IgnoreMissingPath configuration' {
+    BeforeEach {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $global:LASTEXITCODE = 0
+    }
+    It 'passes <Label> to every worker type' -ForEach @(
+        @{ Label = 'enabled'; Value = $true }
+        @{ Label = 'disabled'; Value = $false }
+        @{ Label = 'omitted'; Value = $null }
+    ) {
+        if ($null -ne $Value) {
+            foreach ($task in $testNewInputFile.Tasks) {
+                $task | Add-Member IgnoreMissingPath $Value
+            }
+        }
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        foreach ($type in 'File', 'FilesInFolder', 'EmptyFolders') {
+            Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+                ($ArgumentList[0] -eq $type) -and ($ArgumentList[9] -ceq [bool]$Value)
+            }
+        }
+    }
+    It 'rejects <Label> before running any jobs' -ForEach @(
+        @{ Label = 'null'; Value = $null }
+        @{ Label = 'a string'; Value = 'true' }
+        @{ Label = 'a number'; Value = 1 }
+        @{ Label = 'an array'; Value = @($true) }
+        @{ Label = 'an object'; Value = @{ Enabled = $true } }
+    ) {
+        $testNewInputFile.Tasks[0] | Add-Member IgnoreMissingPath $Value
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $LASTEXITCODE | Should -Be 1
+        (Get-TestSystemErrorsHC).Message | Should -BeLike '*Tasks[[]0].IgnoreMissingPath*needs a boolean*'
+        Should -Not -Invoke Invoke-Command -Scope It
+        Should -Not -Invoke New-PSSession -Scope It
+    }
+    It 'reports no errors for optional missing files and folders with JobsTotal <JobsTotal>' -ForEach @(
+        @{ JobsTotal = 1 }
+        @{ JobsTotal = 3 }
+    ) {
+        $testRoot = (New-Item "TestDrive:/optional-$JobsTotal" -ItemType Directory).FullName
+        $testNewInputFile.MaxConcurrent.JobsTotal = $JobsTotal
+        $testNewInputFile.Tasks = @(
+            [pscustomobject]@{
+                ComputerName = 'localhost'
+                Files = @((Join-Path $testRoot 'missing.txt'))
+                IgnoreMissingPath = $true
+                OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' }
+            }
+            [pscustomobject]@{
+                ComputerName = 'localhost'
+                Folders = @((Join-Path $testRoot 'missing-folder'))
+                IgnoreMissingPath = $true
+                OlderThan = @{ Quantity = 0; Unit = 'Day'; BasedOn = 'CreationTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $true
+            }
+        )
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript -ConfigurationJsonFile $testOutParams.FilePath
+
+        $LASTEXITCODE | Should -Be 0
+        $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
+        $testHtmlFile | Should -HaveCount 1
+        $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
+        $html | Should -Not -BeLike '*Path not found*'
+        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+            ($Subject -eq '0 removed') -and ($Body -ceq $html)
+        }
+        Should -Not -Invoke Write-EventLog -Scope It -ParameterFilter { $EntryType -eq 'Error' }
+    }
+}
 Describe 'Exclude.Attributes configuration' {
     BeforeEach {
         Clear-TestLogFolderHC

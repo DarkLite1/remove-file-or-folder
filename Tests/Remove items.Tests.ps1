@@ -231,6 +231,54 @@ Describe 'a path that does not exist is reported for Type <_>' -ForEach @(
         $actual.Error | Should -Be 'Path not found'
     }
 }
+Describe 'optional missing paths' {
+    It 'skips a missing configured path for <_>' -ForEach @('File', 'FilesInFolder', 'EmptyFolders') {
+        $actual = @(. $testScript -Type $_ -Path 'TestDrive:\optional-missing' -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true)
+
+        $actual | Should -HaveCount 0
+    }
+    It 'still removes an existing file when enabled' {
+        $testFile = New-Item 'TestDrive:/optional-existing.txt' -ItemType File
+
+        $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
+
+        $actual.Action | Should -Be 'Removed'
+        $testFile.FullName | Should -Not -Exist
+    }
+    It 'preserves missing-path errors when explicitly disabled' {
+        $actual = . $testScript -Type File -Path 'TestDrive:\optional-missing' -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $false
+
+        $actual.Error | Should -Be 'Path not found'
+    }
+    It 'does not suppress a path of the wrong type' {
+        $testFolder = New-Item 'TestDrive:/optional-wrong-type' -ItemType Directory
+
+        $actual = . $testScript -Type File -Path $testFolder.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
+
+        $actual.Error | Should -Be 'Path not found'
+        $testFolder.FullName | Should -Exist
+    }
+    It 'does not suppress an invalid path' {
+        $actual = . $testScript -Type File -Path 'NoSuchTestProvider::invalid' -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
+
+        $actual.Error | Should -Not -BeNullOrEmpty
+        $actual.Action | Should -BeNullOrEmpty
+    }
+    It 'does not suppress a locked-file deletion error' {
+        $testFile = New-Item 'TestDrive:/optional-locked.txt' -ItemType File
+        $testLock = [System.IO.File]::Open($testFile.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        try {
+            $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
+
+            $actual.Error | Should -Not -BeNullOrEmpty
+            $actual.Action | Should -BeNullOrEmpty
+            $testFile.FullName | Should -Exist
+        }
+        finally {
+            $testLock.Dispose()
+        }
+    }
+}
 Describe 'Type File' {
     BeforeAll {
         $testParams = @{

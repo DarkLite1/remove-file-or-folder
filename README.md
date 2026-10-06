@@ -94,7 +94,7 @@ Missing or inaccessible paths and item-removal failures appear in the Excel **Ov
 
 The email and saved HTML show one row per path in `Tasks.Folders` or `Tasks.Files`, with its own removed-item and error counts. For a folder, file-removal and empty-folder jobs are combined in the same row. Separate task entries remain separate even when they target the same path. Computer headings identify the host executing the removal, not the servers or DFS namespace in the UNC paths, and show totals for that host's rows. With `ComputerName: null`, UNC paths are processed on the host running the script and appear under that host's name, even when they span multiple servers. UNC path links remain unchanged; local task paths link through the executing host's administrative share. Excel retains the detailed per-item and per-job records.
 
-Before reporting a subfolder read or deletion failure during empty-folder cleanup, the worker rechecks the path. If the subfolder is confirmed missing and the configured root remains accessible, it is skipped without reporting an error or claiming a removal. Access failures, inconclusive checks and missing configured roots remain errors.
+Before reporting a subfolder read or deletion failure during empty-folder cleanup, the worker rechecks the path. If the subfolder is confirmed missing and the configured root remains accessible, it is skipped without reporting an error or claiming a removal. Access failures and inconclusive checks remain errors. Missing configured roots remain errors unless the task enables `IgnoreMissingPath`.
 
 Identical folder-read errors for the same computer and path within one input task are counted once across Excel, email and event reporting. In Excel **Overview**, **Type** lists the affected operations, such as `FilesInFolder, EmptyFolders`; the first occurrence's timestamp and retention settings are retained. Different errors, separate input tasks, deletion failures and successful removals stay separate. Email totals include the unique item errors in **Overview** plus job failures in **Errors**. Script, configuration and reporting failures are counted additionally and listed separately in the email and system errors JSON log.
 
@@ -105,6 +105,7 @@ Every task targets one computer and applies the same settings to a list of paths
 | Property             | Description                                                                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `ComputerName`       | The computer that executes the removal. Required for local paths like `D:\Logs`, use `null` for UNC paths and `localhost` for this computer. |
+| `IgnoreMissingPath`  | Optional boolean, defaults to `false`. Set to `true` to skip configured files or folders confirmed missing when their worker starts. |
 | `Files`              | The files to remove. Requires `OlderThan`.                                                                                                |
 | `Folders`            | The folders to clean up. Requires `RemoveEmptyFolders`, and `Recurse` when `OlderThan` is used.                                          |
 | `Exclude.Folders`    | Optional subfolders of `Folders` to skip. Nothing inside them is removed, and they are never removed as empty folders.                   |
@@ -115,6 +116,8 @@ Every task targets one computer and applies the same settings to a list of paths
 | `RemoveEmptyFolders` | Required for `Folders` only. `true` removes empty subfolders at every depth after the file-removal phase, independently of `Recurse`. The root folder is never removed. |
 
 A path in `Files` or `Folders` is a plain string, or an object `{ "Name": "...", "Path": "..." }` when the e-mail should show a friendly name above the path. Both remain visible.
+
+For optional targets such as SFTP log files, add `"IgnoreMissingPath": true` to their task. A confirmed missing target produces no removal or error record, does not trigger an error notification or failure exit code, and remains visible as a zero-removal row in email and saved HTML. The setting applies to every path in that task, including both cleanup phases for folders. Omit it or use `false` to preserve missing-path errors. It does not suppress access failures, invalid paths, unavailable-network errors or failures during removal; it is not a general filter for error-message text.
 
 Every path is processed as a separate job, so `MaxConcurrent` applies per path. Empty folders are always removed after all file removals have finished.
 

@@ -66,6 +66,10 @@
     For File, checks the selected file's own attributes. An empty list keeps
     the default behavior. Does not suppress genuine access errors.
 
+.PARAMETER IgnoreMissingPath
+    Skip a configured path confirmed missing when the worker starts. Defaults
+    to false. Access, invalid-path and removal errors remain reportable.
+
 .OUTPUTS
     PSCustomObject. One result per removal or error, not per skipped item.
     Results contain DateTime, ComputerName, Type, FullName, CreationTime,
@@ -104,7 +108,8 @@ param (
     [String]$OlderThanBasedOn,
     [AllowEmptyCollection()]
     [ValidateSet('Hidden', 'System')]
-    [String[]]$ExcludeAttributes = @()
+    [String[]]$ExcludeAttributes = @(),
+    [Boolean]$IgnoreMissingPath = $false
 )
 
 $excludedAttributeMask = [System.IO.FileAttributes]0
@@ -306,6 +311,21 @@ function Get-IncludedChildItemHC {
 }
 
 $writeVerbose = $VerbosePreference -notin 'SilentlyContinue', 'Ignore'
+
+if ($IgnoreMissingPath) {
+    try {
+        $null = [System.IO.File]::GetAttributes((Get-NormalizedPathHC $Path))
+    }
+    catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] {
+        $Error.RemoveAt(0)
+        return
+    }
+    catch {
+        $readError = "$_"
+        $Error.RemoveAt(0)
+        return New-ReadErrorResultHC -FullName $Path -ItemType $Type -Message $readError
+    }
+}
 
 if ($Type -eq 'EmptyFolders') {
     $getErrors = [System.Collections.Generic.List[object]]::new()

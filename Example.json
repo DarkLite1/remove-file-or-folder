@@ -5,8 +5,9 @@
   },
   "Tasks": [
     {
-      "?": "Remove specific files on a share, regardless of their age.",
+      "?": "Remove optional files on a share, regardless of their age; skip them when missing.",
       "ComputerName": null,
+      "IgnoreMissingPath": true,
       "Files": [
         "\\\\contoso\\sftp\\upload\\done.txt",
         "\\\\contoso\\sftp\\upload\\error.txt"
@@ -131,6 +132,7 @@
       {
         "?": "(Optional) A description of the task, ignored by the script.",
         "ComputerName": "(Mandatory when a path is a local path) The computer where the removal is executed. Use null for UNC paths, they are processed by the computer running the script. Use 'localhost' for local paths on the computer running the script.",
+        "IgnoreMissingPath": "(Optional boolean, defaults to false) Skip configured files or folders confirmed missing when their worker starts, without removal or error records. Applies to all paths and cleanup phases in this task. Access, invalid-path, unavailable-network and removal errors are not suppressed.",
         "Files": "(Use either 'Files' or 'Folders', never both) An array of file paths to remove. Requires 'OlderThan'. Each item is a path string, or an object { \"Name\": \"...\", \"Path\": \"...\" } where the e-mail shows 'Name' above the path. Use local paths with 'ComputerName', or UNC paths.",
         "Folders": "(Use either 'Files' or 'Folders', never both) An array of folder paths, in the same format as 'Files'. All settings of the task apply to every folder. Requires 'RemoveEmptyFolders'. Without 'OlderThan', 'RemoveEmptyFolders' must be true.",
         "Exclude": {
