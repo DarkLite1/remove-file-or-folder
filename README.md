@@ -137,16 +137,6 @@ Matching **either** attribute is enough. Matching files are not deleted; matchin
 
 Omitting `Exclude.Attributes` or using `[]` preserves the existing behavior, including hidden and system items. Use `["System"]` to protect system items while still cleaning hidden application logs. Exclusions are shown in the email description; skipped items do not count as removals or errors. Access errors on other paths, or failures to read a path's attributes, remain visible. Attribute exclusions work alongside `Exclude.Files` and `Exclude.Folders` and still apply when `OlderThan.Quantity` is `0`.
 
-### 🔄 Converting input files from the old format
-
-Input files with a `Remove` section (`File`, `FilesInFolder`, `EmptyFolders`) are no longer supported. Convert them with:
-
-```powershell
-& '.\Tools\Convert-InputFile.ps1' -Path 'C:\old\BNL CL.json' -Destination 'C:\new\BNL CL.json'
-```
-
-The converter groups the paths with the same computer and settings in one task, and turns an `EmptyFolders` entry for a folder that is also in `FilesInFolder` into `RemoveEmptyFolders: true`. `OlderThan.BasedOn` is set to `CreationTime`, which is what the old format used. `Settings` are copied from `Example.json` with the old `SendMail.To` and `SendMail.When`, so check the mail server, log folder and event log settings afterwards.
-
 ### ⏳ How `OlderThan` works
 
 `OlderThan.BasedOn` decides which file date is compared, it is required:
