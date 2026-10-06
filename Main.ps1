@@ -1108,7 +1108,7 @@ End {
         $counter.systemErrors
 
         #region Create mail rows
-        $mailJobs = foreach ($taskGroup in ($tasksToExecute | Group-Object -Property TaskIndex)) {
+        $mailJobs = foreach ($taskGroup in ($tasksToExecute | Group-Object -Property TaskIndex, Path)) {
             $entries = @(
                 foreach ($pathGroup in ($taskGroup.Group | Group-Object -Property Path)) {
                     $task = $pathGroup.Group[0]

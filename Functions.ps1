@@ -261,7 +261,7 @@ function Build-MailSystemErrorsBlockHC {
 function Build-MailJobRowHC {
     <#
     .SYNOPSIS
-        One row per input task in a computer card: what was done and the result.
+        One row per task path in a computer card: what was done and the result.
 
     .PARAMETER Job
         Object containing Entries, Description, Removed and Errors. Each entry
@@ -325,7 +325,7 @@ function Build-MailJobRowHC {
 function Build-MailComputerCardHC {
     <#
     .SYNOPSIS
-        A card per computer or computer set: a header and a row per input task.
+        A card per executing computer: a header and a row per task path.
 
     .DESCRIPTION
         The header is red when a job failed, green when something was
