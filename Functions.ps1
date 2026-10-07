@@ -374,14 +374,14 @@ function Build-MailJobRowHC {
         if ($RootPath) {
             $label = if ($entry.Name) { [System.Net.WebUtility]::HtmlEncode($entry.Name) } else { $pathLabel }
             $suffix = if ($entry.Name) { " <span style='font-weight:400;'>($pathLabel)</span>" } else { '' }
-            "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:600; font-size:11px; color:$titleColor; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' title='$path' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$label</a>$suffix</div>"
+            "<p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-family:$($theme.MonoStack); font-weight:600; font-size:11px; color:$titleColor; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' title='$path' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$label</a>$suffix</p>"
         }
         elseif ($entry.Name) {
-            "<div style='margin:0; font-weight:700; color:$titleColor; font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$([System.Net.WebUtility]::HtmlEncode($entry.Name))</a></div>" +
-            "<div style='margin:0; font-family:$($theme.MonoStack); font-size:11px; color:$detailColor; line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$pathLabel</div>"
+            "<p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-weight:700; color:$titleColor; font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$([System.Net.WebUtility]::HtmlEncode($entry.Name))</a></p>" +
+            "<p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-family:$($theme.MonoStack); font-size:11px; color:$detailColor; line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$pathLabel</p>"
         }
         else {
-            "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:700; font-size:12px; color:$titleColor; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$pathLabel</a></div>"
+            "<p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-family:$($theme.MonoStack); font-weight:700; font-size:12px; color:$titleColor; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$pathLabel</a></p>"
         }
     })) -join ''
 
@@ -472,7 +472,12 @@ function Build-MailComputerCardHC {
             })) -join ''
             @"
 <table class="task-table" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; width:100%; table-layout:fixed; margin:0 0 16px 0;">
+    <!--[if !mso]><!-->
     <caption style='text-align:left; padding:8px 8px 6px; font-size:12px; font-weight:600; color:$($theme.TextMain); line-height:17px; mso-line-height-rule:exactly;'>$description</caption>
+    <!--<![endif]-->
+    <!--[if mso]>
+    <tr class='task-description'><td colspan='3' style='text-align:left; padding:8px 8px 6px; font-size:12px; font-weight:600; color:$($theme.TextMain); line-height:17px; mso-line-height-rule:exactly;'><p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; line-height:17px; mso-line-height-rule:exactly;'>$description</p></td></tr>
+    <![endif]-->
     <tr>
         <th scope='col' align='left' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Path</th>
         <th scope='col' align='right' width='64' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Removed</th>

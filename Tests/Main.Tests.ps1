@@ -2160,7 +2160,10 @@ Describe 'email rows per input path' {
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
         $testHtmlFile | Should-BeCollection -Count 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should-Be 1
+        foreach ($hiddenBranch in @('(?s)<!--\[if mso\]>.*?<!\[endif\]-->', '(?s)<!--\[if !mso\]><!-->.*?<!--<!\[endif\]-->')) {
+            $clientHtml = [regex]::Replace($html, $hiddenBranch, '')
+            [regex]::Matches($clientHtml, 'Remove files older than 1 day').Count | Should-Be 1
+        }
         $html | Should-BeLikeString '*including subfolders, excluding 1 folder and 1 file</caption>*'
         [regex]::Matches($html, "class='path-row'").Count | Should-Be 2
     }
@@ -2215,7 +2218,10 @@ Describe 'email rows per input path' {
         $expectedRoots = if ($Label -eq 'local paths') { 1 } else { 0 }
         [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be $expectedRoots
         $html | Should-BeLikeString '*Remove files older than 1 day (last write time), including subfolders; Remove empty folders*'
-        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should-Be 1
+        foreach ($hiddenBranch in @('(?s)<!--\[if mso\]>.*?<!\[endif\]-->', '(?s)<!--\[if !mso\]><!-->.*?<!--<!\[endif\]-->')) {
+            $clientHtml = [regex]::Replace($html, $hiddenBranch, '')
+            [regex]::Matches($clientHtml, 'Remove files older than 1 day').Count | Should-Be 1
+        }
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $rows | Should-BeCollection -Count 3
         ($rows | Where-Object { $_ -like '*>First &amp; primary</a>*' }) | Should-BeLikeString "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
@@ -2267,7 +2273,10 @@ if ($path -notlike '*\unchanged.txt') {
         $testHtmlFile | Should-BeCollection -Count 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
         [regex]::Matches($html, 'class="task-table"').Count | Should-Be 1
-        [regex]::Matches($html, 'Remove file older than 1 day').Count | Should-Be 1
+        foreach ($hiddenBranch in @('(?s)<!--\[if mso\]>.*?<!\[endif\]-->', '(?s)<!--\[if !mso\]><!-->.*?<!--<!\[endif\]-->')) {
+            $clientHtml = [regex]::Replace($html, $hiddenBranch, '')
+            [regex]::Matches($clientHtml, 'Remove file older than 1 day').Count | Should-Be 1
+        }
         [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be 1
         $html | Should-BeLikeString '*\\SERVER2\Logs\</td>*'
         $html | Should-NotBeLikeString '*\\SERVER1\Logs\</td>*'

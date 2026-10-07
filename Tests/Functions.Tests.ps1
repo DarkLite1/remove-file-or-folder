@@ -167,7 +167,12 @@ Describe 'Get-MailBodyHtmlHC' {
             [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Second'; LinkPath = 'C:\Second'; Description = 'Remove files & folders'; Removed = 0; Errors = 2 }
             [pscustomobject]@{ TaskIndex = 1; Path = 'C:\First'; LinkPath = 'C:\First'; Description = 'Remove files & folders'; Removed = 0; Errors = 0 }
         )
-        [regex]::Matches($html, 'Remove files &amp; folders').Count | Should-Be 2
+        $browserHtml = [regex]::Replace($html, '(?s)<!--\[if mso\]>.*?<!\[endif\]-->', '')
+        $outlookHtml = [regex]::Replace($html, '(?s)<!--\[if !mso\]><!-->.*?<!--<!\[endif\]-->', '')
+        [regex]::Matches($browserHtml, 'Remove files &amp; folders').Count | Should-Be 2
+        [regex]::Matches($outlookHtml, 'Remove files &amp; folders').Count | Should-Be 2
+        $outlookHtml | Should-NotBeLikeString '*<caption*'
+        $outlookHtml | Should-BeLikeString '*class="task-table"*<tr class=''task-description''><td colspan=''3''*>Remove files &amp; folders</p></td></tr>*'
         [regex]::Matches($html, 'class="task-table"').Count | Should-Be 2
         $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $pathRows | Should-BeCollection -Count 3
@@ -194,10 +199,30 @@ Describe 'Get-MailBodyHtmlHC' {
                     $cell.style | Should-NotBeLikeString "*color:$($testTheme.AccentError)*"
                 }
             }
-            foreach ($label in $row.SelectNodes('.//div | .//a')) {
+            foreach ($label in $row.SelectNodes('.//p | .//a')) {
                 if ($errorCount) { $label.style | Should-BeLikeString "*color:$($testTheme.AccentError)*" }
                 else { $label.style | Should-NotBeLikeString "*color:$($testTheme.AccentError)*" }
             }
+        }
+    }
+    It 'uses zero-margin paragraphs in vertically centered path cells (<Name>, <RootPath>)' -ForEach @(
+        @{ Name = $null; RootPath = $null }
+        @{ Name = 'Named path'; RootPath = $null }
+        @{ Name = $null; RootPath = 'C:\Root' }
+        @{ Name = 'Named path'; RootPath = 'C:\Root' }
+    ) {
+        $html = Build-MailJobRowHC -Job ([pscustomobject]@{
+            Path = 'C:\Root\File.log'; LinkPath = 'C:\Root\File.log'; Name = $Name; Removed = 1; Errors = 0
+        }) -RootPath $RootPath
+        $row = ([xml]"<table>$html</table>").table.tr
+        $row.td[0].valign | Should-Be 'middle'
+        $row.td[0].style | Should-BeLikeString '*vertical-align:middle*'
+        $row.SelectNodes('.//div').Count | Should-Be 0
+        $paragraphs = $row.td[0].SelectNodes('./p')
+        $paragraphs.Count | Should-BeGreaterThan 0
+        foreach ($paragraph in $paragraphs) {
+            $paragraph.style | Should-BeLikeString '*margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0;*'
+            $paragraph.style | Should-BeLikeString '*mso-line-height-rule:exactly*'
         }
     }
     It 'sorts errors first and then by full Path without prioritizing removals' {
