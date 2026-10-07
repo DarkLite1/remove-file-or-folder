@@ -236,6 +236,72 @@ Describe 'Get-MailBodyHtmlHC' {
         $result | Should -Not -BeLike '*Errors</span>*'
     }
 }
+Describe 'Get-MailPathGroupHC' {
+    It 'renders shared subfolders only inside the same task and keeps singletons unchanged' {
+        $jobs = @(
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Share\BE\a.txt'; LinkPath = '\\PC1\C$\Share\BE\a.txt'; Name = 'First & named'; Description = 'Rule'; Removed = 2; Errors = 0 }
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Share\BE\b.txt'; LinkPath = '\\PC1\C$\Share\BE\b.txt'; Description = 'Rule'; Removed = 0; Errors = 1 }
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Share\Other\only.txt'; LinkPath = '\\PC1\C$\Share\Other\only.txt'; Description = 'Rule'; Removed = 0; Errors = 0 }
+            [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Share\BE\c.txt'; LinkPath = '\\PC1\C$\Share\BE\c.txt'; Description = 'Rule'; Removed = 0; Errors = 0 }
+        )
+        $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
+        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should -Be 1
+        $html | Should -BeLike '*C:\Share\BE\</td>*'
+        $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
+        $rows | Should -HaveCount 4
+        $rows[0] | Should -BeLike "*title='C:\Share\BE\b.txt'*>b.txt</a>*"
+        $rows[0] | Should -BeLike '*background-color:#fee2e2*'
+        $rows[1] | Should -BeLike "*href='file:////PC1/C$/Share/BE/a.txt'*title='C:\Share\BE\a.txt'*>First &amp; named</a>*`(a.txt`)*"
+        $rows[1] | Should -Not -BeLike '*<br>*'
+        $rows[2] | Should -BeLike '*>C:\Share\Other\only.txt</a>*'
+        $rows[3] | Should -BeLike '*>C:\Share\BE\c.txt</a>*'
+        $jobs[0].Path | Should -Be 'C:\Share\BE\a.txt'
+        $html | Should -BeLike '*2&nbsp;removed &middot; 1&nbsp;error*'
+    }
+    It 'encodes shared roots and relative labels without changing UNC destinations' {
+        $jobs = @('a & b.txt', "c 'd'.txt") | ForEach-Object {
+            [pscustomobject]@{ TaskIndex = 0; Path = "\\server\share\A & B\$_"; LinkPath = "\\server\share\A & B\$_"; Description = 'Files'; Removed = 0; Errors = 0 }
+        }
+        $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
+        $html | Should -BeLike '*\\server\share\A &amp; B\</td>*'
+        $html | Should -BeLike "*href='file:////server/share/A%20&amp;%20B/a%20&amp;%20b.txt'*"
+        $html | Should -BeLike '*>a &amp; b.txt</a>*'
+        $html | Should -BeLike '*>c &#39;d&#39;.txt</a>*'
+    }
+    It 'groups repeated branches while leaving a lone unrelated path alone' {
+        $jobs = @('C:\Share\BE\a.txt', 'C:\Share\BE\b.txt', 'C:\Share\NL\a.txt', 'C:\Share\NL\b.txt', 'C:\Share\Other\only.txt') | ForEach-Object { [pscustomobject]@{ Path = $_ } }
+        $groups = @(Get-MailPathGroupHC -Job $jobs)
+        $groups | Should -HaveCount 3
+        ($groups | Where-Object Root -EQ 'C:\Share\BE').Jobs | Should -HaveCount 2
+        ($groups | Where-Object Root -EQ 'C:\Share\NL').Jobs | Should -HaveCount 2
+        ($groups | Where-Object Root -EQ '').Jobs.Path | Should -Be 'C:\Share\Other\only.txt'
+    }
+    It 'keeps single paths and duplicate paths ungrouped' {
+        foreach ($paths in @(@('C:\Share\only.txt'), @('C:\Share\only.txt', 'c:\share\ONLY.txt'))) {
+            $jobs = @($paths | ForEach-Object { [pscustomobject]@{ Path = $_ } })
+            $groups = @(Get-MailPathGroupHC -Job $jobs)
+            @($groups | Where-Object Root) | Should -HaveCount 0
+            @($groups.Jobs) | Should -HaveCount $paths.Count
+        }
+    }
+    It 'never merges drives or UNC shares' {
+        $jobs = @('C:\Logs\a.txt', 'C:\Logs\b.txt', 'D:\Logs\only.txt', '\\server\one\a.txt', '\\server\one\b.txt', '\\server\two\only.txt') | ForEach-Object { [pscustomobject]@{ Path = $_ } }
+        $groups = @(Get-MailPathGroupHC -Job $jobs)
+        $groups | Should -HaveCount 4
+        @($groups | Where-Object Root).Root | Should -Contain 'C:\Logs'
+        @($groups | Where-Object Root).Root | Should -Contain '\\server\one'
+        @($groups | Where-Object { -not $_.Root }) | Should -HaveCount 2
+    }
+    It 'uses directory boundaries and never treats a selected parent as its own child' {
+        $jobs = @('C:\Data', 'C:\Database\a.txt', 'C:\Data\b.txt') | ForEach-Object { [pscustomobject]@{ Path = $_ } }
+        foreach ($group in (Get-MailPathGroupHC -Job $jobs)) {
+            if ($group.Root) {
+                @($group.Jobs.Path | Sort-Object -Unique).Count | Should -BeGreaterOrEqual 2
+                foreach ($row in $group.Jobs) { $row.Path.StartsWith($group.Root + '\', [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue }
+            }
+        }
+    }
+}
 Describe 'Outlook path labels' {
     It 'shortens long paths only for Outlook (<Label>)' -ForEach @(
         @{ Label = 'local folder'; Path = 'D:\ConactiveLabShare\CLBEPRD\SAPTMSOrderImport\Backup\Orig_SAPIDOC_005_SALESORDERS'; Name = $null; Tail = 'Orig_SAPIDOC_005_SALESORDERS' }

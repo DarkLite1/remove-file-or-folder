@@ -258,6 +258,63 @@ function Build-MailSystemErrorsBlockHC {
 "@
 }
 
+function Get-MailPathGroupHC {
+    <#
+    .SYNOPSIS
+        Groups paths from one input task under shared parent folders.
+
+    .DESCRIPTION
+        Drive and UNC-share boundaries stay separate. Within each boundary,
+        repeated child branches get their longest common parent. Remaining
+        paths share a breadcrumb only when at least two distinct paths remain.
+        This function inspects path strings only, without filesystem access.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [PSCustomObject[]]$Job
+    )
+
+    $commonParent = {
+        param ([PSCustomObject[]]$Rows)
+        $paths = @($Rows.Path | ForEach-Object { $_.Replace('/', '\').TrimEnd('\') } | Sort-Object -Unique)
+        if ($paths.Count -lt 2) { return '' }
+        $root = [IO.Path]::GetDirectoryName($paths[0])
+        while ($root) {
+            $prefix = $root.TrimEnd('\') + '\'
+            if (-not @($paths | Where-Object { -not $_.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }).Count) {
+                return $root.TrimEnd('\')
+            }
+            $root = [IO.Path]::GetDirectoryName($root.TrimEnd('\'))
+        }
+        return ''
+    }
+
+    foreach ($volume in ($Job | Group-Object { [IO.Path]::GetPathRoot($_.Path.Replace('/', '\')) })) {
+        $root = & $commonParent $volume.Group
+        if (-not $root) {
+            foreach ($row in $volume.Group) { [PSCustomObject]@{ Root = ''; Jobs = @($row) } }
+            continue
+        }
+        $remaining = @()
+        foreach ($branch in ($volume.Group | Group-Object { $_.Path.Replace('/', '\').Substring($root.Length + 1).Split('\')[0] })) {
+            $branchRoot = & $commonParent $branch.Group
+            if ($branchRoot) {
+                [PSCustomObject]@{ Root = $branchRoot; Jobs = @($branch.Group) }
+            }
+            else { $remaining += $branch.Group }
+        }
+        if ($remaining.Count) {
+            $remainingRoot = & $commonParent $remaining
+            if ($remainingRoot) {
+                [PSCustomObject]@{ Root = $remainingRoot; Jobs = $remaining }
+            }
+            else {
+                foreach ($row in $remaining) { [PSCustomObject]@{ Root = ''; Jobs = @($row) } }
+            }
+        }
+    }
+}
+
 function Build-MailJobRowHC {
     <#
     .SYNOPSIS
@@ -271,10 +328,15 @@ function Build-MailJobRowHC {
         Classic Outlook path labels are limited to 55 characters, preserving
         trailing components where possible. Browsers and link targets retain
         the full path, also supplied as the shortened label's tooltip.
+
+    .PARAMETER RootPath
+        Shared parent already displayed above at least two paths in this task.
+        Renders relative child labels without changing links or job data.
     #>
     param (
         [Parameter(Mandatory)]
-        [PSCustomObject]$Job
+        [PSCustomObject]$Job,
+        [String]$RootPath
     )
 
     $theme = Get-MailThemeHC
@@ -293,9 +355,10 @@ function Build-MailJobRowHC {
     $titleHtml = (@(foreach ($entry in $entries) {
         $href = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $entry.LinkPath))
         $path = [System.Net.WebUtility]::HtmlEncode($entry.Path)
-        $pathLabel = $path
-        if ($entry.Path.Length -gt 55) {
-            $tail = $entry.Path.TrimEnd([char[]]'\/')
+        $displayPath = if ($RootPath) { $entry.Path.Substring($RootPath.Length + 1) } else { $entry.Path }
+        $pathLabel = [System.Net.WebUtility]::HtmlEncode($displayPath)
+        if ($displayPath.Length -gt 55) {
+            $tail = $displayPath.TrimEnd([char[]]'\/')
             $tail = $tail.Substring([Math]::Max(0, $tail.Length - 52))
             $separatorIndex = $tail.IndexOfAny([char[]]'\/')
             $shortPath = if ($separatorIndex -ge 0) {
@@ -305,10 +368,15 @@ function Build-MailJobRowHC {
                 '...' + $tail
             }
             $shortPath = [System.Net.WebUtility]::HtmlEncode($shortPath)
-            $pathLabel = "<!--[if mso]><span title='$path'>$shortPath</span><![endif]--><!--[if !mso]><!-->$path<!--<![endif]-->"
+            $pathLabel = "<!--[if mso]><span title='$path'>$shortPath</span><![endif]--><!--[if !mso]><!-->$pathLabel<!--<![endif]-->"
         }
 
-        if ($entry.Name) {
+        if ($RootPath) {
+            $label = if ($entry.Name) { [System.Net.WebUtility]::HtmlEncode($entry.Name) } else { $pathLabel }
+            $suffix = if ($entry.Name) { " <span style='font-weight:400;'>($pathLabel)</span>" } else { '' }
+            "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:600; font-size:11px; color:$titleColor; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' title='$path' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$label</a>$suffix</div>"
+        }
+        elseif ($entry.Name) {
             "<div style='margin:0; font-weight:700; color:$titleColor; font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$([System.Net.WebUtility]::HtmlEncode($entry.Name))</a></div>" +
             "<div style='margin:0; font-family:$($theme.MonoStack); font-size:11px; color:$detailColor; line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$pathLabel</div>"
         }
@@ -319,7 +387,7 @@ function Build-MailJobRowHC {
 
     @"
     <tr class='path-row'>
-        <td valign='middle' bgcolor='$rowBackground' style='vertical-align:middle; padding:8px; background-color:$rowBackground; color:$titleColor; border-bottom:1px solid $($theme.BorderLight);'>
+        <td valign='middle' bgcolor='$rowBackground' style='vertical-align:middle; padding:8px;$(if ($RootPath) { ' padding-left:16px;' }) background-color:$rowBackground; color:$titleColor; border-bottom:1px solid $($theme.BorderLight);'>
             $titleHtml
         </td>
         <td class='removed-count' valign='middle' align='right' width='64' bgcolor='$rowBackground' style='vertical-align:middle; padding:8px; background-color:$rowBackground; border-bottom:1px solid $($theme.BorderLight); color:$detailColor; font-size:12px; line-height:16px; mso-line-height-rule:exactly; text-align:right;'>$($Job.Removed)</td>
@@ -338,8 +406,9 @@ function Build-MailComputerCardHC {
         removed and grey when nothing was removed. Outlook cannot render the
         gradient, so it gets the average color of the two gradient stops.
         Rows sharing a TaskIndex have one description above their table.
-        Tasks and rows with errors appear first, then sort by Path, without
-        giving removals priority over unchanged paths.
+        Shared subfolders group at least two distinct paths within that task;
+        singletons stay ungrouped. Tasks, path groups and rows with errors
+        appear first, then sort by Path, without prioritizing removals.
         Error rows have red text on a pale-red background across all cells.
     #>
     param (
@@ -387,9 +456,20 @@ function Build-MailComputerCardHC {
             Expression = { $_.Group.Path | Sort-Object | Select-Object -First 1 }
         }, Name | ForEach-Object {
             $description = [System.Net.WebUtility]::HtmlEncode(($_.Group.Description | Select-Object -Unique) -join '; ')
-            $pathRows = ($_.Group | Sort-Object -Property @{
-                Expression = { if ($_.Errors) { 0 } else { 1 } }
-            }, Path | ForEach-Object { Build-MailJobRowHC -Job $_ }) -join ''
+            $pathGroups = Get-MailPathGroupHC -Job $_.Group | Sort-Object -Property @{
+                Expression = { if (($_.Jobs | Measure-Object -Property Errors -Sum).Sum) { 0 } else { 1 } }
+            }, @{ Expression = { $_.Jobs.Path | Sort-Object | Select-Object -First 1 } }
+            $pathRows = (@(foreach ($pathGroup in $pathGroups) {
+                if ($pathGroup.Root) {
+                    $root = [System.Net.WebUtility]::HtmlEncode($pathGroup.Root + '\')
+                    "<tr class='root-breadcrumb'><td colspan='3' bgcolor='#f3f4f6' style='padding:8px; background-color:#f3f4f6; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextMuted); font-family:$($theme.MonoStack); font-size:11px; font-weight:600; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$root</td></tr>"
+                }
+                foreach ($row in ($pathGroup.Jobs | Sort-Object -Property @{
+                    Expression = { if ($_.Errors) { 0 } else { 1 } }
+                }, Path)) {
+                    Build-MailJobRowHC -Job $row -RootPath $pathGroup.Root
+                }
+            })) -join ''
             @"
 <table class="task-table" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; width:100%; table-layout:fixed; margin:0 0 16px 0;">
     <caption style='text-align:left; padding:8px 8px 6px; font-size:12px; font-weight:600; color:$($theme.TextMain); line-height:17px; mso-line-height-rule:exactly;'>$description</caption>

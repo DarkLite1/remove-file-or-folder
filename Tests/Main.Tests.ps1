@@ -2212,6 +2212,8 @@ Describe 'email rows per input path' {
         [regex]::Matches($html, '>First &amp; primary</a>').Count | Should -Be 1
         [regex]::Matches($html, '>Second</a>').Count | Should -Be 1
         [regex]::Matches($html, '>Separate task</a>').Count | Should -Be 1
+        $expectedRoots = if ($Label -eq 'local paths') { 1 } else { 0 }
+        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should -Be $expectedRoots
         $html | Should -BeLike '*Remove files older than 1 day (last write time), including subfolders; Remove empty folders*'
         [regex]::Matches($html, 'Remove files older than 1 day').Count | Should -Be 1
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
@@ -2266,6 +2268,9 @@ if ($path -notlike '*\unchanged.txt') {
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
         [regex]::Matches($html, 'class="task-table"').Count | Should -Be 1
         [regex]::Matches($html, 'Remove file older than 1 day').Count | Should -Be 1
+        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should -Be 1
+        $html | Should -BeLike '*\\SERVER2\Logs\</td>*'
+        $html | Should -Not -BeLike '*\\SERVER1\Logs\</td>*'
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $rows | Should -HaveCount 3
         ($rows | Where-Object { $_ -like '*>Removed file</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>0</td>*"
