@@ -1113,6 +1113,16 @@ End {
         $counter.systemErrors
 
         #region Create mail rows
+        $taskDescriptions = @{}
+        foreach ($inputTaskGroup in ($tasksToExecute | Group-Object -Property TaskIndex)) {
+            $descriptions = foreach ($phaseGroup in ($inputTaskGroup.Group | Group-Object -Property Type | Sort-Object { $_.Name -eq 'RemoveEmptyFolders' })) {
+                $descriptionTask = $phaseGroup.Group[0].PSObject.Copy()
+                $descriptionTask.ExcludeFolders = @($phaseGroup.Group.ExcludeFolders | Where-Object { $_ } | Sort-Object -Unique)
+                $descriptionTask.ExcludeFiles = @($phaseGroup.Group.ExcludeFiles | Where-Object { $_ } | Sort-Object -Unique)
+                Get-TaskDescriptionHC -Task $descriptionTask
+            }
+            $taskDescriptions[$inputTaskGroup.Name] = ($descriptions | Select-Object -Unique) -join '; '
+        }
         $mailJobs = foreach ($taskGroup in ($tasksToExecute | Group-Object -Property TaskIndex, Path)) {
             $entries = @(
                 foreach ($pathGroup in ($taskGroup.Group | Group-Object -Property Path)) {
@@ -1133,15 +1143,12 @@ End {
                     }
                 }
             )
-            $descriptions = foreach ($task in $taskGroup.Group) {
-                Get-TaskDescriptionHC -Task $task
-            }
-
             [PSCustomObject]@{
+                TaskIndex    = $taskGroup.Group[0].TaskIndex
                 ComputerName = ($entries.ComputerName | Sort-Object -Unique) -join ', '
                 Entries      = $entries
                 Path         = $entries[0].Path
-                Description  = ($descriptions | Select-Object -Unique) -join '; '
+                Description  = $taskDescriptions["$($taskGroup.Group[0].TaskIndex)"]
                 Removed      = @(
                     $taskGroup.Group.Job.Results | Where-Object { $_.Action -eq 'Removed' }
                 ).Count

@@ -150,14 +150,71 @@ Describe 'Get-MailBodyHtmlHC' {
         $actual | Should -BeLike '*>PC-ERR</p>*1&nbsp;removed &middot; 2&nbsp;errors*'
         $actual | Should -BeLike '*>PC-OK</p>*2 paths*3&nbsp;removed*'
     }
-    It 'shows a row per path with name, path, description and result' {
-        $actual | Should -BeLike "*href='file:////PC-OK/D$/Logs'*>Logs</a>*D:\Logs*Remove all files*3 removed*"
-        $actual | Should -BeLike '*E:\&lt;Data&gt;*1 removed<br>2 errors*>Error</span>*'
+    It 'shows the task description above path rows with separate counters' {
+        $actual | Should -BeLike '*Remove all files</caption>*'
+        $actual | Should -BeLike "*href='file:////PC-OK/D$/Logs'*>Logs</a>*D:\Logs*class='removed-count'*>3</td>*"
+        $actual | Should -BeLike "*E:\&lt;Data&gt;*class='removed-count'*>1</td>*class='error-count'*>2</td>*"
     }
-    It 'colors the row border by result' {
-        $actual | Should -BeLike "*border-left:3px solid $($testTheme.AccentError)*E:\&lt;Data&gt;*"
-        $actual | Should -BeLike "*border-left:3px solid $($testTheme.AccentSuccess)*>Logs</a>*"
-        $actual | Should -BeLike "*border-left:3px solid $($testTheme.AccentIdle)*D:\Idle*"
+    It 'highlights error counters without individual row cards or badges' {
+        $actual | Should -BeLike "*class='error-count'*color:$($testTheme.AccentError)*>2</td>*"
+        $pathRows = [regex]::Matches($actual, "(?s)<tr class='path-row'>.*?</tr>").Value -join ''
+        $pathRows | Should -Not -BeLike '*border-left:3px solid*'
+        $actual | Should -Not -BeLike '*>Error</span>*'
+    }
+    It 'renders the description once per task and keeps each path counter' {
+        $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job @(
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\First'; LinkPath = 'C:\First'; Description = 'Remove files & folders'; Removed = 5; Errors = 0 }
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Second'; LinkPath = 'C:\Second'; Description = 'Remove files & folders'; Removed = 0; Errors = 2 }
+            [pscustomobject]@{ TaskIndex = 1; Path = 'C:\First'; LinkPath = 'C:\First'; Description = 'Remove files & folders'; Removed = 0; Errors = 0 }
+        )
+        [regex]::Matches($html, 'Remove files &amp; folders').Count | Should -Be 2
+        [regex]::Matches($html, 'class="task-table"').Count | Should -Be 2
+        $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
+        $pathRows | Should -HaveCount 3
+        $pathRows[0] | Should -BeLike "*C:\Second*class='removed-count'*>0</td>*class='error-count'*>2</td>*"
+        $pathRows[1] | Should -BeLike "*C:\First*class='removed-count'*>5</td>*class='error-count'*>0</td>*"
+    }
+    It 'colors every cell and path label red only when the row has errors (<Name>)' -ForEach @(
+        @{ Name = $null }
+        @{ Name = 'Named & failed folder' }
+    ) {
+        foreach ($errorCount in @(0, 2)) {
+            $html = Build-MailJobRowHC -Job ([pscustomobject]@{
+                Path = 'C:\Failed'; LinkPath = 'C:\Failed'; Name = $Name; Removed = 3; Errors = $errorCount
+            })
+            $row = ([xml]"<table>$html</table>").table.tr
+            $row.td | Should -HaveCount 3
+            foreach ($cell in $row.td) {
+                if ($errorCount) {
+                    $cell.bgcolor | Should -Be $testTheme.StatusError
+                    $cell.style | Should -BeLike "*background-color:$($testTheme.StatusError)*color:$($testTheme.AccentError)*"
+                }
+                else {
+                    $cell.bgcolor | Should -Be $testTheme.BgWhite
+                    $cell.style | Should -Not -BeLike "*color:$($testTheme.AccentError)*"
+                }
+            }
+            foreach ($label in $row.SelectNodes('.//div | .//a')) {
+                if ($errorCount) { $label.style | Should -BeLike "*color:$($testTheme.AccentError)*" }
+                else { $label.style | Should -Not -BeLike "*color:$($testTheme.AccentError)*" }
+            }
+        }
+    }
+    It 'sorts errors first and then by full Path without prioritizing removals' {
+        $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job @(
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Zulu'; LinkPath = 'C:\Zulu'; Description = 'Later task'; Removed = 0; Errors = 1 }
+            [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Charlie'; LinkPath = 'C:\Charlie'; Description = 'Earlier task'; Removed = 0; Errors = 2 }
+            [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Delta'; LinkPath = 'C:\Delta'; Description = 'Earlier task'; Removed = 0; Errors = 1 }
+            [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Bravo'; LinkPath = 'C:\Bravo'; Description = 'Earlier task'; Removed = 5; Errors = 0 }
+            [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Alpha'; LinkPath = 'C:\Alpha'; Description = 'Earlier task'; Removed = 0; Errors = 0 }
+        )
+        $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
+        $pathRows | Should -HaveCount 5
+        $pathRows[0] | Should -BeLike '*C:\Charlie*'
+        $pathRows[1] | Should -BeLike '*C:\Delta*'
+        $pathRows[2] | Should -BeLike '*C:\Alpha*'
+        $pathRows[3] | Should -BeLike '*C:\Bravo*'
+        $pathRows[4] | Should -BeLike '*C:\Zulu*'
     }
     It 'shows the run times in the footer' {
         $actual | Should -BeLike '*Started*02/10/2026 07:00*Ended*02/10/2026 08:30*Duration*01:30:15*'
@@ -177,6 +234,38 @@ Describe 'Get-MailBodyHtmlHC' {
 
         $result | Should -BeLike "*background-color:$($testTheme.AccentIdle)*>0 Removed</span>*"
         $result | Should -Not -BeLike '*Errors</span>*'
+    }
+}
+Describe 'Outlook path labels' {
+    It 'shortens long paths only for Outlook (<Label>)' -ForEach @(
+        @{ Label = 'local folder'; Path = 'D:\ConactiveLabShare\CLBEPRD\SAPTMSOrderImport\Backup\Orig_SAPIDOC_005_SALESORDERS'; Name = $null; Tail = 'Orig_SAPIDOC_005_SALESORDERS' }
+        @{ Label = 'named UNC file'; Path = '\\server\ConactiveLabShare\Long folder name\Reports & exports\Monthly report.txt'; Name = 'Monthly report'; Tail = 'Monthly report.txt' }
+        @{ Label = 'long leaf'; Path = 'D:\Logs\' + ('a' * 80) + '.txt'; Name = $null; Tail = '.txt' }
+        @{ Label = 'encoded folder'; Path = 'D:\ConactiveLabShare\Long folder name\Reports & exports\Team ''A''\'; Name = $null; Tail = "Team 'A'" }
+    ) {
+        $html = Build-MailJobRowHC -Job ([pscustomobject]@{
+            Path = $Path; LinkPath = $Path; Name = $Name; Removed = 3; Errors = 1
+        })
+        $outlook = [regex]::Match($html, '<!--\[if mso\]><span title=''([^'']*)''>(.*?)</span><!\[endif\]-->')
+        $label = [System.Net.WebUtility]::HtmlDecode($outlook.Groups[2].Value)
+        $label.Length | Should -BeLessOrEqual 55
+        $label | Should -BeLike "...*$Tail"
+        [System.Net.WebUtility]::HtmlDecode($outlook.Groups[1].Value) | Should -Be $Path
+        $browser = [regex]::Match($html, '<!--\[if !mso\]><!-->(.*?)<!--<!\[endif\]-->').Groups[1].Value
+        [System.Net.WebUtility]::HtmlDecode($browser) | Should -Be $Path
+        $html.Contains("href='$([System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $Path)))'") | Should -BeTrue
+        $html | Should -BeLike "*class='removed-count'*>3</td>*class='error-count'*>1</td>*"
+    }
+    It 'leaves a path of <Length> characters unchanged' -ForEach @(
+        @{ Length = 10 }
+        @{ Length = 55 }
+    ) {
+        $path = 'C:\' + ('a' * ($Length - 3))
+        $html = Build-MailJobRowHC -Job ([pscustomobject]@{
+            Path = $path; LinkPath = $path; Removed = 0; Errors = 0
+        })
+        $html | Should -Not -BeLike '*<!--`[if mso`]>*'
+        $html | Should -BeLike "*>$path</a>*"
     }
 }
 Describe 'Outlook header count wrapping' {

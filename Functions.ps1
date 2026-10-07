@@ -261,13 +261,16 @@ function Build-MailSystemErrorsBlockHC {
 function Build-MailJobRowHC {
     <#
     .SYNOPSIS
-        One row per task path in a computer card: what was done and the result.
+        One compact table row per task path, with removal and error counters.
 
     .PARAMETER Job
-        Object containing Entries, Description, Removed and Errors. Each entry
+        Object containing Entries, Removed and Errors. Each entry
         contains Name, Path and LinkPath. A single-path job can supply those
         properties directly. Name is optional and appears above Path.
         Removed and Errors are counts. Text is HTML-encoded before rendering.
+        Classic Outlook path labels are limited to 55 characters, preserving
+        trailing components where possible. Browsers and link targets retain
+        the full path, also supplied as the shortened label's tooltip.
     #>
     param (
         [Parameter(Mandatory)]
@@ -276,61 +279,68 @@ function Build-MailJobRowHC {
 
     $theme = Get-MailThemeHC
 
-    $accent, $pill = if ($Job.Errors) {
-        $theme.AccentError, (New-PillHtmlHC -Text 'Error' -Bg $theme.AccentError)
-    }
-    elseif ($Job.Removed) {
-        $theme.AccentSuccess, ''
+    $accent = if ($Job.Errors) {
+        $theme.AccentError
     }
     else {
-        $theme.AccentIdle, ''
+        $theme.TextLight
     }
-
-    $description = [System.Net.WebUtility]::HtmlEncode($Job.Description)
+    $rowBackground = if ($Job.Errors) { $theme.StatusError } else { $theme.BgWhite }
+    $titleColor = if ($Job.Errors) { $theme.AccentError } else { $theme.TextMain }
+    $detailColor = if ($Job.Errors) { $theme.AccentError } else { $theme.TextMuted }
 
     $entries = if ($Job.Entries) { $Job.Entries } else { @($Job) }
     $titleHtml = (@(foreach ($entry in $entries) {
         $href = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $entry.LinkPath))
         $path = [System.Net.WebUtility]::HtmlEncode($entry.Path)
+        $pathLabel = $path
+        if ($entry.Path.Length -gt 55) {
+            $tail = $entry.Path.TrimEnd([char[]]'\/')
+            $tail = $tail.Substring([Math]::Max(0, $tail.Length - 52))
+            $separatorIndex = $tail.IndexOfAny([char[]]'\/')
+            $shortPath = if ($separatorIndex -ge 0) {
+                '...\' + $tail.Substring($separatorIndex + 1)
+            }
+            else {
+                '...' + $tail
+            }
+            $shortPath = [System.Net.WebUtility]::HtmlEncode($shortPath)
+            $pathLabel = "<!--[if mso]><span title='$path'>$shortPath</span><![endif]--><!--[if !mso]><!-->$path<!--<![endif]-->"
+        }
 
         if ($entry.Name) {
-            "<div style='margin:0; font-weight:700; color:$($theme.TextMain); font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$($theme.TextMain);'>$([System.Net.WebUtility]::HtmlEncode($entry.Name))</a></div>" +
-            "<div style='margin:0; font-family:$($theme.MonoStack); font-size:11px; color:$($theme.TextMuted); line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$path</div>"
+            "<div style='margin:0; font-weight:700; color:$titleColor; font-size:13px; line-height:16px; mso-line-height-rule:exactly;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$([System.Net.WebUtility]::HtmlEncode($entry.Name))</a></div>" +
+            "<div style='margin:0; font-family:$($theme.MonoStack); font-size:11px; color:$detailColor; line-height:14px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$pathLabel</div>"
         }
         else {
-            "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:700; font-size:12px; color:$($theme.TextMain); line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$($theme.TextMain);'>$path</a></div>"
+            "<div style='margin:0; font-family:$($theme.MonoStack); font-weight:700; font-size:12px; color:$titleColor; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><a href='$href' target='_blank' rel='noopener noreferrer' style='text-decoration:none; color:$titleColor;'>$pathLabel</a></div>"
         }
     })) -join ''
 
-    $resultText = '{0} removed' -f $Job.Removed
-    if ($Job.Errors) {
-        $resultText += '<br>{0} error{1}' -f $Job.Errors, $(if ($Job.Errors -ne 1) { 's' })
-    }
-
     @"
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate; width:100%; margin:0 0 4px 0; table-layout:fixed; background-color:$($theme.BgWhite); border:1px solid $($theme.BorderMain); border-left:3px solid $accent; border-radius:6px;">
-    <tr>
-        <td valign='middle' width='20' style='vertical-align:middle; padding:6px 0 6px 12px; color:$accent; font-size:12px; line-height:15px; mso-line-height-rule:exactly;'>&#9679;</td>
-        <td valign='middle' style='vertical-align:middle; padding:6px 8px;'>
+    <tr class='path-row'>
+        <td valign='middle' bgcolor='$rowBackground' style='vertical-align:middle; padding:8px; background-color:$rowBackground; color:$titleColor; border-bottom:1px solid $($theme.BorderLight);'>
             $titleHtml
-            <div style='margin:2px 0 0 0; font-size:11px; color:$($theme.TextLight); line-height:14px; mso-line-height-rule:exactly;'>$description</div>
         </td>
-        <td valign='middle' align='right' nowrap='nowrap' width='76' style='vertical-align:middle; padding:6px 8px; color:$($theme.TextMuted); font-size:11px; line-height:15px; mso-line-height-rule:exactly; white-space:nowrap; text-align:right;'>$resultText</td>
-        <td valign='middle' align='right' width='70' style='vertical-align:middle; padding:4px 12px 4px 4px; white-space:nowrap; font-size:0;'>$(if ($pill) { $pill } else { '&nbsp;' })</td>
+        <td class='removed-count' valign='middle' align='right' width='64' bgcolor='$rowBackground' style='vertical-align:middle; padding:8px; background-color:$rowBackground; border-bottom:1px solid $($theme.BorderLight); color:$detailColor; font-size:12px; line-height:16px; mso-line-height-rule:exactly; text-align:right;'>$($Job.Removed)</td>
+        <td class='error-count' valign='middle' align='right' width='48' bgcolor='$rowBackground' style='vertical-align:middle; padding:8px; background-color:$rowBackground; border-bottom:1px solid $($theme.BorderLight); color:$accent; font-weight:700; font-size:12px; line-height:16px; mso-line-height-rule:exactly; text-align:right;'>$($Job.Errors)</td>
     </tr>
-</table>
 "@
 }
 
 function Build-MailComputerCardHC {
     <#
     .SYNOPSIS
-        A card per executing computer: a header and a row per task path.
+        A card per executing computer, with task descriptions and path counters.
 
     .DESCRIPTION
         The header is red when a job failed, green when something was
         removed and grey when nothing was removed. Outlook cannot render the
         gradient, so it gets the average color of the two gradient stops.
+        Rows sharing a TaskIndex have one description above their table.
+        Tasks and rows with errors appear first, then sort by Path, without
+        giving removals priority over unchanged paths.
+        Error rows have red text on a pale-red background across all cells.
     #>
     param (
         [Parameter(Mandatory)]
@@ -367,12 +377,31 @@ function Build-MailComputerCardHC {
         $headerLabel += ' &middot; {0}&nbsp;error{1}' -f $errors, $(if ($errors -ne 1) { 's' })
     }
 
-    # rows with errors first, then rows that removed something
-    $rows = ($Job | Sort-Object -Property @{
-            Expression = { if ($_.Errors) { 0 } elseif ($_.Removed) { 1 } else { 2 } }
-        }, Path, Description | ForEach-Object {
-            Build-MailJobRowHC -Job $_
-        }) -join '<!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#ffffff"><tr><td bgcolor="#ffffff" height="4" style="font-size:0; line-height:4px; mso-line-height-rule:exactly;">&#160;</td></tr></table><![endif]-->'
+    $taskGroups = $Job | Group-Object -Property {
+        if ($null -ne $_.TaskIndex) { "Task:$($_.TaskIndex)" }
+        else { "Row:$([array]::IndexOf($Job, $_))" }
+    }
+    $rows = ($taskGroups | Sort-Object -Property @{
+            Expression = { if (($_.Group | Measure-Object -Property Errors -Sum).Sum) { 0 } else { 1 } }
+        }, @{
+            Expression = { $_.Group.Path | Sort-Object | Select-Object -First 1 }
+        }, Name | ForEach-Object {
+            $description = [System.Net.WebUtility]::HtmlEncode(($_.Group.Description | Select-Object -Unique) -join '; ')
+            $pathRows = ($_.Group | Sort-Object -Property @{
+                Expression = { if ($_.Errors) { 0 } else { 1 } }
+            }, Path | ForEach-Object { Build-MailJobRowHC -Job $_ }) -join ''
+            @"
+<table class="task-table" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; width:100%; table-layout:fixed; margin:0 0 16px 0;">
+    <caption style='text-align:left; padding:8px 8px 6px; font-size:12px; font-weight:600; color:$($theme.TextMain); line-height:17px; mso-line-height-rule:exactly;'>$description</caption>
+    <tr>
+        <th scope='col' align='left' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Path</th>
+        <th scope='col' align='right' width='64' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Removed</th>
+        <th scope='col' align='right' width='48' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Errors</th>
+    </tr>
+    $pathRows
+</table>
+"@
+        }) -join ''
 
     $pathCount = @($Job | ForEach-Object {
         if ($_.Entries) { $_.Entries.Path } else { $_.Path }
@@ -386,7 +415,7 @@ function Build-MailComputerCardHC {
                 <tr>
                     <td valign='middle' align='center' width='52' style='vertical-align:middle; text-align:center; padding:12px 0; font-size:18px; font-weight:bold; color:#ffffff; line-height:24px; mso-line-height-rule:exactly;'>$symbol</td>
                     <td valign='middle' style='padding:12px 8px 12px 0;'>
-                        <p style='margin:0; font-size:16px; font-weight:700; color:#ffffff; line-height:20px; mso-line-height-rule:exactly;'>$([System.Net.WebUtility]::HtmlEncode($ComputerName))</p>
+                        <p style='margin:0; font-size:16px; font-weight:700; color:#ffffff; line-height:20px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-word;'>$([System.Net.WebUtility]::HtmlEncode($ComputerName))</p>
                         <p style='margin:2px 0 0 0; font-size:12px; color:#f1f2f4; line-height:17px; mso-line-height-rule:exactly;'>$pathCount path$(if ($pathCount -ne 1) { 's' })</p>
                     </td>
                     <td valign='middle' align='right' width='140' style='padding:12px 14px 12px 6px; white-space:nowrap; font-size:12px; font-weight:700; color:#e5e7eb; text-transform:uppercase; letter-spacing:0.5px;'>$headerLabel</td>
@@ -419,7 +448,7 @@ function Get-MailBodyHtmlHC {
         a fluid one capped at 900px.
 
     .PARAMETER Job
-        Objects with ComputerName, Entries, Path (sort key), Description,
+        Objects with TaskIndex, ComputerName, Entries, Path (sort key), Description,
         Removed and Errors. Entries contain Name, Path and LinkPath; legacy
         single-path objects may supply these properties directly.
 
@@ -504,7 +533,7 @@ function Get-MailBodyHtmlHC {
     $span = $ScriptEndTime - $ScriptStartTime
 
     $footer = @"
-<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:16px auto 0 auto;">
+<table class="mail-footer" role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:16px auto 0 auto;">
     <tr>
         <td style="padding:0 5px 0 0; $footLabelStyle">Started</td>
         <td style="padding:0 20px 0 0; $footValueStyle">$($ScriptStartTime.ToString('dd/MM/yyyy HH:mm'))</td>
@@ -551,6 +580,10 @@ function Get-MailBodyHtmlHC {
 <!--[if !mso]><!-->
 <style type="text/css">
     table.mail-root { max-width: 900px !important; }
+    @media screen and (max-width: 480px) {
+        table.mail-footer tr { display:grid; grid-template-columns:auto 1fr; }
+        table.mail-footer td { padding:2px 5px !important; }
+    }
 </style>
 <!--<![endif]-->
 </head>

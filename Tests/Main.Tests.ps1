@@ -1704,7 +1704,7 @@ Describe 'report inaccessible paths' {
             ($Priority -eq 'High') -and
             ($Body -like '*>1 Error</span>*') -and
             ($Body -like '*0&nbsp;removed &middot; 1&nbsp;error*') -and
-            ($Body -like '*0 removed<br>1 error*')
+            ($Body -match "(?s)<tr class='path-row'>(?:(?!</tr>).)*class='removed-count'[^>]*>0</td>\s*<td class='error-count'[^>]*>1</td>")
         }
         Should -Invoke Write-EventLog -Exactly -Times 1 -Scope It -ParameterFilter {
             ($EntryType -eq 'Error') -and ($Message -like '*Access denied*')
@@ -2123,7 +2123,7 @@ Describe 'send an e-mail' {
             ($Body -like '*>PC1</p>*') -and
             ($Body -like "*href='file:////PC1/z$/file.txt'*>FTP log file</a>*") -and
             ($Body -like '*Remove file older than 1 day (creation time)*') -and
-            ($Body -like '*1 removed<br>1 error*') -and
+            ($Body -match "(?s)<tr class='path-row'>(?:(?!</tr>).)*class='removed-count'[^>]*>1</td>\s*<td class='error-count'[^>]*>1</td>") -and
             ($Body -like '*Started*Ended*Duration*')
         }
     }
@@ -2139,6 +2139,31 @@ Describe 'send an e-mail' {
     }
 }
 Describe 'email rows per input path' {
+    It 'summarizes exclusions once across paths without repeating the cleanup rule' {
+        Clear-TestLogFolderHC
+        $testNewInputFile = Copy-ObjectHC $testInputFile
+        $testNewInputFile.Tasks = @(
+            [pscustomobject]@{
+                ComputerName = 'PC1'
+                Folders = @('z:\first', 'z:\second')
+                OlderThan = @{ Quantity = 1; Unit = 'Day'; BasedOn = 'LastWriteTime' }
+                Recurse = $true
+                RemoveEmptyFolders = $false
+                Exclude = @{ Folders = @('z:\first\keep'); Files = @('z:\second\keep.txt') }
+            }
+        )
+        Mock Invoke-Command
+        Test-NewJsonFileHC $testNewInputFile
+
+        & $testScript @testParams
+
+        $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
+        $testHtmlFile | Should -HaveCount 1
+        $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
+        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should -Be 1
+        $html | Should -BeLike '*including subfolders, excluding 1 folder and 1 file</caption>*'
+        [regex]::Matches($html, "class='path-row'").Count | Should -Be 2
+    }
     It 'separates paths and combines cleanup phases without merging separate tasks (<Label>)' -ForEach @(
         @{ Label = 'local paths'; FirstPath = 'z:\first'; SecondPath = 'z:\second'; ComputerLabel = 'PC1' }
         @{ Label = 'multiple UNC servers'; FirstPath = '\\SERVER1\Logs'; SecondPath = '\\SERVER2\Logs'; ComputerLabel = 'PC1' }
@@ -2183,17 +2208,17 @@ Describe 'email rows per input path' {
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
         $testHtmlFile | Should -HaveCount 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        [regex]::Matches($html, 'border-left:3px solid').Count | Should -Be 3
+        [regex]::Matches($html, 'class="task-table"').Count | Should -Be 2
         [regex]::Matches($html, '>First &amp; primary</a>').Count | Should -Be 1
         [regex]::Matches($html, '>Second</a>').Count | Should -Be 1
         [regex]::Matches($html, '>Separate task</a>').Count | Should -Be 1
         $html | Should -BeLike '*Remove files older than 1 day (last write time), including subfolders; Remove empty folders*'
-        [regex]::Matches($html, '1 removed<br>1 error').Count | Should -Be 2
-        $rows = [regex]::Matches($html, '(?s)<table[^>]*border-left:3px solid.*?</table>').Value
-        ($rows | Where-Object { $_ -like '*>First &amp; primary</a>*' }) | Should -BeLike '*1 removed<br>1 error*'
-        ($rows | Where-Object { $_ -like '*>Second</a>*' }) | Should -BeLike '*1 removed<br>1 error*'
-        ($rows | Where-Object { $_ -like '*>Separate task</a>*' }) | Should -BeLike '*0 removed<br>1 error*'
-        $html | Should -BeLike '*0 removed<br>1 error*'
+        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should -Be 1
+        $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
+        $rows | Should -HaveCount 3
+        ($rows | Where-Object { $_ -like '*>First &amp; primary</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
+        ($rows | Where-Object { $_ -like '*>Second</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
+        ($rows | Where-Object { $_ -like '*>Separate task</a>*' }) | Should -BeLike "*class='removed-count'*>0</td>*class='error-count'*>1</td>*"
         $html | Should -BeLike "*>$ComputerLabel</p>*"
         $html | Should -BeLike '*2 paths</p>*'
         Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
@@ -2239,11 +2264,13 @@ if ($path -notlike '*\unchanged.txt') {
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
         $testHtmlFile | Should -HaveCount 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        $rows = [regex]::Matches($html, '(?s)<table[^>]*border-left:3px solid.*?</table>').Value
+        [regex]::Matches($html, 'class="task-table"').Count | Should -Be 1
+        [regex]::Matches($html, 'Remove file older than 1 day').Count | Should -Be 1
+        $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $rows | Should -HaveCount 3
-        ($rows | Where-Object { $_ -like '*>Removed file</a>*' }) | Should -BeLike '*1 removed</td>*'
-        ($rows | Where-Object { $_ -like '*>Failed file</a>*' }) | Should -BeLike '*0 removed<br>1 error*'
-        ($rows | Where-Object { $_ -like '*>Unchanged file</a>*' }) | Should -BeLike '*0 removed</td>*'
+        ($rows | Where-Object { $_ -like '*>Removed file</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>0</td>*"
+        ($rows | Where-Object { $_ -like '*>Failed file</a>*' }) | Should -BeLike "*class='removed-count'*>0</td>*class='error-count'*>1</td>*"
+        ($rows | Where-Object { $_ -like '*>Unchanged file</a>*' }) | Should -BeLike "*class='removed-count'*>0</td>*class='error-count'*>0</td>*"
         $html | Should -BeLike "*>$env:COMPUTERNAME</p>*"
         $html | Should -Not -BeLike '*>SERVER1</p>*'
         $html | Should -Not -BeLike '*>SERVER2</p>*'
