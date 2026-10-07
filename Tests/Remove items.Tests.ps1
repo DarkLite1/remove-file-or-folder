@@ -1,4 +1,4 @@
-#Requires -Modules Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
 #Requires -Version 7
 
 BeforeAll {
@@ -8,7 +8,7 @@ BeforeAll {
     $testTokens = $null
     $testParseErrors = $null
     $testAst = [System.Management.Automation.Language.Parser]::ParseFile($testScript, [ref]$testTokens, [ref]$testParseErrors)
-    $testParseErrors | Should -BeNullOrEmpty
+    $testParseErrors | Should-BeCollection -Count 0
     foreach ($testFunctionName in 'Get-ExclusiveCutoffHC', 'New-ReadErrorResultHC') {
         $testFunction = $testAst.Find({
                 param($node)
@@ -21,7 +21,7 @@ BeforeAll {
 Describe 'the mandatory parameters are' {
     It '<_>' -ForEach @('Type', 'Path') {
         (Get-Command $testScript).Parameters[$_].Attributes.Mandatory |
-        Should -BeTrue
+        Should-BeTrue
     }
 }
 Describe 'OlderThanUnit, OlderThanQuantity and OlderThanBasedOn are required for Type <_>' -ForEach @(
@@ -29,7 +29,7 @@ Describe 'OlderThanUnit, OlderThanQuantity and OlderThanBasedOn are required for
 ) {
     It 'throws when they are missing' {
         { . $testScript -Type $_ -Path 'TestDrive:\' -OlderThanUnit 'Day' -OlderThanQuantity 0 } |
-        Should -Throw "*Parameters 'OlderThanUnit', 'OlderThanQuantity' and 'OlderThanBasedOn' are mandatory for type '$_'*"
+        Should-Throw "*Parameters 'OlderThanUnit', 'OlderThanQuantity' and 'OlderThanBasedOn' are mandatory for type '$_'*"
     }
 }
 Describe 'worker diagnostic messages' {
@@ -42,9 +42,9 @@ Describe 'worker diagnostic messages' {
 
         $actual = @(& $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Verbose:$false)
 
-        $actual | Should -HaveCount 1000
-        @($actual | Where-Object Action -EQ Removed) | Should -HaveCount 1000
-        Should -Not -Invoke Write-Verbose -Scope It
+        $actual | Should-BeCollection -Count 1000
+        @($actual | Where-Object Action -EQ Removed) | Should-BeCollection -Count 1000
+        Should-NotInvoke Write-Verbose -Scope It
     }
 
     It 'shows the exact calendar cutoff and logs only completed file removals' {
@@ -58,11 +58,11 @@ Describe 'worker diagnostic messages' {
         $actual = @(& $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 1 -OlderThanBasedOn LastWriteTime -Verbose 4>&1)
         $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
 
-        $messages | Should -HaveCount 2
-        $messages[0] | Should -BeLike '*LastWriteTime before 2026-10-02 00:00:00 (exclusive calendar cutoff, local time)*'
-        $messages[1] | Should -Be "Removed file '$($testOld.FullName)'"
-        $testOld.FullName | Should -Not -Exist
-        $testKeep.FullName | Should -Exist
+        $messages | Should-BeCollection -Count 2
+        $messages[0] | Should-BeLikeString '*LastWriteTime before 2026-10-02 00:00:00 (exclusive calendar cutoff, local time)*'
+        $messages[1] | Should-Be "Removed file '$($testOld.FullName)'"
+        (Test-Path -LiteralPath $testOld.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testKeep.FullName) | Should-BeTrue
     }
 
     It 'describes quantity zero as disabled age filtering' {
@@ -70,8 +70,8 @@ Describe 'worker diagnostic messages' {
         $actual = @(& $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -Verbose 4>&1)
         $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
 
-        $messages[0] | Should -Be "Age filtering disabled for '$($testFile.FullName)'; exclusions and Recurse still apply"
-        $messages[1] | Should -Be "Removed file '$($testFile.FullName)'"
+        $messages[0] | Should-Be "Age filtering disabled for '$($testFile.FullName)'; exclusions and Recurse still apply"
+        $messages[1] | Should-Be "Removed file '$($testFile.FullName)'"
     }
 
     It 'does not invoke Write-Verbose for quiet empty-folder cleanup' {
@@ -80,9 +80,9 @@ Describe 'worker diagnostic messages' {
 
         $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -Verbose:$false)
 
-        $actual | Should -HaveCount 1
-        $actual[0].Action | Should -Be Removed
-        Should -Not -Invoke Write-Verbose -Scope It
+        $actual | Should-BeCollection -Count 1
+        $actual[0].Action | Should-Be Removed
+        Should-NotInvoke Write-Verbose -Scope It
     }
 }
 Describe 'attribute exclusions' {
@@ -110,13 +110,13 @@ Describe 'attribute exclusions' {
 
         $actual = @(& $testScript -Type $Type -Path $testRoot -ExcludeAttributes @($Attribute) -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Recurse $true)
 
-        $testProtected.FullName | Should -Exist
-        $testNested.FullName | Should -Exist
-        $testHiddenFile.FullName | Should -Exist
-        @($actual | Where-Object Error) | Should -HaveCount 0
-        Should -Not -Invoke Get-ChildItem -Scope It -ParameterFilter { $LiteralPath -eq $testProtected.FullName }
-        if ($Type -eq 'FilesInFolder') { $testOrdinary.FullName | Should -Not -Exist }
-        else { $testEmpty.FullName | Should -Not -Exist }
+        (Test-Path -LiteralPath $testProtected.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testNested.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testHiddenFile.FullName) | Should-BeTrue
+        @($actual | Where-Object Error) | Should-BeCollection -Count 0
+        Should-NotInvoke Get-ChildItem -Scope It -ParameterFilter { $LiteralPath -eq $testProtected.FullName }
+        if ($Type -eq 'FilesInFolder') { (Test-Path -LiteralPath $testOrdinary.FullName) | Should-BeFalse }
+        else { (Test-Path -LiteralPath $testEmpty.FullName) | Should-BeFalse }
     }
     It 'protects an explicitly selected <_> file' -ForEach @('Hidden', 'System') {
         $testFile = New-Item "TestDrive:/explicit-$_.txt" -ItemType File
@@ -124,8 +124,8 @@ Describe 'attribute exclusions' {
 
         $actual = @(& $testScript -Type File -Path $testFile.FullName -ExcludeAttributes @($_) -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime)
 
-        $actual | Should -HaveCount 0
-        $testFile.FullName | Should -Exist
+        $actual | Should-BeCollection -Count 0
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
     }
     It 'skips a matching root for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
         $testRoot = New-Item "TestDrive:/excluded-root-$_" -ItemType Directory
@@ -136,10 +136,10 @@ Describe 'attribute exclusions' {
 
         $actual = @(& $testScript -Type $_ -Path $testRoot.FullName -ExcludeAttributes @('Hidden', 'System') -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime -Recurse $true)
 
-        $actual | Should -HaveCount 0
-        $testFile.FullName | Should -Exist
-        $testEmpty.FullName | Should -Exist
-        Should -Not -Invoke Get-ChildItem -Scope It
+        $actual | Should-BeCollection -Count 0
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testEmpty.FullName) | Should-BeTrue
+        Should-NotInvoke Get-ChildItem -Scope It
     }
     It 'keeps a folder nonempty when only an excluded file remains' {
         $testRoot = (New-Item 'TestDrive:/nonempty-attributes/child' -ItemType Directory -Force).Parent.FullName
@@ -148,8 +148,8 @@ Describe 'attribute exclusions' {
 
         $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -ExcludeAttributes @('Hidden', 'System'))
 
-        $actual | Should -HaveCount 0
-        $testFile.FullName | Should -Exist
+        $actual | Should-BeCollection -Count 0
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
     }
     It 'continues to remove system files with an empty exclusion list' {
         $testFile = New-Item 'TestDrive:/default-system.txt' -ItemType File
@@ -157,8 +157,8 @@ Describe 'attribute exclusions' {
 
         $actual = @(& $testScript -Type File -Path $testFile.FullName -ExcludeAttributes @() -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime)
 
-        $actual[0].Action | Should -Be Removed
-        $testFile.FullName | Should -Not -Exist
+        $actual[0].Action | Should-Be Removed
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
     }
     It 'rechecks attributes immediately before deleting <Type>' -ForEach @(
         @{ Type = 'File'; Anchor = '$fileToRemove.Refresh()'; Target = '$fileToRemove.FullName' }
@@ -174,12 +174,12 @@ Describe 'attribute exclusions' {
             $Anchor,
             "[System.IO.File]::SetAttributes($Target, [System.IO.File]::GetAttributes($Target) -bor [System.IO.FileAttributes]::Hidden); $Anchor"
         )
-        $testScriptText | Should -Not -Be (Get-Content -LiteralPath $testScript -Raw)
+        $testScriptText | Should-NotBe (Get-Content -LiteralPath $testScript -Raw)
 
         $actual = @(& ([scriptblock]::Create($testScriptText)) -Type $Type -Path $testPath -ExcludeAttributes @('Hidden') -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime)
 
-        $testItem.FullName | Should -Exist
-        $actual | Should -HaveCount 0
+        (Test-Path -LiteralPath $testItem.FullName) | Should-BeTrue
+        $actual | Should-BeCollection -Count 0
     }
     It 'still reports non-excluded access failures for <_>' -ForEach @('FilesInFolder', 'EmptyFolders') {
         $testRoot = (New-Item "TestDrive:/attribute-denied-$_" -ItemType Directory).FullName
@@ -197,9 +197,9 @@ Describe 'attribute exclusions' {
             Set-Acl -LiteralPath $testDenied -AclObject $testAcl
         }
 
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testDenied
-        $actual[0].Error | Should -Not -BeNullOrEmpty
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testDenied
+        $actual[0].Error | Should-NotBeEmptyString
     }
 }
 Describe 'age validation' {
@@ -207,9 +207,9 @@ Describe 'age validation' {
         $testFile = New-Item "TestDrive:/negative_$_.txt" -ItemType File
 
         { . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity $_ -OlderThanBasedOn LastWriteTime } |
-        Should -Throw '*OlderThanQuantity*'
+        Should-Throw '*OlderThanQuantity*'
 
-        $testFile.FullName | Should -Exist
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
     }
 
     It 'continues to allow zero to remove a recent file' {
@@ -217,8 +217,8 @@ Describe 'age validation' {
 
         $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn LastWriteTime
 
-        $actual.Action | Should -Be 'Removed'
-        $testFile.FullName | Should -Not -Exist
+        $actual.Action | Should-Be 'Removed'
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
     }
 }
 Describe 'a path that does not exist is reported for Type <_>' -ForEach @(
@@ -227,42 +227,42 @@ Describe 'a path that does not exist is reported for Type <_>' -ForEach @(
     It 'with Error Path not found' {
         $actual = . $testScript -Type $_ -Path 'TestDrive:\notExisting' -OlderThanUnit 'Day' -OlderThanQuantity 0 -OlderThanBasedOn 'CreationTime'
 
-        $actual.Type | Should -Be $_
-        $actual.Error | Should -Be 'Path not found'
+        $actual.Type | Should-Be $_
+        $actual.Error | Should-Be 'Path not found'
     }
 }
 Describe 'optional missing paths' {
     It 'skips a missing configured path for <_>' -ForEach @('File', 'FilesInFolder', 'EmptyFolders') {
         $actual = @(. $testScript -Type $_ -Path 'TestDrive:\optional-missing' -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true)
 
-        $actual | Should -HaveCount 0
+        $actual | Should-BeCollection -Count 0
     }
     It 'still removes an existing file when enabled' {
         $testFile = New-Item 'TestDrive:/optional-existing.txt' -ItemType File
 
         $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
 
-        $actual.Action | Should -Be 'Removed'
-        $testFile.FullName | Should -Not -Exist
+        $actual.Action | Should-Be 'Removed'
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
     }
     It 'preserves missing-path errors when explicitly disabled' {
         $actual = . $testScript -Type File -Path 'TestDrive:\optional-missing' -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $false
 
-        $actual.Error | Should -Be 'Path not found'
+        $actual.Error | Should-Be 'Path not found'
     }
     It 'does not suppress a path of the wrong type' {
         $testFolder = New-Item 'TestDrive:/optional-wrong-type' -ItemType Directory
 
         $actual = . $testScript -Type File -Path $testFolder.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
 
-        $actual.Error | Should -Be 'Path not found'
-        $testFolder.FullName | Should -Exist
+        $actual.Error | Should-Be 'Path not found'
+        (Test-Path -LiteralPath $testFolder.FullName) | Should-BeTrue
     }
     It 'does not suppress an invalid path' {
         $actual = . $testScript -Type File -Path 'NoSuchTestProvider::invalid' -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
 
-        $actual.Error | Should -Not -BeNullOrEmpty
-        $actual.Action | Should -BeNullOrEmpty
+        $actual.Error | Should-NotBeEmptyString
+        $actual.Action | Should-BeNull
     }
     It 'does not suppress a locked-file deletion error' {
         $testFile = New-Item 'TestDrive:/optional-locked.txt' -ItemType File
@@ -270,9 +270,9 @@ Describe 'optional missing paths' {
         try {
             $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -IgnoreMissingPath $true
 
-            $actual.Error | Should -Not -BeNullOrEmpty
-            $actual.Action | Should -BeNullOrEmpty
-            $testFile.FullName | Should -Exist
+            $actual.Error | Should-HaveType ([System.Management.Automation.ErrorRecord])
+            $actual.Action | Should-BeNull
+            (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
         }
         finally {
             $testLock.Dispose()
@@ -307,18 +307,18 @@ Describe 'Type File' {
         $actual = . $testScript @testParams
     }
     It 'removes the requested file' {
-        $testParams.Path | Should -Not -Exist
-        $actual.Action | Should -Be 'Removed'
+        (Test-Path -LiteralPath $testParams.Path) | Should-BeFalse
+        $actual.Action | Should-Be 'Removed'
     }
     Context 'does not remove' {
         It 'other files' {
             $test.Files.foreach(
-                { $_.FullName | Should -Exist }
+                { (Test-Path -LiteralPath $_.FullName) | Should-BeTrue }
             )
         }
         It 'other folders' {
             $test.Folders.foreach(
-                { $_.FullName | Should -Exist }
+                { (Test-Path -LiteralPath $_.FullName) | Should-BeTrue }
             )
         }
     }
@@ -344,7 +344,7 @@ Describe 'Type FilesInFolder' {
 
             . $testScript @testNewParams
 
-            $testFile | Should -Exist
+            (Test-Path -LiteralPath $testFile) | Should-BeTrue
         }
         It 'Day' {
             $testUnit = 'Day'
@@ -369,7 +369,7 @@ Describe 'Type FilesInFolder' {
 
             . $testScript @testNewParams
 
-            $testFile | Should -Not -Exist
+            (Test-Path -LiteralPath $testFile) | Should-BeFalse
         }
         It 'Day' {
             $testUnit = 'Day'
@@ -394,7 +394,7 @@ Describe 'Type FilesInFolder' {
 
             . $testScript @testNewParams
 
-            $testFile | Should -Exist
+            (Test-Path -LiteralPath $testFile) | Should-BeTrue
         }
         It 'true removes files in subfolders' {
             $testNewParams = $testParams.Clone()
@@ -403,7 +403,7 @@ Describe 'Type FilesInFolder' {
 
             . $testScript @testNewParams
 
-            $testFile | Should -Not -Exist
+            (Test-Path -LiteralPath $testFile) | Should-BeFalse
         }
     }
     Context 'a file that cannot be removed' {
@@ -425,8 +425,8 @@ Describe 'Type FilesInFolder' {
         }
         It 'is reported with the file path, not the folder path' {
             ($actual | Where-Object FullName -EQ $testFile.FullName).Error |
-            Should -Not -BeNullOrEmpty
-            $testWarnings | Should -BeLike "*Failed to remove file '$($testFile.FullName)'*"
+            Should-HaveType ([System.Management.Automation.ErrorRecord])
+            ($testWarnings -join ' ') | Should-BeLikeString "*Failed to remove file '$($testFile.FullName)'*"
         }
     }
     Context 'a subfolder that cannot be read' {
@@ -462,11 +462,11 @@ Describe 'Type FilesInFolder' {
             }
         }
         It 'does not stop the removal of other files' {
-            $testFile.FullName | Should -Not -Exist
+            (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
         }
         It 'is reported as an error' {
             ($actual | Where-Object FullName -EQ $testDenied).Error |
-            Should -Not -BeNullOrEmpty
+            Should-NotBeEmptyString
         }
     }
 }
@@ -490,7 +490,7 @@ Describe 'Type EmptyFolders' {
         . $testScript @testParams
     }
     It 'removes folders when they are empty' {
-        "$($testParams.Path)/Empty" | Should -Not -Exist
+        (Test-Path -LiteralPath "$($testParams.Path)/Empty") | Should-BeFalse
     }
     It 'removes folders when they are empty and read-only' {
         $testFolder = New-Item "$($testParams.Path)/ReadOnly/a" -ItemType Directory
@@ -498,14 +498,14 @@ Describe 'Type EmptyFolders' {
 
         . $testScript @testParams
 
-        "$($testParams.Path)/ReadOnly" | Should -Not -Exist
+        (Test-Path -LiteralPath "$($testParams.Path)/ReadOnly") | Should-BeFalse
     }
     Context 'does not remove' {
         It 'the parent folder' {
-            $testParams.Path | Should -Exist
+            (Test-Path -LiteralPath $testParams.Path) | Should-BeTrue
         }
         It 'folders that are not empty' {
-            $testFile | Should -Exist
+            (Test-Path -LiteralPath $testFile) | Should-BeTrue
         }
         It 'folders that only contain a hidden file' {
             $testHiddenFile = New-Item "$($testParams.Path)/Hidden/h.txt" -ItemType File -Force
@@ -513,7 +513,7 @@ Describe 'Type EmptyFolders' {
 
             . $testScript @testParams
 
-            $testHiddenFile.FullName | Should -Exist
+            (Test-Path -LiteralPath $testHiddenFile.FullName) | Should-BeTrue
         }
     }
     Context 'a folder that is no longer empty when it is removed' {
@@ -526,15 +526,15 @@ Describe 'Type EmptyFolders' {
                 '$emptyFolder.Delete()',
                 'if ($emptyFolder.Name -eq ''Race'') { New-Item -Path (Join-Path $emptyFolder.FullName ''late.txt'') -ItemType File -Force | Out-Null }; $emptyFolder.Delete()'
             )
-            $testScriptText | Should -BeLike '*late.txt*'
+            $testScriptText | Should-BeLikeString '*late.txt*'
 
             $testWarnings = @()
             $actual = & ([scriptblock]::Create($testScriptText)) @testParams -WarningVariable testWarnings -WarningAction SilentlyContinue
 
-            $testFile | Should -Exist
+            (Test-Path -LiteralPath $testFile) | Should-BeTrue
             ($actual | Where-Object FullName -EQ $testFolder.FullName).Error |
-            Should -Not -BeNullOrEmpty
-            ($testWarnings -join ' ') | Should -BeLike "*Failed to remove empty folder '$($testFolder.FullName)'*"
+            Should-HaveType ([System.Management.Automation.ErrorRecord])
+            ($testWarnings -join ' ') | Should-BeLikeString "*Failed to remove empty folder '$($testFolder.FullName)'*"
         }
     }
     Context 'a subfolder that cannot be read' {
@@ -561,17 +561,17 @@ Describe 'Type EmptyFolders' {
             }
         }
         It 'does not stop the removal of other empty folders' {
-            $testEmptyFolder.FullName | Should -Not -Exist
+            (Test-Path -LiteralPath $testEmptyFolder.FullName) | Should-BeFalse
             ($actual | Where-Object FullName -EQ $testEmptyFolder.FullName).Action |
-            Should -Be 'Removed'
+            Should-Be 'Removed'
         }
         It 'is reported once as an error' {
-            @($actual | Where-Object FullName -EQ $testDenied) | Should -HaveCount 1
+            @($actual | Where-Object FullName -EQ $testDenied) | Should-BeCollection -Count 1
             ($actual | Where-Object FullName -EQ $testDenied).Error |
-            Should -Not -BeNullOrEmpty
+            Should-NotBeEmptyString
         }
         It 'writes no error to the error stream' {
-            $testErrors | Should -BeNullOrEmpty
+            $testErrors | Should-BeCollection -Count 0
         }
     }
 }
@@ -601,26 +601,26 @@ Describe 'ExcludeFolder' {
         It 'does not remove files in the excluded folder or its subfolders' {
             $actual = . $testScript @testParams
 
-            $testKeepFile.FullName | Should -Exist
-            $testKeepDeepFile.FullName | Should -Exist
-            $actual.FullName | Should -Not -Contain $testKeepFile.FullName
+            (Test-Path -LiteralPath $testKeepFile.FullName) | Should-BeTrue
+            (Test-Path -LiteralPath $testKeepDeepFile.FullName) | Should-BeTrue
+            $actual.FullName | Should-NotContainCollection $testKeepFile.FullName
         }
         It 'removes the other files' {
             . $testScript @testParams
 
-            $testRemoveFile.FullName | Should -Not -Exist
+            (Test-Path -LiteralPath $testRemoveFile.FullName) | Should-BeFalse
         }
         It 'removes files in a folder that only starts with the same name' {
             . $testScript @testParams
 
-            $testSimilarName.FullName | Should -Not -Exist
+            (Test-Path -LiteralPath $testSimilarName.FullName) | Should-BeFalse
         }
         It 'accepts an excluded folder with a trailing backslash' {
             $testParams.ExcludeFolder = @("$testRoot\Keep\")
 
             . $testScript @testParams
 
-            $testKeepFile.FullName | Should -Exist
+            (Test-Path -LiteralPath $testKeepFile.FullName) | Should-BeTrue
         }
         It 'ignores read errors in the excluded folder' {
             $testUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -641,8 +641,8 @@ Describe 'ExcludeFolder' {
                 Set-Acl -LiteralPath $testDenied -AclObject $testAcl
             }
 
-            $actual.Error | Where-Object { $_ } | Should -BeNullOrEmpty
-            $testWarnings | Should -BeNullOrEmpty
+            $actual.Error | Where-Object { $_ } | Should-BeCollection -Count 0
+            $testWarnings | Should-BeCollection -Count 0
         }
     }
     Context 'Type EmptyFolders' {
@@ -656,7 +656,7 @@ Describe 'ExcludeFolder' {
         It 'does not remove empty folders in the excluded folder' {
             . $testScript @testParams
 
-            $testKeepEmptyFolder.FullName | Should -Exist
+            (Test-Path -LiteralPath $testKeepEmptyFolder.FullName) | Should-BeTrue
         }
         It 'does not remove the excluded folder when it is empty' {
             $testEmptyExcluded = New-Item "$testRoot\EmptyKeep" -ItemType Directory
@@ -664,12 +664,12 @@ Describe 'ExcludeFolder' {
 
             . $testScript @testParams
 
-            $testEmptyExcluded.FullName | Should -Exist
+            (Test-Path -LiteralPath $testEmptyExcluded.FullName) | Should-BeTrue
         }
         It 'removes the other empty folders' {
             . $testScript @testParams
 
-            $testRemoveEmptyFolder.FullName | Should -Not -Exist
+            (Test-Path -LiteralPath $testRemoveEmptyFolder.FullName) | Should-BeFalse
         }
     }
 }
@@ -694,12 +694,12 @@ Describe 'ExcludeFile' {
         $actual = . $testScript @testParams
     }
     It 'does not remove the excluded file, regardless of casing' {
-        $testKeepFile.FullName | Should -Exist
-        $actual.FullName | Should -Not -Contain $testKeepFile.FullName
+        (Test-Path -LiteralPath $testKeepFile.FullName) | Should-BeTrue
+        $actual.FullName | Should-NotContainCollection $testKeepFile.FullName
     }
     It 'removes the other files' {
-        $testRemoveFile.FullName | Should -Not -Exist
-        $testRemoveTopFile.FullName | Should -Not -Exist
+        (Test-Path -LiteralPath $testRemoveFile.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testRemoveTopFile.FullName) | Should-BeFalse
     }
 }
 Describe 'streamed file processing' {
@@ -711,8 +711,8 @@ Describe 'streamed file processing' {
 
         $actual = . $testScript -Type $_ -Path $testPath -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
 
-        $actual.Action | Should -Be 'Removed'
-        $testFile.FullName | Should -Not -Exist
+        $actual.Action | Should-Be 'Removed'
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
     }
 
     It 'reports a file that disappears after enumeration' {
@@ -725,10 +725,10 @@ Describe 'streamed file processing' {
 
         $actual = @(. $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -WarningAction SilentlyContinue)
 
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testFile.FullName
-        $actual[0].Error | Should -Not -BeNullOrEmpty
-        $actual[0].Action | Should -BeNullOrEmpty
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testFile.FullName
+        $actual[0].Error | Should-HaveType ([System.Management.Automation.ErrorRecord])
+        $actual[0].Action | Should-BeNull
     }
 
     It 'preserves a file updated after its cached timestamp was selected' {
@@ -739,16 +739,16 @@ Describe 'streamed file processing' {
             '$fileToRemove.Refresh()',
             '[System.IO.File]::SetLastWriteTime($fileToRemove.FullName, [datetime]::Now); $fileToRemove.Refresh()'
         )
-        $testScriptText | Should -BeLike '*SetLastWriteTime*'
+        $testScriptText | Should-BeLikeString '*SetLastWriteTime*'
 
         $testVerbose = @()
         $actual = @(& ([scriptblock]::Create($testScriptText)) -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 30 -OlderThanBasedOn LastWriteTime -Verbose 4>&1)
         $testVerbose = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] })
         $actual = @($actual | Where-Object { $_ -isnot [System.Management.Automation.VerboseRecord] })
 
-        $actual | Should -HaveCount 0
-        $testFile.FullName | Should -Exist
-        @($testVerbose | Where-Object { $_.Message -like 'Removed file*' }) | Should -HaveCount 0
+        $actual | Should-BeCollection -Count 0
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
+        @($testVerbose | Where-Object { $_.Message -like 'Removed file*' }) | Should-BeCollection -Count 0
     }
 
     It 'removes a file before enumeration produces the next file' {
@@ -757,14 +757,14 @@ Describe 'streamed file processing' {
         $testSecond = New-Item "$testRoot/second.txt" -ItemType File
         Mock Get-ChildItem {
             $testFirst
-            $testFirst.FullName | Should -Not -Exist
+            (Test-Path -LiteralPath $testFirst.FullName) | Should-BeFalse
             $testSecond
         }
 
         $actual = @(. $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime)
 
-        $actual | Should -HaveCount 2
-        $testSecond.FullName | Should -Not -Exist
+        $actual | Should-BeCollection -Count 2
+        (Test-Path -LiteralPath $testSecond.FullName) | Should-BeFalse
     }
 
     It 'handles duplicate case-insensitive exclusions and similar file names' {
@@ -774,8 +774,8 @@ Describe 'streamed file processing' {
 
         . $testScript -Type FilesInFolder -Path $testRoot -ExcludeFile @($testKeep.FullName, $testKeep.FullName.ToUpperInvariant()) -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
 
-        $testKeep.FullName | Should -Exist
-        $testRemove.FullName | Should -Not -Exist
+        (Test-Path -LiteralPath $testKeep.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testRemove.FullName) | Should-BeFalse
     }
 }
 Describe 'exclusive cutoff helper' {
@@ -789,43 +789,43 @@ Describe 'exclusive cutoff helper' {
     ) {
         $actual = Get-ExclusiveCutoffHC -ReferenceDate ([datetime]$ReferenceDate) -Unit $Unit -Quantity $Quantity
 
-        $actual | Should -BeOfType ([datetime])
-        $actual | Should -Be ([datetime]$Expected)
+        $actual | Should-HaveType ([datetime])
+        $actual | Should-Be ([datetime]$Expected)
     }
 
     It 'rejects nonpositive quantity <_>' -ForEach @(0, -1) {
         { Get-ExclusiveCutoffHC -ReferenceDate ([datetime]'2026-10-02') -Unit Day -Quantity $_ } |
-        Should -Throw '*Quantity*'
+        Should-Throw '*Quantity*'
     }
 
     It 'preserves the overflow error for <_>' -ForEach @('Day', 'Month', 'Year') {
         { Get-ExclusiveCutoffHC -ReferenceDate ([datetime]'2026-10-02') -Unit $_ -Quantity ([int]::MaxValue) } |
-        Should -Throw '*Invalid retention period*'
+        Should-Throw '*Invalid retention period*'
     }
 }
 Describe 'read-error result helper' {
     It 'preserves the result schema for <_>' -ForEach @('File', 'FilesInFolder', 'EmptyFolders') {
         $actual = @(New-ReadErrorResultHC -FullName 'z:\folder\[item]' -ItemType $_ -Message 'Access denied')
 
-        $actual | Should -HaveCount 1
+        $actual | Should-BeCollection -Count 1
         ($actual[0].PSObject.Properties.Name -join ',') |
-        Should -Be 'DateTime,ComputerName,Type,FullName,CreationTime,Action,Error'
-        $actual[0].DateTime | Should -BeOfType ([datetime])
-        $actual[0].ComputerName | Should -Be $env:COMPUTERNAME
-        $actual[0].Type | Should -Be $_
-        $actual[0].FullName | Should -Be 'z:\folder\[item]'
-        $actual[0].CreationTime | Should -BeNullOrEmpty
-        $actual[0].Action | Should -BeNullOrEmpty
-        $actual[0].Error | Should -BeOfType ([string])
-        $actual[0].Error | Should -Be 'Access denied'
+        Should-Be 'DateTime,ComputerName,Type,FullName,CreationTime,Action,Error'
+        $actual[0].DateTime | Should-HaveType ([datetime])
+        $actual[0].ComputerName | Should-Be $env:COMPUTERNAME
+        $actual[0].Type | Should-Be $_
+        $actual[0].FullName | Should-Be 'z:\folder\[item]'
+        $actual[0].CreationTime | Should-BeNull
+        $actual[0].Action | Should-BeNull
+        $actual[0].Error | Should-HaveType ([string])
+        $actual[0].Error | Should-Be 'Access denied'
     }
 
     It 'allows an enumeration error without a target path and emits no warning itself' {
         $actual = New-ReadErrorResultHC -FullName '' -ItemType FilesInFolder -Message 'Read failed' 3>&1
 
-        @($actual) | Should -HaveCount 1
-        $actual.FullName | Should -Be ''
-        $actual.Error | Should -Be 'Read failed'
+        @($actual) | Should-BeCollection -Count 1
+        $actual.FullName | Should-Be ''
+        $actual.Error | Should-Be 'Read failed'
     }
 }
 Describe 'calendar cutoff boundaries' {
@@ -849,20 +849,20 @@ Describe 'calendar cutoff boundaries' {
 
         $actual = @(. $testScript -Type FilesInFolder -Path $testRoot -OlderThanUnit $Unit -OlderThanQuantity 1 -OlderThanBasedOn $BasedOn)
 
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testBefore.FullName
-        $testBefore.FullName | Should -Not -Exist
-        $testAt.FullName | Should -Exist
-        $testAfter.FullName | Should -Exist
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testBefore.FullName
+        (Test-Path -LiteralPath $testBefore.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testAt.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testAfter.FullName) | Should-BeTrue
     }
 
     It 'rejects an overflowing <_> cutoff before deleting anything' -ForEach @('Day', 'Month', 'Year') {
         $testFile = New-Item "TestDrive:/overflow_$_.txt" -ItemType File
 
         { . $testScript -Type File -Path $testFile.FullName -OlderThanUnit $_ -OlderThanQuantity ([int]::MaxValue) -OlderThanBasedOn CreationTime } |
-        Should -Throw '*Invalid retention period*'
+        Should-Throw '*Invalid retention period*'
 
-        $testFile.FullName | Should -Exist
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
     }
 }
 Describe 'disappearing empty subfolders' {
@@ -879,10 +879,10 @@ Describe 'disappearing empty subfolders' {
 
         $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -WarningVariable testWarnings -WarningAction SilentlyContinue 2>&1)
 
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testOther.FullName
-        $actual[0].Action | Should -Be 'Removed'
-        $testWarnings | Should -BeNullOrEmpty
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testOther.FullName
+        $actual[0].Action | Should-Be 'Removed'
+        $testWarnings | Should-BeCollection -Count 0
     }
     It 'still reports a missing configured root' {
         $testRoot = Join-Path $TestDrive 'missing-root'
@@ -890,10 +890,10 @@ Describe 'disappearing empty subfolders' {
 
         $actual = @(& $testScript -Type EmptyFolders -Path $testRoot -WarningVariable testWarnings -WarningAction SilentlyContinue)
 
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testRoot
-        $actual[0].Error | Should -Not -BeNullOrEmpty
-        $testWarnings | Should -Not -BeNullOrEmpty
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testRoot
+        $actual[0].Error | Should-NotBeEmptyString
+        $testWarnings | Should-NotBeNull
     }
     It 'keeps the error when the configured root also disappears' {
         $testRoot = (New-Item 'TestDrive:/disappeared-root' -ItemType Directory).FullName
@@ -905,10 +905,10 @@ Describe 'disappearing empty subfolders' {
 
         $actual = @(& ([scriptblock]::Create($testScriptText)) -Type EmptyFolders -Path $testRoot -WarningAction SilentlyContinue)
 
-        $testRoot | Should -Not -Exist
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testGone.FullName
-        $actual[0].Error | Should -Not -BeNullOrEmpty
+        (Test-Path -LiteralPath $testRoot) | Should-BeFalse
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testGone.FullName
+        $actual[0].Error | Should-NotBeEmptyString
     }
     It 'skips a folder that disappears before <Stage> and continues cleanup' -ForEach @(
         @{ Stage = 'inspection'; Anchor = '$iterator = $Folder.EnumerateFileSystemInfos().GetEnumerator()'; Injection = 'if ($Folder.Name -eq ''Gone'') { $Folder.Delete() }; ' }
@@ -918,19 +918,19 @@ Describe 'disappearing empty subfolders' {
         $testGone = New-Item "$testRoot/Gone" -ItemType Directory
         $testOther = New-Item "$testRoot/Other" -ItemType Directory
         $testScriptText = (Get-Content -LiteralPath $testScript -Raw).Replace($Anchor, "$Injection$Anchor")
-        $testScriptText | Should -Not -Be (Get-Content -LiteralPath $testScript -Raw)
+        $testScriptText | Should-NotBe (Get-Content -LiteralPath $testScript -Raw)
         $testWarnings = @()
 
         $actual = @(& ([scriptblock]::Create($testScriptText)) -Type EmptyFolders -Path $testRoot -WarningVariable testWarnings -WarningAction SilentlyContinue 2>&1)
 
-        $testRoot | Should -Exist
-        $testGone.FullName | Should -Not -Exist
-        $testOther.FullName | Should -Not -Exist
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testOther.FullName
-        $actual[0].Action | Should -Be 'Removed'
-        $testWarnings | Should -BeNullOrEmpty
-        @($actual | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) | Should -HaveCount 0
+        (Test-Path -LiteralPath $testRoot) | Should-BeTrue
+        (Test-Path -LiteralPath $testGone.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testOther.FullName) | Should-BeFalse
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testOther.FullName
+        $actual[0].Action | Should-Be 'Removed'
+        $testWarnings | Should-BeCollection -Count 0
+        @($actual | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) | Should-BeCollection -Count 0
     }
 }
 Describe 'lazy emptiness checks' {
@@ -952,14 +952,14 @@ Describe 'lazy emptiness checks' {
 
         $actual = @(. $testScript -Type EmptyFolders -Path $testRoot -WarningAction SilentlyContinue)
 
-        $testIterator.Calls | Should -Be 1
-        $testIterator.Disposed | Should -BeTrue
-        $testFolder.FullName | Should -Exist
+        $testIterator.Calls | Should-Be 1
+        $testIterator.Disposed | Should-BeTrue
+        (Test-Path -LiteralPath $testFolder.FullName) | Should-BeTrue
         if ($testIterator.Fail) {
-            $actual | Should -HaveCount 1
-            $actual[0].Error | Should -BeLike '*Enumeration failed*'
+            $actual | Should-BeCollection -Count 1
+            $actual[0].Error | Should-BeLikeString '*Enumeration failed*'
         }
-        else { $actual | Should -HaveCount 0 }
+        else { $actual | Should-BeCollection -Count 0 }
     }
 }
 Describe 'excluded subtree traversal' {
@@ -980,23 +980,23 @@ Describe 'excluded subtree traversal' {
 
         . $testScript -Type $testType -Path $testRoot -ExcludeFolder "$testRoot/Keep" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
 
-        $testKeep.FullName | Should -Exist
-        if ($testType -eq 'FilesInFolder') { $testRemove.FullName | Should -Not -Exist }
-        else { $testEmpty.FullName | Should -Not -Exist }
-        Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter { $PesterBoundParameters['Recurse'] }
-        Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
+        (Test-Path -LiteralPath $testKeep.FullName) | Should-BeTrue
+        if ($testType -eq 'FilesInFolder') { (Test-Path -LiteralPath $testRemove.FullName) | Should-BeFalse }
+        else { (Test-Path -LiteralPath $testEmpty.FullName) | Should-BeFalse }
+        Should-Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter { $PesterBoundParameters['Recurse'] }
+        Should-Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
             $LiteralPath -like "$testRoot\Keep*"
         }
-        Should -Invoke Get-ChildItem -Times 1 -Exactly -Scope It -ParameterFilter {
+        Should-Invoke Get-ChildItem -Times 1 -Exactly -Scope It -ParameterFilter {
             $LiteralPath -eq "$testRoot\Other"
         }
         if ($testType -eq 'EmptyFolders') {
-            Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should-Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
                 -not $PesterBoundParameters['Directory']
             }
         }
         else {
-            Should -Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should-Invoke Get-ChildItem -Times 0 -Exactly -Scope It -ParameterFilter {
                 $PesterBoundParameters.ContainsKey('Directory')
             }
         }
@@ -1009,7 +1009,7 @@ Describe 'excluded subtree traversal' {
         try {
             . $testScript -Type FilesInFolder -Path $testRoot -ExcludeFolder "$testRoot/unused" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
 
-            $testOutside.FullName | Should -Exist
+            (Test-Path -LiteralPath $testOutside.FullName) | Should-BeTrue
         }
         finally { $testLink.Delete() }
     }
@@ -1031,9 +1031,9 @@ Describe 'excluded subtree traversal' {
             Set-Acl -LiteralPath $testDenied -AclObject $testAcl
         }
 
-        @($actual | Where-Object FullName -EQ $testDenied) | Should -HaveCount 1
-        ($actual | Where-Object FullName -EQ $testDenied).Error | Should -Not -BeNullOrEmpty
-        $testDenied | Should -Exist
+        @($actual | Where-Object FullName -EQ $testDenied) | Should-BeCollection -Count 1
+        ($actual | Where-Object FullName -EQ $testDenied).Error | Should-NotBeEmptyString
+        (Test-Path -LiteralPath $testDenied) | Should-BeTrue
     }
 }
 Describe 'single-pass empty-folder cleanup' {
@@ -1047,13 +1047,13 @@ Describe 'single-pass empty-folder cleanup' {
 
         $actual = @(. $testScript -Type EmptyFolders -Path $testRoot)
 
-        $actual | Should -HaveCount 40
-        @($actual.FullName | Select-Object -Unique) | Should -HaveCount 40
-        $actual[0].FullName | Should -Be $testNested
-        $actual[-1].FullName | Should -Be (Join-Path $testRoot 'd')
-        $actual.Error | Where-Object { $_ } | Should -BeNullOrEmpty
-        $testRoot | Should -Exist
-        Should -Invoke Get-ChildItem -Times 1 -Exactly -Scope It
+        $actual | Should-BeCollection -Count 40
+        @($actual.FullName | Select-Object -Unique) | Should-BeCollection -Count 40
+        $actual[0].FullName | Should-Be $testNested
+        $actual[-1].FullName | Should-Be (Join-Path $testRoot 'd')
+        $actual.Error | Where-Object { $_ } | Should-BeCollection -Count 0
+        (Test-Path -LiteralPath $testRoot) | Should-BeTrue
+        Should-Invoke Get-ChildItem -Times 1 -Exactly -Scope It
     }
 }
 Describe 'hidden items and retrieval errors' {
@@ -1063,8 +1063,8 @@ Describe 'hidden items and retrieval errors' {
 
         $actual = . $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
 
-        $testFile.FullName | Should -Not -Exist
-        $actual.Action | Should -Be 'Removed'
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
+        $actual.Action | Should-Be 'Removed'
     }
 
     It 'removes nested hidden empty folders but preserves hidden content' {
@@ -1077,9 +1077,9 @@ Describe 'hidden items and retrieval errors' {
 
         . $testScript -Type EmptyFolders -Path $testRoot
 
-        "$testRoot/empty" | Should -Not -Exist
-        $testKeep.FullName | Should -Exist
-        $testRoot | Should -Exist
+        (Test-Path -LiteralPath "$testRoot/empty") | Should-BeFalse
+        (Test-Path -LiteralPath $testKeep.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testRoot) | Should-BeTrue
     }
 
     It 'returns a retrieval error when a file becomes unreadable after validation' {
@@ -1090,11 +1090,11 @@ Describe 'hidden items and retrieval errors' {
 
         $actual = @(. $testScript -Type File -Path $testFile.FullName -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime -WarningAction SilentlyContinue)
 
-        $actual | Should -HaveCount 1
-        $actual[0].FullName | Should -Be $testFile.FullName
-        $actual[0].Error | Should -BeLike '*Read failed*'
-        $actual[0].Action | Should -BeNullOrEmpty
-        $testFile.FullName | Should -Exist
+        $actual | Should-BeCollection -Count 1
+        $actual[0].FullName | Should-Be $testFile.FullName
+        $actual[0].Error | Should-BeLikeString '*Read failed*'
+        $actual[0].Action | Should-BeNull
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
     }
 }
 Describe 'normalized exclusions' {
@@ -1120,9 +1120,9 @@ Describe 'normalized exclusions' {
 
         . $testScript @testParams
 
-        $testKeep.FullName | Should -Exist
-        $testFile.FullName | Should -Exist
-        if ($Type -eq 'EmptyFolders') { $testOther.FullName | Should -Not -Exist }
+        (Test-Path -LiteralPath $testKeep.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
+        if ($Type -eq 'EmptyFolders') { (Test-Path -LiteralPath $testOther.FullName) | Should-BeFalse }
     }
 
     It 'protects a file using <_>' -ForEach @(
@@ -1134,8 +1134,8 @@ Describe 'normalized exclusions' {
 
         . $testScript -Type FilesInFolder -Path $testRoot -ExcludeFile "$testRoot/$_" -Recurse $true -OlderThanUnit Day -OlderThanQuantity 0 -OlderThanBasedOn CreationTime
 
-        $testFile.FullName | Should -Exist
-        $testOther.FullName | Should -Not -Exist
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testOther.FullName) | Should-BeFalse
     }
 
     It 'resolves relative exclusions in the worker location' {
@@ -1147,7 +1147,7 @@ Describe 'normalized exclusions' {
         }
         finally { Pop-Location }
 
-        $testFile.FullName | Should -Exist
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
     }
 }
 Describe 'OlderThanBasedOn <BasedOn>' -ForEach @(
@@ -1180,17 +1180,17 @@ Describe 'OlderThanBasedOn <BasedOn>' -ForEach @(
     }
     It 'a file created long ago but written today is removed: <RemovesDailyWrittenFile>' {
         Test-Path -LiteralPath $testDailyWrittenFile.FullName |
-        Should -Be (-not $RemovesDailyWrittenFile)
+        Should-Be (-not $RemovesDailyWrittenFile)
     }
     It 'a file created today with an old last write time is removed: <RemovesCopiedFile>' {
         Test-Path -LiteralPath $testCopiedFile.FullName |
-        Should -Be (-not $RemovesCopiedFile)
+        Should-Be (-not $RemovesCopiedFile)
     }
     It 'reports both dates of a removed file' {
-        $actual | Should -Not -BeNullOrEmpty
+        $actual | Should-NotBeNull
         $actual | ForEach-Object {
-            $_.CreationTime | Should -Not -BeNullOrEmpty
-            $_.LastWriteTime | Should -Not -BeNullOrEmpty
+            $_.CreationTime | Should-NotBeNull
+            $_.LastWriteTime | Should-NotBeNull
         }
     }
 }

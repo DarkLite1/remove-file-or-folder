@@ -1,5 +1,5 @@
 #Requires -Version 7
-#Requires -Modules Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
 
 BeforeAll {
     $testScript = Join-Path (Split-Path $PSScriptRoot) 'Tools\Convert-InputFile.ps1'
@@ -41,52 +41,52 @@ Describe 'Convert-InputFile' {
     It 'groups files with the same settings in one task' {
         $task = $actual.Tasks | Where-Object { $_.Files }
 
-        @($task) | Should -HaveCount 1
-        $task.Files[0].Name | Should -Be 'Log'
-        $task.Files[0].Path | Should -Be '\\s\a.txt'
-        $task.Files[1] | Should -Be '\\s\b.txt'
-        $task.OlderThan.Quantity | Should -Be 0
+        @($task) | Should-BeCollection -Count 1
+        $task.Files[0].Name | Should-Be 'Log'
+        $task.Files[0].Path | Should-Be '\\s\a.txt'
+        $task.Files[1] | Should-Be '\\s\b.txt'
+        $task.OlderThan.Quantity | Should-Be 0
     }
     It 'keeps comparing the creation time like the old format' {
         $actual.Tasks.OlderThan.BasedOn | Sort-Object -Unique |
-        Should -Be 'CreationTime'
+        Should-Be 'CreationTime'
     }
     It 'groups folders with the same computer and settings in one task' {
         $task = $actual.Tasks | Where-Object { $_.OlderThan.Unit -eq 'Month' }
 
-        @($task) | Should -HaveCount 1
-        $task.ComputerName | Should -Be 'PC1'
-        $task.Recurse | Should -BeTrue
-        @($task.Folders) | Should -HaveCount 2
+        @($task) | Should-BeCollection -Count 1
+        $task.ComputerName | Should-Be 'PC1'
+        $task.Recurse | Should-BeTrue
+        @($task.Folders) | Should-BeCollection -Count 2
     }
     It 'sets RemoveEmptyFolders for folders that were also in EmptyFolders' {
         $task = $actual.Tasks | Where-Object { $_.OlderThan.Unit -eq 'Month' }
 
-        $task.RemoveEmptyFolders | Should -BeTrue
-        $task.Folders.Name | Should -Be @('Folder A', 'Folder B')
+        $task.RemoveEmptyFolders | Should-BeTrue
+        $task.Folders.Name | Should-BeCollection @('Folder A', 'Folder B')
     }
     It 'does not set RemoveEmptyFolders for the other folders' {
         $task = $actual.Tasks | Where-Object { $_.OlderThan.Quantity -eq 7 }
 
-        $task.RemoveEmptyFolders | Should -BeFalse
-        $task.Folders | Should -Be 'D:\c'
+        $task.RemoveEmptyFolders | Should-BeFalse
+        $task.Folders | Should-Be 'D:\c'
     }
     It 'creates a task without OlderThan for the remaining empty folders' {
         $task = $actual.Tasks | Where-Object { -not $_.OlderThan }
 
-        $task.Folders | Should -Be '\\s\empty'
-        $task.RemoveEmptyFolders | Should -BeTrue
-        $task.PSObject.Properties.Name | Should -Not -Contain 'Recurse'
+        $task.Folders | Should-Be '\\s\empty'
+        $task.RemoveEmptyFolders | Should-BeTrue
+        $task.PSObject.Properties.Name | Should-NotContainCollection 'Recurse'
     }
     It 'converts MaxConcurrentJobs and SendMail' {
-        $actual.MaxConcurrent.JobsTotal | Should -Be 3
-        $actual.MaxConcurrent.JobsPerComputer | Should -Be 3
-        $actual.Settings.SendMail.To | Should -Be 'bob@example.com'
-        $actual.Settings.SendMail.When | Should -Be 'OnErrorOrAction'
-        $actual.Settings.ScriptName | Should -Be 'My input'
+        $actual.MaxConcurrent.JobsTotal | Should-Be 3
+        $actual.MaxConcurrent.JobsPerComputer | Should-Be 3
+        $actual.Settings.SendMail.To | Should-Be 'bob@example.com'
+        $actual.Settings.SendMail.When | Should-Be 'OnErrorOrAction'
+        $actual.Settings.ScriptName | Should-Be 'My input'
     }
     It 'throws for a file that is not in the old format' {
         { & $testScript -Path $testNewPath -Destination 'TestDrive:/x.json' } |
-        Should -Throw "*has no 'Remove' property*"
+        Should-Throw "*has no 'Remove' property*"
     }
 }

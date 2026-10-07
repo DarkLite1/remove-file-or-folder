@@ -1,5 +1,5 @@
 #Requires -Version 7
-#Requires -Modules Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
 #Requires -Modules ImportExcel
 
 BeforeAll {
@@ -211,7 +211,7 @@ BeforeAll {
 Describe 'the mandatory parameters are' {
     It '<_>' -ForEach @('ConfigurationJsonFile') {
         (Get-Command $testScript).Parameters[$_].Attributes.Mandatory |
-        Should -BeTrue
+        Should-BeTrue
     }
 }
 Describe 'grouped Exclude configuration' {
@@ -231,16 +231,16 @@ Describe 'grouped Exclude configuration' {
 
         & $testScript @testParams
 
-        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+        Should-Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
             ($ArgumentList[0] -eq 'File') -and (($ArgumentList[8] -join ',') -eq 'Hidden')
         }
-        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+        Should-Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
             ($ArgumentList[0] -eq 'FilesInFolder') -and
             (($ArgumentList[2] -join ',') -eq 'z:\folder\keep') -and
             (($ArgumentList[6] -join ',') -eq 'z:\folder\state.json') -and
             (($ArgumentList[8] -join ',') -eq 'Hidden,System')
         }
-        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+        Should-Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
             ($ArgumentList[0] -eq 'EmptyFolders') -and ($ArgumentList[1] -eq 'z:\folder') -and
             (($ArgumentList[2] -join ',') -eq 'z:\folder\keep') -and
             (($ArgumentList[8] -join ',') -eq 'Hidden,System')
@@ -255,7 +255,7 @@ Describe 'grouped Exclude configuration' {
 
         & $testScript @testParams
 
-        Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+        Should-Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
             ($ArgumentList[0] -eq 'FilesInFolder') -and
             ($ArgumentList[2].Count -eq 0) -and ($ArgumentList[6].Count -eq 0) -and ($ArgumentList[8].Count -eq 0)
         }
@@ -277,8 +277,8 @@ Describe 'grouped Exclude configuration' {
 
         & $testScript @testParams
 
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike "*$([WildcardPattern]::Escape("Tasks[1].$Property"))*"
-        Should -Invoke Invoke-Command -Times 0 -Exactly -Scope It
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should-BeLikeString "*$([WildcardPattern]::Escape("Tasks[1].$Property"))*"
+        Should-Invoke Invoke-Command -Times 0 -Exactly -Scope It
     }
     It 'rejects unsupported flat <_>' -ForEach @('ExcludeAttributes', 'ExcludeFolders', 'ExcludeFiles') {
         $testNewInputFile.Tasks[1] | Add-Member $_ @()
@@ -286,8 +286,8 @@ Describe 'grouped Exclude configuration' {
 
         & $testScript @testParams
 
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike "*$([WildcardPattern]::Escape("Tasks[1].$_"))*is not supported*"
-        Should -Invoke Invoke-Command -Times 0 -Exactly -Scope It
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should-BeLikeString "*$([WildcardPattern]::Escape("Tasks[1].$_"))*is not supported*"
+        Should-Invoke Invoke-Command -Times 0 -Exactly -Scope It
     }
 }
 Describe 'IgnoreMissingPath configuration' {
@@ -311,7 +311,7 @@ Describe 'IgnoreMissingPath configuration' {
         & $testScript @testParams
 
         foreach ($type in 'File', 'FilesInFolder', 'EmptyFolders') {
-            Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+            Should-Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
                 ($ArgumentList[0] -eq $type) -and ($ArgumentList[9] -ceq [bool]$Value)
             }
         }
@@ -328,10 +328,10 @@ Describe 'IgnoreMissingPath configuration' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
-        (Get-TestSystemErrorsHC).Message | Should -BeLike '*Tasks[[]0].IgnoreMissingPath*needs a boolean*'
-        Should -Not -Invoke Invoke-Command -Scope It
-        Should -Not -Invoke New-PSSession -Scope It
+        $LASTEXITCODE | Should-Be 1
+        (Get-TestSystemErrorsHC).Message | Should-BeLikeString '*Tasks[[]0].IgnoreMissingPath*needs a boolean*'
+        Should-NotInvoke Invoke-Command -Scope It
+        Should-NotInvoke New-PSSession -Scope It
     }
     It 'reports no errors for optional missing files and folders with JobsTotal <JobsTotal>' -ForEach @(
         @{ JobsTotal = 1 }
@@ -359,15 +359,15 @@ Describe 'IgnoreMissingPath configuration' {
 
         & $testScript -ConfigurationJsonFile $testOutParams.FilePath
 
-        $LASTEXITCODE | Should -Be 0
+        $LASTEXITCODE | Should-Be 0
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
-        $testHtmlFile | Should -HaveCount 1
+        $testHtmlFile | Should-BeCollection -Count 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        $html | Should -Not -BeLike '*Path not found*'
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        $html | Should-NotBeLikeString '*Path not found*'
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             ($Subject -eq '0 removed') -and ($Body -ceq $html)
         }
-        Should -Not -Invoke Write-EventLog -Scope It -ParameterFilter { $EntryType -eq 'Error' }
+        Should-NotInvoke Write-EventLog -Scope It -ParameterFilter { $EntryType -eq 'Error' }
     }
 }
 Describe 'Exclude.Attributes configuration' {
@@ -384,7 +384,7 @@ Describe 'Exclude.Attributes configuration' {
         & $testScript @testParams
 
         foreach ($type in 'File', 'FilesInFolder', 'EmptyFolders') {
-            Should -Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
+            Should-Invoke Invoke-Command -Exactly -Times 1 -Scope It -ParameterFilter {
                 ($ArgumentList[0] -eq $type) -and (($ArgumentList[8] -join ',') -eq 'Hidden,System')
             }
         }
@@ -423,17 +423,17 @@ Describe 'Exclude.Attributes configuration' {
 
         & $testScript -ConfigurationJsonFile $testOutParams.FilePath
 
-        $LASTEXITCODE | Should -Be 0
-        $testInside.FullName | Should -Exist
-        $testHidden.FullName | Should -Exist
-        $testExcludedInside.FullName | Should -Exist
-        $testExcludedFile.FullName | Should -Exist
-        $testRemove.FullName | Should -Not -Exist
-        $testEmpty.FullName | Should -Not -Exist
+        $LASTEXITCODE | Should-Be 0
+        (Test-Path -LiteralPath $testInside.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testHidden.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testExcludedInside.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testExcludedFile.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testRemove.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testEmpty.FullName) | Should-BeFalse
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
-        $rows | Should -HaveCount 2
-        @($rows | Where-Object Error) | Should -HaveCount 0
-        Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
+        $rows | Should-BeCollection -Count 2
+        @($rows | Where-Object Error) | Should-BeCollection -Count 0
+        Should-Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
             ($Subject -eq '2 removed') -and ($Body -like '*excluding 1 folder and 1 file and hidden/system items*')
         }
     }
@@ -443,7 +443,7 @@ Describe 'Exclude.Attributes configuration' {
 
         & $testScript @testParams
 
-        Should -Invoke Invoke-Command -Exactly -Times 3 -Scope It -ParameterFilter {
+        Should-Invoke Invoke-Command -Exactly -Times 3 -Scope It -ParameterFilter {
             @($ArgumentList[8]).Count -eq 0
         }
     }
@@ -459,9 +459,9 @@ Describe 'Exclude.Attributes configuration' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -Match 'Tasks\[0\]\.Exclude\.Attributes'
-        Should -Not -Invoke Invoke-Command -Scope It
+        $LASTEXITCODE | Should-Be 1
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should-MatchString 'Tasks\[0\]\.Exclude\.Attributes'
+        Should-NotInvoke Invoke-Command -Scope It
     }
 }
 Describe 'an incorrect input file' {
@@ -474,9 +474,9 @@ Describe 'an incorrect input file' {
 
         .$testScript @testNewParams -WarningVariable testWarnings -WarningAction SilentlyContinue
 
-        $LASTEXITCODE | Should -Be 1
-        ($testWarnings -join "`n") | Should -BeLike '*nonExisting.json*'
-        Should -Not -Invoke Invoke-Command -Scope It
+        $LASTEXITCODE | Should-Be 1
+        ($testWarnings -join "`n") | Should-BeLikeString '*nonExisting.json*'
+        Should-NotInvoke Invoke-Command -Scope It
     }
     It 'RemoveItemsScript not found' {
         Test-NewJsonFileHC $testInputFile
@@ -486,10 +486,10 @@ Describe 'an incorrect input file' {
 
         .$testScript @testNewParams
 
-        $LASTEXITCODE | Should -Be 1
+        $LASTEXITCODE | Should-Be 1
         ((Get-TestSystemErrorsHC).Message -join "`n") |
-        Should -BeLike "*RemoveItemsScript 'c:\NotExisting.ps1' not found*"
-        Should -Not -Invoke Invoke-Command -Scope It
+        Should-BeLikeString "*RemoveItemsScript 'c:\NotExisting.ps1' not found*"
+        Should-NotInvoke Invoke-Command -Scope It
     }
     It '<Description>' -ForEach @(
         @{
@@ -767,10 +767,10 @@ Describe 'an incorrect input file' {
 
         $testMessage = "*$([WildcardPattern]::Escape($Message))*"
 
-        $LASTEXITCODE | Should -Be 1
-        ($testWarnings -join "`n") | Should -BeLike $testMessage
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike $testMessage
-        Should -Not -Invoke Invoke-Command -Scope It
+        $LASTEXITCODE | Should-Be 1
+        ($testWarnings -join "`n") | Should-BeLikeString $testMessage
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should-BeLikeString $testMessage
+        Should-NotInvoke Invoke-Command -Scope It
     }
     It 'is reported by e-mail and in the event log' {
         $testNewInputFile = Copy-ObjectHC $testInputFile
@@ -780,11 +780,11 @@ Describe 'an incorrect input file' {
 
         .$testScript @testParams
 
-        Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It -ParameterFilter {
             ($Priority -eq 'High') -and
             ($Body -like "*Property &#39;Tasks``[0``].Files``[0``]&#39; needs a path*")
         }
-        Should -Invoke Write-EventLog -Scope It -ParameterFilter {
+        Should-Invoke Write-EventLog -Scope It -ParameterFilter {
             ($EntryType -eq 'Error') -and
             ($Message -like "*Property 'Tasks``[0``].Files``[0``]' needs a path*")
         }
@@ -799,9 +799,9 @@ Describe 'an incorrect input file' {
 
         .$testScript @testParams
 
-        $LASTEXITCODE | Should -Be 0
-        Should -Invoke Invoke-Command -Times 3 -Exactly -Scope It
-        Should -Not -Invoke Send-MailKitMessageHC -Scope It
+        $LASTEXITCODE | Should-Be 0
+        Should-Invoke Invoke-Command -Times 3 -Exactly -Scope It
+        Should-NotInvoke Send-MailKitMessageHC -Scope It
     }
 }
 Describe 'Example.json' {
@@ -825,9 +825,9 @@ Describe 'Example.json' {
 
         .$testScript @testParams -WarningVariable testWarnings -WarningAction SilentlyContinue
 
-        $testWarnings | Should -BeNullOrEmpty
-        $LASTEXITCODE | Should -Be 0
-        Should -Invoke Invoke-Command -Scope It
+        $testWarnings | Should-BeCollection -Count 0
+        $LASTEXITCODE | Should-Be 0
+        Should-Invoke Invoke-Command -Scope It
     }
 }
 Describe 'execute script' {
@@ -841,11 +841,11 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'with the correct arguments' {
-            Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($ComputerName -eq $testNewInputFile.Tasks[0].ComputerName) -and
                 ($ConfigurationName -eq 'PowerShell.7')
             }
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
                 ($FilePath -eq $testParams.RemoveItemsScript) -and
                 ($ArgumentList[0] -eq 'File') -and
@@ -866,10 +866,10 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'with the correct arguments' {
-            Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
                 $ComputerName -eq $testNewInputFile.Tasks[0].ComputerName
             }
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
                 ($FilePath -eq $testParams.RemoveItemsScript) -and
                 ($ArgumentList[0] -eq 'FilesInFolder') -and
@@ -891,10 +891,10 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'with the correct arguments' {
-            Should -Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke New-PSSession -Times 1 -Exactly -Scope Context -ParameterFilter {
                 $ComputerName -eq $testNewInputFile.Tasks[0].ComputerName
             }
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($Session) -and
                 ($FilePath -eq $testParams.RemoveItemsScript) -and
                 ($ArgumentList[0] -eq 'EmptyFolders') -and
@@ -902,7 +902,7 @@ Describe 'execute script' {
             }
         }
         It 'and close the session' {
-            Should -Invoke Remove-PSSession -Times 1 -Exactly -Scope Context
+            Should-Invoke Remove-PSSession -Times 1 -Exactly -Scope Context
         }
     }
     Context 'Folders with OlderThan and RemoveEmptyFolders as plain path strings' {
@@ -918,7 +918,7 @@ Describe 'execute script' {
         }
         It 'removes the files in every folder' {
             foreach ($testPath in 'z:\a', 'z:\b') {
-                Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                     ($ArgumentList[0] -eq 'FilesInFolder') -and
                     ($ArgumentList[1] -eq $testPath)
                 }
@@ -926,7 +926,7 @@ Describe 'execute script' {
         }
         It 'removes the empty folders in every folder' {
             foreach ($testPath in 'z:\a', 'z:\b') {
-                Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                     ($ArgumentList[0] -eq 'EmptyFolders') -and
                     ($ArgumentList[1] -eq $testPath)
                 }
@@ -947,7 +947,7 @@ Describe 'execute script' {
         }
         It 'are passed to the jobs of the folder they are in' {
             foreach ($testType in 'FilesInFolder', 'EmptyFolders') {
-                Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                     ($ArgumentList[0] -eq $testType) -and
                     ($ArgumentList[1] -eq 'z:\a') -and
                     (($ArgumentList[2] -join '|') -eq 'z:\a\keep|z:\a\also keep')
@@ -956,7 +956,7 @@ Describe 'execute script' {
         }
         It 'are not passed to the jobs of other folders' {
             foreach ($testType in 'FilesInFolder', 'EmptyFolders') {
-                Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+                Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                     ($ArgumentList[0] -eq $testType) -and
                     ($ArgumentList[1] -eq 'z:\b') -and
                     (@($ArgumentList[2]).Count -eq 0)
@@ -976,14 +976,14 @@ Describe 'execute script' {
             .$testScript @testParams
         }
         It 'are passed to the job of the folder they are in' {
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($ArgumentList[0] -eq 'FilesInFolder') -and
                 ($ArgumentList[1] -eq 'z:\a') -and
                 (($ArgumentList[6] -join '|') -eq 'z:\a\keep.txt|z:\a\sub\keep.json')
             }
         }
         It 'are not passed to the jobs of other folders' {
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope Context -ParameterFilter {
                 ($ArgumentList[0] -eq 'FilesInFolder') -and
                 ($ArgumentList[1] -eq 'z:\b') -and
                 (@($ArgumentList[6]).Count -eq 0)
@@ -1003,13 +1003,13 @@ Describe 'execute script' {
             Test-NewJsonFileHC $testNewInputFile
             .$testScript @testParams
 
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope It -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope It -ParameterFilter {
                 ($ArgumentList[0] -eq 'FilesInFolder') -and
                 ($ArgumentList[1].TrimEnd('\') -eq 'z:\a') -and
                 (($ArgumentList[2] -join '|') -eq 'z:\a\keep') -and
                 (($ArgumentList[6] -join '|') -eq 'z:\a\state.json')
             }
-            Should -Invoke Invoke-Command -Times 1 -Exactly -Scope It -ParameterFilter {
+            Should-Invoke Invoke-Command -Times 1 -Exactly -Scope It -ParameterFilter {
                 ($ArgumentList[1] -eq 'z:\b') -and
                 (@($ArgumentList[2]).Count -eq 0) -and
                 (@($ArgumentList[6]).Count -eq 0)
@@ -1026,7 +1026,7 @@ Describe 'execute script' {
 
             .$testScript @testParams
 
-            Should -Invoke New-PSSession -Times 1 -Exactly -Scope It -ParameterFilter {
+            Should-Invoke New-PSSession -Times 1 -Exactly -Scope It -ParameterFilter {
                 $ConfigurationName -eq 'PowerShell.7.5'
             }
         }
@@ -1049,13 +1049,13 @@ Describe 'retry a remote job' {
 
         .$testScript @testParams
 
-        Should -Invoke Invoke-Command -Times 3 -Exactly
-        Should -Invoke New-PSSession -Times 3 -Exactly
-        Should -Invoke Remove-PSSession -Times 3 -Exactly
-        Should -Invoke Start-Sleep -Times 2 -Exactly
+        Should-Invoke Invoke-Command -Times 3 -Exactly
+        Should-Invoke New-PSSession -Times 3 -Exactly
+        Should-Invoke Remove-PSSession -Times 3 -Exactly
+        Should-Invoke Start-Sleep -Times 2 -Exactly
 
         $actual = Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName 'Errors'
-        $actual.Error | Should -BeLike '*I/O operation has been aborted*'
+        $actual.Error | Should-BeLikeString '*I/O operation has been aborted*'
     }
     It 'and keep the result when a retry succeeds' {
         $script:testAttempt = 0
@@ -1067,13 +1067,13 @@ Describe 'retry a remote job' {
 
         .$testScript @testParams
 
-        Should -Invoke Invoke-Command -Times 2 -Exactly
+        Should-Invoke Invoke-Command -Times 2 -Exactly
 
         $testExcelFile = Get-TestExcelFileHC
         $actual = Import-Excel -Path $testExcelFile.FullName -WorksheetName 'Overview'
-        $actual.Path | Should -Be $testData[0].FullName
+        $actual.Path | Should-Be $testData[0].FullName
         Get-ExcelSheetInfo -Path $testExcelFile.FullName |
-        Where-Object Name -EQ 'Errors' | Should -BeNullOrEmpty
+        Where-Object Name -EQ 'Errors' | Should-BeCollection -Count 0
     }
     It 'shows attempt, path and delay messages when verbose is enabled' {
         $script:testAttempt = 0
@@ -1085,20 +1085,20 @@ Describe 'retry a remote job' {
 
         $actual = @(& $testScript @testParams -Verbose 4>&1)
         $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
-        $messages | Should -Contain "Starting job 'RemoveFile' on 'PC1' for 'z:\file.txt' (attempt 1 of 3)"
-        $messages | Should -Contain "Retrying job 'RemoveFile' on 'PC1' for 'z:\file.txt' after WinRM abort; attempt 2 of 3 in 5 seconds"
-        $messages | Should -Contain "Starting job 'RemoveFile' on 'PC1' for 'z:\file.txt' (attempt 2 of 3)"
-        $messages | Should -Contain 'Run summary: 1 removed, 0 errors'
-        Should -Invoke Invoke-Command -Times 2 -Exactly -ParameterFilter { $PesterBoundParameters.Verbose -eq $true }
+        $messages | Should-ContainCollection "Starting job 'RemoveFile' on 'PC1' for 'z:\file.txt' (attempt 1 of 3)"
+        $messages | Should-ContainCollection "Retrying job 'RemoveFile' on 'PC1' for 'z:\file.txt' after WinRM abort; attempt 2 of 3 in 5 seconds"
+        $messages | Should-ContainCollection "Starting job 'RemoveFile' on 'PC1' for 'z:\file.txt' (attempt 2 of 3)"
+        $messages | Should-ContainCollection 'Run summary: 1 removed, 0 errors'
+        Should-Invoke Invoke-Command -Times 2 -Exactly -ParameterFilter { $PesterBoundParameters.Verbose -eq $true }
     }
     It 'not on other errors' {
         Mock Invoke-Command { throw 'Oops' }
 
         .$testScript @testParams
 
-        Should -Invoke Invoke-Command -Times 1 -Exactly
-        Should -Invoke Remove-PSSession -Times 1 -Exactly
-        Should -Not -Invoke Start-Sleep
+        Should-Invoke Invoke-Command -Times 1 -Exactly
+        Should-Invoke Remove-PSSession -Times 1 -Exactly
+        Should-NotInvoke Start-Sleep
     }
     It 'shows final error counts and a direct failure warning without preparation text' {
         Mock Invoke-Command { throw 'Permanent failure' }
@@ -1107,9 +1107,9 @@ Describe 'retry a remote job' {
         $actual = @(& $testScript @testParams -Verbose -WarningVariable testWarnings -WarningAction SilentlyContinue 4>&1)
         $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
 
-        $messages | Should -Contain 'Run summary: 0 removed, 1 errors'
-        ($testWarnings -join ' ') | Should -BeLike "*Job 'RemoveFile' failed on 'PC1' for 'z:\file.txt': Permanent failure*"
-        @($messages | Where-Object { $_ -like 'Retrying job*' }) | Should -HaveCount 0
+        $messages | Should-ContainCollection 'Run summary: 0 removed, 1 errors'
+        ($testWarnings -join ' ') | Should-BeLikeString "*Job 'RemoveFile' failed on 'PC1' for 'z:\file.txt': Permanent failure*"
+        @($messages | Where-Object { $_ -like 'Retrying job*' }) | Should-BeCollection -Count 0
     }
 }
 Describe 'main diagnostic messages with the real worker' {
@@ -1138,21 +1138,21 @@ Describe 'main diagnostic messages with the real worker' {
         $actual = @(& $testScript -ConfigurationJsonFile $testOutParams.FilePath -Verbose:$VerboseEnabled 4>&1)
         $messages = @($actual | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] } | ForEach-Object Message)
 
-        $LASTEXITCODE | Should -Be 0
-        $testFile.FullName | Should -Not -Exist
+        $LASTEXITCODE | Should-Be 0
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeFalse
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
-        $rows | Should -HaveCount 1
-        $rows[0].Action | Should -Be Removed
-        $rows[0].Path | Should -Be $testFile.FullName
+        $rows | Should-BeCollection -Count 1
+        $rows[0].Action | Should-Be Removed
+        $rows[0].Path | Should-Be $testFile.FullName
         if ($VerboseEnabled) {
-            @($messages | Where-Object { $_ -like "Prepared job 'RemoveFile'*" }) | Should -HaveCount 1
+            @($messages | Where-Object { $_ -like "Prepared job 'RemoveFile'*" }) | Should-BeCollection -Count 1
             $startMessage = "Starting job 'RemoveFile' on '$env:COMPUTERNAME' for '$($testFile.FullName)' (attempt 1 of 3)"
-            $messages | Should -Contain $startMessage
-            $messages | Should -Contain "Removed file '$($testFile.FullName)'"
-            $messages | Should -Contain 'Run summary: 1 removed, 0 errors'
-            [array]::IndexOf($messages, $startMessage) | Should -BeLessThan ([array]::IndexOf($messages, "Removed file '$($testFile.FullName)'"))
+            $messages | Should-ContainCollection $startMessage
+            $messages | Should-ContainCollection "Removed file '$($testFile.FullName)'"
+            $messages | Should-ContainCollection 'Run summary: 1 removed, 0 errors'
+            [array]::IndexOf($messages, $startMessage) | Should-BeLessThan ([array]::IndexOf($messages, "Removed file '$($testFile.FullName)'"))
         }
-        else { $messages | Should -HaveCount 0 }
+        else { $messages | Should-BeCollection -Count 0 }
     }
 }
 Describe 'MaxConcurrent' {
@@ -1204,8 +1204,8 @@ Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Va
 
         .$testScript @testNewParams
 
-        @(Get-ChildItem -LiteralPath $testJobLogFolder -File) | Should -HaveCount 4
-        Get-MaxOverlapHC | Should -Be 2
+        @(Get-ChildItem -LiteralPath $testJobLogFolder -File) | Should-BeCollection -Count 4
+        Get-MaxOverlapHC | Should-Be 2
     }
     It 'JobsTotal limits the jobs running at once over all computers' {
         $testNewInputFile.MaxConcurrent = [PSCustomObject]@{ JobsTotal = 3; JobsPerComputer = 4 }
@@ -1213,8 +1213,8 @@ Set-Content -LiteralPath (Join-Path '$testJobLogFolder' ([guid]::NewGuid())) -Va
 
         .$testScript @testNewParams
 
-        @(Get-ChildItem -LiteralPath $testJobLogFolder -File) | Should -HaveCount 4
-        Get-MaxOverlapHC | Should -Be 3
+        @(Get-ChildItem -LiteralPath $testJobLogFolder -File) | Should-BeCollection -Count 4
+        Get-MaxOverlapHC | Should-Be 3
     }
 }
 Describe 'with the real Remove items script on the local computer' {
@@ -1264,33 +1264,33 @@ Describe 'with the real Remove items script on the local computer' {
         . $testScript @testNewParams
     }
     It 'removes the file' {
-        $testSingleFile.FullName | Should -Not -Exist
+        (Test-Path -LiteralPath $testSingleFile.FullName) | Should-BeFalse
     }
     It 'removes the old files in the folder and its subfolders' {
-        $testOldFile.FullName | Should -Not -Exist
-        $testFolderFile.FullName | Should -Not -Exist
+        (Test-Path -LiteralPath $testOldFile.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testFolderFile.FullName) | Should-BeFalse
     }
     It 'keeps the new files' {
-        $testNewFile.FullName | Should -Exist
+        (Test-Path -LiteralPath $testNewFile.FullName) | Should-BeTrue
     }
     It 'keeps the old files and empty folders in an excluded folder' {
-        $testKeepFile.FullName | Should -Exist
-        $testKeepEmptyFolder.FullName | Should -Exist
+        (Test-Path -LiteralPath $testKeepFile.FullName) | Should-BeTrue
+        (Test-Path -LiteralPath $testKeepEmptyFolder.FullName) | Should-BeTrue
     }
     It 'keeps an excluded old file' {
-        $testKeepSingleFile.FullName | Should -Exist
+        (Test-Path -LiteralPath $testKeepSingleFile.FullName) | Should-BeTrue
     }
     It 'removes the folders that became empty' {
-        "$testRoot\folder\sub" | Should -Not -Exist
+        (Test-Path -LiteralPath "$testRoot\folder\sub") | Should-BeFalse
     }
     It 'exports every removed item to Excel' {
         $actual = Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName 'Overview'
 
-        $actual | Should -HaveCount 4
-        $actual.Action | Sort-Object -Unique | Should -Be 'Removed'
+        $actual | Should-BeCollection -Count 4
+        $actual.Action | Sort-Object -Unique | Should-Be 'Removed'
     }
     It 'exits without error' {
-        $LASTEXITCODE | Should -Be 0
+        $LASTEXITCODE | Should-Be 0
     }
 }
 Describe 'end-to-end filesystem scenarios' {
@@ -1352,39 +1352,39 @@ Describe 'end-to-end filesystem scenarios' {
             Test-NewJsonFileHC $e2eConfiguration
             $global:LASTEXITCODE = 0
             & $testScript -ConfigurationJsonFile $testOutParams.FilePath
-            $LASTEXITCODE | Should -Be $(if ($ExpectedErrorPaths.Count) { 1 } else { 0 })
+            $LASTEXITCODE | Should-Be $(if ($ExpectedErrorPaths.Count) { 1 } else { 0 })
 
-            $e2eRoot | Should -Exist
+            (Test-Path -LiteralPath $e2eRoot) | Should-BeTrue
             $actualFiles = @(Get-ChildItem -LiteralPath $e2eRoot -File -Recurse -Force | Select-Object -ExpandProperty FullName | Sort-Object)
-            ($actualFiles -join "`n") | Should -Be (($e2eKeptFiles.Keys | Sort-Object) -join "`n")
+            ($actualFiles -join "`n") | Should-Be (($e2eKeptFiles.Keys | Sort-Object) -join "`n")
             foreach ($filePath in $e2eKeptFiles.Keys) {
-                [System.IO.File]::ReadAllText($filePath) | Should -BeExactly $e2eKeptFiles[$filePath]
+                [System.IO.File]::ReadAllText($filePath) | Should-BeString -CaseSensitive $e2eKeptFiles[$filePath]
             }
             $actualFolders = @(Get-ChildItem -LiteralPath $e2eRoot -Directory -Recurse -Force | Select-Object -ExpandProperty FullName | Sort-Object)
-            ($actualFolders -join "`n") | Should -Be ($expectedFolders -join "`n")
+            ($actualFolders -join "`n") | Should-Be ($expectedFolders -join "`n")
             foreach ($removedPath in @($e2eRemovedFiles) + @($e2eRemovedFolders)) {
-                $removedPath | Should -Not -Exist
+                (Test-Path -LiteralPath $removedPath) | Should-BeFalse
             }
 
             $expectedRemoved = @($e2eRemovedFiles) + @($e2eRemovedFolders)
             if ($expectedRemoved.Count -or $ExpectedErrorPaths.Count) {
                 $workbooks = @(Get-TestExcelFileHC)
-                $workbooks | Should -HaveCount 1
+                $workbooks | Should-BeCollection -Count 1
                 $rows = @(Import-Excel -Path $workbooks[0].FullName -WorksheetName Overview)
-                $rows | Should -HaveCount ($expectedRemoved.Count + $ExpectedErrorPaths.Count)
+                $rows | Should-BeCollection -Count ($expectedRemoved.Count + $ExpectedErrorPaths.Count)
                 $removedRows = @($rows | Where-Object Action -EQ Removed)
-                (($removedRows.Path | Sort-Object) -join "`n") | Should -Be (($expectedRemoved | Sort-Object) -join "`n")
-                @($removedRows | Where-Object Error) | Should -HaveCount 0
-                @($removedRows | Where-Object Type -EQ File) | Should -HaveCount $e2eRemovedFiles.Count
-                @($removedRows | Where-Object Type -EQ EmptyFolder) | Should -HaveCount $e2eRemovedFolders.Count
+                (($removedRows.Path | Sort-Object) -join "`n") | Should-Be (($expectedRemoved | Sort-Object) -join "`n")
+                @($removedRows | Where-Object Error) | Should-BeCollection -Count 0
+                @($removedRows | Where-Object Type -EQ File) | Should-BeCollection -Count $e2eRemovedFiles.Count
+                @($removedRows | Where-Object Type -EQ EmptyFolder) | Should-BeCollection -Count $e2eRemovedFolders.Count
                 $errorRows = @($rows | Where-Object Error)
-                (($errorRows.Path | Sort-Object) -join "`n") | Should -Be (($ExpectedErrorPaths | Sort-Object) -join "`n")
-                @($errorRows | Where-Object Action) | Should -HaveCount 0
+                (($errorRows.Path | Sort-Object) -join "`n") | Should-Be (($ExpectedErrorPaths | Sort-Object) -join "`n")
+                @($errorRows | Where-Object Action) | Should-BeCollection -Count 0
             }
             else {
-                @(Get-TestExcelFileHC) | Should -HaveCount 0
+                @(Get-TestExcelFileHC) | Should-BeCollection -Count 0
             }
-            @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log*') | Should -HaveCount 0
+            @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log*') | Should-BeCollection -Count 0
         }
     }
 
@@ -1397,7 +1397,7 @@ Describe 'end-to-end filesystem scenarios' {
     ) {
         New-E2EFixtureHC
         $example = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot) 'Example.json') -Raw | ConvertFrom-Json
-        $example.Tasks | Should -HaveCount 9
+        $example.Tasks | Should-BeCollection -Count 9
         $task = $example.Tasks[$TaskIndex]
         $task.ComputerName = 'localhost'
         $oldDate = (Get-Date).AddYears(-5)
@@ -1449,8 +1449,8 @@ Describe 'end-to-end filesystem scenarios' {
         $e2eConfiguration.Tasks = @($task)
         $e2eConfiguration.MaxConcurrent.JobsTotal = $JobsTotal
         Invoke-E2EAndAssertHC
-        Should -Not -Invoke New-PSSession -Scope It
-        Should -Not -Invoke Invoke-Command -Scope It
+        Should-NotInvoke New-PSSession -Scope It
+        Should-NotInvoke Invoke-Command -Scope It
     }
 
     It 'uses the <Unit> calendar boundary and <BasedOn> for <ListName>' -ForEach @(
@@ -1642,8 +1642,8 @@ Describe 'end-to-end filesystem scenarios' {
         $null = Add-E2EFileHC 'selected\keep.json' -LastWriteTime ((Get-Date).AddYears(-5))
         $null = Add-E2EFolderHC 'selected\empty' -Removed
         Mock Invoke-Command {
-            $FilePath | Should -Be (Join-Path (Split-Path $PSScriptRoot) 'Remove items.ps1')
-            $ArgumentList[1] | Should -Be $rootPath
+            $FilePath | Should-Be (Join-Path (Split-Path $PSScriptRoot) 'Remove items.ps1')
+            $ArgumentList[1] | Should-Be $rootPath
             & $FilePath @ArgumentList
         }
         $e2eConfiguration.Tasks = @([pscustomobject]@{
@@ -1655,9 +1655,9 @@ Describe 'end-to-end filesystem scenarios' {
                 RemoveEmptyFolders = $true
             })
         Invoke-E2EAndAssertHC
-        Should -Invoke New-PSSession -Exactly -Times 2 -Scope It
-        Should -Invoke Invoke-Command -Exactly -Times 2 -Scope It
-        Should -Invoke Remove-PSSession -Exactly -Times 2 -Scope It
+        Should-Invoke New-PSSession -Exactly -Times 2 -Scope It
+        Should-Invoke Invoke-Command -Exactly -Times 2 -Scope It
+        Should-Invoke Remove-PSSession -Exactly -Times 2 -Scope It
     }
 }
 Describe 'report inaccessible paths' {
@@ -1687,30 +1687,30 @@ Describe 'report inaccessible paths' {
 
         $output = @(& $testScript @testParams -Verbose 4>&1)
 
-        $LASTEXITCODE | Should -Be 1
-        Should -Invoke Invoke-Command -Exactly -Times 2 -Scope It
+        $LASTEXITCODE | Should-Be 1
+        Should-Invoke Invoke-Command -Exactly -Times 2 -Scope It
         if ($SaveLogs) {
             $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
-            $rows | Should -HaveCount 1
-            $rows[0].Path | Should -Be 'z:\folder\System Volume Information'
-            $rows[0].Error | Should -Be 'Access denied'
-            $rows[0].Type | Should -Be 'FilesInFolder, EmptyFolders'
-            $rows[0].OlderThan | Should -Be '1 Day'
-            $rows[0].OlderThanBasedOn | Should -Be 'LastWriteTime'
+            $rows | Should-BeCollection -Count 1
+            $rows[0].Path | Should-Be 'z:\folder\System Volume Information'
+            $rows[0].Error | Should-Be 'Access denied'
+            $rows[0].Type | Should-Be 'FilesInFolder, EmptyFolders'
+            $rows[0].OlderThan | Should-Be '1 Day'
+            $rows[0].OlderThanBasedOn | Should-Be 'LastWriteTime'
         }
-        else { @(Get-ChildItem -LiteralPath $testLogFolder) | Should -HaveCount 0 }
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        else { @(Get-ChildItem -LiteralPath $testLogFolder) | Should-BeCollection -Count 0 }
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             ($Subject -eq '0 removed, 1 error') -and
             ($Priority -eq 'High') -and
             ($Body -like '*>1 Error</span>*') -and
             ($Body -like '*0&nbsp;removed &middot; 1&nbsp;error*') -and
             ($Body -match "(?s)<tr class='path-row'>(?:(?!</tr>).)*class='removed-count'[^>]*>0</td>\s*<td class='error-count'[^>]*>1</td>")
         }
-        Should -Invoke Write-EventLog -Exactly -Times 1 -Scope It -ParameterFilter {
+        Should-Invoke Write-EventLog -Exactly -Times 1 -Scope It -ParameterFilter {
             ($EntryType -eq 'Error') -and ($Message -like '*Access denied*')
         }
         @($output | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }).Message |
-        Should -Contain 'Run summary: 0 removed, 1 errors'
+        Should-ContainCollection 'Run summary: 0 removed, 1 errors'
     }
     It 'keeps the path error in Excel without a system errors log' {
         Clear-TestLogFolderHC
@@ -1733,14 +1733,14 @@ Describe 'report inaccessible paths' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
+        $LASTEXITCODE | Should-Be 1
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
-        $rows | Should -HaveCount 1
-        $rows[0].Path | Should -Be 'z:\file.txt'
-        $rows[0].Error | Should -Be 'Access to the path is denied.'
-        $rows[0].Action | Should -BeNullOrEmpty
-        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        $rows | Should-BeCollection -Count 1
+        $rows[0].Path | Should-Be 'z:\file.txt'
+        $rows[0].Error | Should-Be 'Access to the path is denied.'
+        $rows[0].Action | Should-BeNull
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should-BeCollection -Count 0
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             ($Priority -eq 'High') -and
             ($Subject -eq '0 removed, 1 error') -and
             ($Attachments -like '*Log.xlsx') -and
@@ -1785,9 +1785,9 @@ Describe 'report inaccessible paths' {
         & $testScript @testParams
 
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Overview)
-        $rows | Should -HaveCount 2
+        $rows | Should-BeCollection -Count 2
         $expectedSubject = if ($Case -eq 'successful removals') { '2 removed' } else { '0 removed, 2 errors' }
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             $Subject -eq $expectedSubject
         }
     }
@@ -1822,7 +1822,7 @@ Describe 'create an Excel file' {
         $testExcelLogFile = Get-TestExcelFileHC
     }
     It 'in the log folder' {
-        $testExcelLogFile | Should -Not -BeNullOrEmpty
+        $testExcelLogFile | Should-NotBeNull
     }
     Context "with sheet 'Overview'" {
         BeforeAll {
@@ -1872,22 +1872,22 @@ Describe 'create an Excel file' {
             $actual = Import-Excel -Path $testExcelLogFile.FullName -WorksheetName 'Overview'
         }
         It 'with the correct total rows' {
-            $actual | Should -HaveCount $testExportedExcelRows.Count
+            $actual | Should-BeCollection -Count $testExportedExcelRows.Count
         }
         It 'with the correct data in the rows' {
             foreach ($testRow in $testExportedExcelRows) {
                 $actualRow = $actual | Where-Object {
                     $_.Path -eq $testRow.Path
                 }
-                $actualRow.ComputerName | Should -Be $testRow.ComputerName
-                $actualRow.Type | Should -Be $testRow.Type
+                $actualRow.ComputerName | Should-Be $testRow.ComputerName
+                $actualRow.Type | Should-Be $testRow.Type
                 $actualRow.DateTime.ToString('yyyyMMdd') |
-                Should -Be $testRow.DateTime.ToString('yyyyMMdd')
+                Should-Be $testRow.DateTime.ToString('yyyyMMdd')
                 $actualRow.CreationTime.ToString('yyyyMMdd HHmmss') |
-                Should -Be $testRow.CreationTime.ToString('yyyyMMdd HHmmss')
-                $actualRow.OlderThan | Should -Be $testRow.OlderThan
-                $actualRow.Action | Should -Be $testRow.Action
-                $actualRow.Error | Should -Be $testRow.Error
+                Should-Be $testRow.CreationTime.ToString('yyyyMMdd HHmmss')
+                $actualRow.OlderThan | Should-Be $testRow.OlderThan
+                $actualRow.Action | Should-Be $testRow.Action
+                $actualRow.Error | Should-Be $testRow.Error
             }
         }
     }
@@ -1916,26 +1916,26 @@ Describe 'create an Excel file' {
             $actual = Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName 'Errors'
         }
         It 'with the correct total rows' {
-            $actual | Should -HaveCount $testExportedExcelRows.Count
+            $actual | Should-BeCollection -Count $testExportedExcelRows.Count
         }
         It 'with the correct data in the rows' {
             $testRow = $testExportedExcelRows[0]
-            $actual.ComputerName | Should -Be $testRow.ComputerName
-            $actual.Path | Should -Be $testRow.Path
-            $actual.Type | Should -Be $testRow.Type
-            $actual.OlderThan | Should -Be $testRow.OlderThan
-            $actual.Error | Should -Be $testRow.Error
+            $actual.ComputerName | Should-Be $testRow.ComputerName
+            $actual.Path | Should-Be $testRow.Path
+            $actual.Type | Should-Be $testRow.Type
+            $actual.OlderThan | Should-Be $testRow.OlderThan
+            $actual.Error | Should-Be $testRow.Error
         }
         It 'includes execution diagnostics' {
-            $actual.Stage | Should -Be 'Run remote worker'
-            $actual.TargetObject | Should -Be 'Oops'
-            $actual.FullyQualifiedErrorId | Should -Be 'Oops'
-            $actual.ExceptionType | Should -Be 'System.Management.Automation.RuntimeException'
-            $actual.ScriptStackTrace | Should -Not -BeNullOrEmpty
-            $actual.PositionMessage | Should -BeLike '*throw*Oops*'
+            $actual.Stage | Should-Be 'Run remote worker'
+            $actual.TargetObject | Should-Be 'Oops'
+            $actual.FullyQualifiedErrorId | Should-Be 'Oops'
+            $actual.ExceptionType | Should-Be 'System.Management.Automation.RuntimeException'
+            $actual.ScriptStackTrace | Should-NotBeEmptyString
+            $actual.PositionMessage | Should-BeLikeString '*throw*Oops*'
         }
         It 'does not duplicate execution or item errors in JSON' {
-            @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+            @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should-BeCollection -Count 0
         }
     }
 }
@@ -1954,14 +1954,14 @@ Describe 'job failure diagnostics' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
+        $LASTEXITCODE | Should-Be 1
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Errors)
-        $rows | Should -HaveCount 1
-        $rows[0].Stage | Should -Be 'Open remote session'
-        $rows[0].Error | Should -Be 'Session setup failed'
-        $rows[0].FullyQualifiedErrorId | Should -Be 'Session setup failed'
-        Should -Not -Invoke Invoke-Command -Scope It
-        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+        $rows | Should-BeCollection -Count 1
+        $rows[0].Stage | Should-Be 'Open remote session'
+        $rows[0].Error | Should-Be 'Session setup failed'
+        $rows[0].FullyQualifiedErrorId | Should-Be 'Session setup failed'
+        Should-NotInvoke Invoke-Command -Scope It
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should-BeCollection -Count 0
     }
     It 'distinguishes the failed target from the configured path' {
         Mock Invoke-Command {
@@ -1971,17 +1971,17 @@ Describe 'job failure diagnostics' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
+        $LASTEXITCODE | Should-Be 1
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Errors)
-        $rows | Should -HaveCount 1
-        $rows[0].Path | Should -Be 'z:\file.txt'
-        $rows[0].TargetObject | Should -Be 'z:\child.txt'
-        $rows[0].Stage | Should -Be 'Run remote worker'
-        $rows[0].ExceptionType | Should -Be 'System.IO.FileNotFoundException'
-        $rows[0].FullyQualifiedErrorId | Should -BeLike '*MissingChild*'
-        $rows[0].Error | Should -Be 'The system cannot find the file specified.'
-        $rows[0].ScriptStackTrace | Should -Not -BeNullOrEmpty
-        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+        $rows | Should-BeCollection -Count 1
+        $rows[0].Path | Should-Be 'z:\file.txt'
+        $rows[0].TargetObject | Should-Be 'z:\child.txt'
+        $rows[0].Stage | Should-Be 'Run remote worker'
+        $rows[0].ExceptionType | Should-Be 'System.IO.FileNotFoundException'
+        $rows[0].FullyQualifiedErrorId | Should-BeLikeString '*MissingChild*'
+        $rows[0].Error | Should-Be 'The system cannot find the file specified.'
+        $rows[0].ScriptStackTrace | Should-NotBeEmptyString
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should-BeCollection -Count 0
     }
     It 'preserves real worker diagnostics with JobsTotal <_>' -ForEach @(1, 3) {
         $testFile = New-Item "TestDrive:/diagnostics-$_.txt" -ItemType File
@@ -1994,17 +1994,17 @@ Describe 'job failure diagnostics' {
 
         & $testScript -ConfigurationJsonFile $testOutParams.FilePath
 
-        $LASTEXITCODE | Should -Be 1
-        $testFile.FullName | Should -Exist
+        $LASTEXITCODE | Should-Be 1
+        (Test-Path -LiteralPath $testFile.FullName) | Should-BeTrue
         $rows = @(Import-Excel -Path (Get-TestExcelFileHC).FullName -WorksheetName Errors)
-        $rows | Should -HaveCount 1
-        $rows[0].Stage | Should -Be 'Run local worker'
-        $rows[0].Error | Should -BeLike '*Invalid retention period*'
-        $rows[0].ExceptionType | Should -Be 'System.Management.Automation.RuntimeException'
-        $rows[0].FullyQualifiedErrorId | Should -BeLike '*Invalid retention period*'
-        $rows[0].ScriptStackTrace | Should -BeLike '*Get-ExclusiveCutoffHC*Remove items.ps1*'
-        $rows[0].PositionMessage | Should -BeLike '*Remove items.ps1*'
-        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should -HaveCount 0
+        $rows | Should-BeCollection -Count 1
+        $rows[0].Stage | Should-Be 'Run local worker'
+        $rows[0].Error | Should-BeLikeString '*Invalid retention period*'
+        $rows[0].ExceptionType | Should-Be 'System.Management.Automation.RuntimeException'
+        $rows[0].FullyQualifiedErrorId | Should-BeLikeString '*Invalid retention period*'
+        $rows[0].ScriptStackTrace | Should-BeLikeString '*Get-ExclusiveCutoffHC*Remove items.ps1*'
+        $rows[0].PositionMessage | Should-BeLikeString '*Remove items.ps1*'
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '*System errors log.json') | Should-BeCollection -Count 0
     }
 }
 Describe 'Settings.SendMail.When' {
@@ -2022,7 +2022,7 @@ Describe 'Settings.SendMail.When' {
 
             .$testScript @testParams
 
-            Should -Not -Invoke Send-MailKitMessageHC -Scope It
+            Should-NotInvoke Send-MailKitMessageHC -Scope It
         }
     }
     Context 'send an e-mail when' {
@@ -2036,7 +2036,7 @@ Describe 'Settings.SendMail.When' {
 
             .$testScript @testParams
 
-            Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It
+            Should-Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It
         }
         It "'OnErrorOrAction' and there are actions but no errors" {
             Mock Invoke-Command { $testData[0] }
@@ -2048,7 +2048,7 @@ Describe 'Settings.SendMail.When' {
 
             .$testScript @testParams
 
-            Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It
+            Should-Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It
         }
         It "'OnErrorOrAction' and there are errors but no actions" {
             Mock Invoke-Command { $testData[1] }
@@ -2060,7 +2060,7 @@ Describe 'Settings.SendMail.When' {
 
             .$testScript @testParams
 
-            Should -Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It
+            Should-Invoke Send-MailKitMessageHC -Times 1 -Exactly -Scope It
         }
     }
 }
@@ -2081,7 +2081,7 @@ Describe 'send an e-mail' {
         . $testScript @testParams
     }
     It 'with the Settings.SendMail properties' {
-        Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($To -eq $testInputFile.Settings.SendMail.To) -and
             ($Bcc -eq $testInputFile.Settings.SendMail.Bcc) -and
             ($From -eq $testInputFile.Settings.SendMail.From) -and
@@ -2094,7 +2094,7 @@ Describe 'send an e-mail' {
         }
     }
     It 'with the correct subject, priority and attachments' {
-        Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($Priority -eq 'High') -and
             ($Subject -eq '1 removed, 1 error') -and
             ($Attachments -like '*Log.xlsx') -and
@@ -2104,19 +2104,19 @@ Describe 'send an e-mail' {
     It 'saves the exact email body with the same log prefix without attaching it' {
         $testExcelFile = Get-TestExcelFileHC
         $testHtmlPath = Join-Path $testLogFolder ($testExcelFile.Name.Replace(' - Log.xlsx', ' - Mail.html'))
-        $testHtmlPath | Should -Exist
+        (Test-Path -LiteralPath $testHtmlPath) | Should-BeTrue
         $testHtmlBody = Get-Content -LiteralPath $testHtmlPath -Raw -Encoding utf8
         $testBrowserUrl = [System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $testHtmlPath))
-        $testHtmlBody | Should -BeLike '*If this mail is not visible*'
-        $testHtmlBody.Contains("href='$testBrowserUrl'") | Should -BeTrue
+        $testHtmlBody | Should-BeLikeString '*If this mail is not visible*'
+        $testHtmlBody.Contains("href='$testBrowserUrl'") | Should-BeTrue
 
-        Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($Body -ceq $testHtmlBody) -and
             (-not ($Attachments -like '* - Mail.html'))
         }
     }
     It 'with the correct body' {
-        Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Exactly 1 -Scope Describe -ParameterFilter {
             ($Body -like '*<h1>Test (Brecht)</h1>*') -and
             ($Body -like '*Email body*') -and
             # a card for the computer, with a link to the file over its admin share
@@ -2133,7 +2133,7 @@ Describe 'send an e-mail' {
 
         . $testScript @testParams
 
-        Should -Invoke Send-MailKitMessageHC -Exactly 1 -Scope It -ParameterFilter {
+        Should-Invoke Send-MailKitMessageHC -Exactly 1 -Scope It -ParameterFilter {
             $Subject -eq '1 removed, 1 error, Custom'
         }
     }
@@ -2158,11 +2158,11 @@ Describe 'email rows per input path' {
         & $testScript @testParams
 
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
-        $testHtmlFile | Should -HaveCount 1
+        $testHtmlFile | Should-BeCollection -Count 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should -Be 1
-        $html | Should -BeLike '*including subfolders, excluding 1 folder and 1 file</caption>*'
-        [regex]::Matches($html, "class='path-row'").Count | Should -Be 2
+        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should-Be 1
+        $html | Should-BeLikeString '*including subfolders, excluding 1 folder and 1 file</caption>*'
+        [regex]::Matches($html, "class='path-row'").Count | Should-Be 2
     }
     It 'separates paths and combines cleanup phases without merging separate tasks (<Label>)' -ForEach @(
         @{ Label = 'local paths'; FirstPath = 'z:\first'; SecondPath = 'z:\second'; ComputerLabel = 'PC1' }
@@ -2204,26 +2204,26 @@ Describe 'email rows per input path' {
 
         & $testScript @testParams
 
-        Should -Invoke Invoke-Command -Exactly -Times 5 -Scope It
+        Should-Invoke Invoke-Command -Exactly -Times 5 -Scope It
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
-        $testHtmlFile | Should -HaveCount 1
+        $testHtmlFile | Should-BeCollection -Count 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        [regex]::Matches($html, 'class="task-table"').Count | Should -Be 2
-        [regex]::Matches($html, '>First &amp; primary</a>').Count | Should -Be 1
-        [regex]::Matches($html, '>Second</a>').Count | Should -Be 1
-        [regex]::Matches($html, '>Separate task</a>').Count | Should -Be 1
+        [regex]::Matches($html, 'class="task-table"').Count | Should-Be 2
+        [regex]::Matches($html, '>First &amp; primary</a>').Count | Should-Be 1
+        [regex]::Matches($html, '>Second</a>').Count | Should-Be 1
+        [regex]::Matches($html, '>Separate task</a>').Count | Should-Be 1
         $expectedRoots = if ($Label -eq 'local paths') { 1 } else { 0 }
-        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should -Be $expectedRoots
-        $html | Should -BeLike '*Remove files older than 1 day (last write time), including subfolders; Remove empty folders*'
-        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should -Be 1
+        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be $expectedRoots
+        $html | Should-BeLikeString '*Remove files older than 1 day (last write time), including subfolders; Remove empty folders*'
+        [regex]::Matches($html, 'Remove files older than 1 day').Count | Should-Be 1
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
-        $rows | Should -HaveCount 3
-        ($rows | Where-Object { $_ -like '*>First &amp; primary</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
-        ($rows | Where-Object { $_ -like '*>Second</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
-        ($rows | Where-Object { $_ -like '*>Separate task</a>*' }) | Should -BeLike "*class='removed-count'*>0</td>*class='error-count'*>1</td>*"
-        $html | Should -BeLike "*>$ComputerLabel</p>*"
-        $html | Should -BeLike '*2 paths</p>*'
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        $rows | Should-BeCollection -Count 3
+        ($rows | Where-Object { $_ -like '*>First &amp; primary</a>*' }) | Should-BeLikeString "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
+        ($rows | Where-Object { $_ -like '*>Second</a>*' }) | Should-BeLikeString "*class='removed-count'*>1</td>*class='error-count'*>1</td>*"
+        ($rows | Where-Object { $_ -like '*>Separate task</a>*' }) | Should-BeLikeString "*class='removed-count'*>0</td>*class='error-count'*>1</td>*"
+        $html | Should-BeLikeString "*>$ComputerLabel</p>*"
+        $html | Should-BeLikeString '*2 paths</p>*'
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             ($Subject -eq '2 removed, 3 errors') -and ($Body -ceq $html)
         }
     }
@@ -2261,27 +2261,27 @@ if ($path -notlike '*\unchanged.txt') {
 
         & $testScript -ConfigurationJsonFile $testOutParams.FilePath -RemoveItemsScript $testWorker
 
-        Should -Not -Invoke New-PSSession -Scope It
-        Should -Not -Invoke Invoke-Command -Scope It
+        Should-NotInvoke New-PSSession -Scope It
+        Should-NotInvoke Invoke-Command -Scope It
         $testHtmlFile = @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html')
-        $testHtmlFile | Should -HaveCount 1
+        $testHtmlFile | Should-BeCollection -Count 1
         $html = Get-Content -LiteralPath $testHtmlFile[0].FullName -Raw
-        [regex]::Matches($html, 'class="task-table"').Count | Should -Be 1
-        [regex]::Matches($html, 'Remove file older than 1 day').Count | Should -Be 1
-        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should -Be 1
-        $html | Should -BeLike '*\\SERVER2\Logs\</td>*'
-        $html | Should -Not -BeLike '*\\SERVER1\Logs\</td>*'
+        [regex]::Matches($html, 'class="task-table"').Count | Should-Be 1
+        [regex]::Matches($html, 'Remove file older than 1 day').Count | Should-Be 1
+        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be 1
+        $html | Should-BeLikeString '*\\SERVER2\Logs\</td>*'
+        $html | Should-NotBeLikeString '*\\SERVER1\Logs\</td>*'
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
-        $rows | Should -HaveCount 3
-        ($rows | Where-Object { $_ -like '*>Removed file</a>*' }) | Should -BeLike "*class='removed-count'*>1</td>*class='error-count'*>0</td>*"
-        ($rows | Where-Object { $_ -like '*>Failed file</a>*' }) | Should -BeLike "*class='removed-count'*>0</td>*class='error-count'*>1</td>*"
-        ($rows | Where-Object { $_ -like '*>Unchanged file</a>*' }) | Should -BeLike "*class='removed-count'*>0</td>*class='error-count'*>0</td>*"
-        $html | Should -BeLike "*>$env:COMPUTERNAME</p>*"
-        $html | Should -Not -BeLike '*>SERVER1</p>*'
-        $html | Should -Not -BeLike '*>SERVER2</p>*'
-        $html | Should -BeLike '*3 paths</p>*'
-        $html | Should -BeLike "*href='file:////SERVER1/Logs/removed.txt'*"
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        $rows | Should-BeCollection -Count 3
+        ($rows | Where-Object { $_ -like '*>Removed file</a>*' }) | Should-BeLikeString "*class='removed-count'*>1</td>*class='error-count'*>0</td>*"
+        ($rows | Where-Object { $_ -like '*>Failed file</a>*' }) | Should-BeLikeString "*class='removed-count'*>0</td>*class='error-count'*>1</td>*"
+        ($rows | Where-Object { $_ -like '*>Unchanged file</a>*' }) | Should-BeLikeString "*class='removed-count'*>0</td>*class='error-count'*>0</td>*"
+        $html | Should-BeLikeString "*>$env:COMPUTERNAME</p>*"
+        $html | Should-NotBeLikeString '*>SERVER1</p>*'
+        $html | Should-NotBeLikeString '*>SERVER2</p>*'
+        $html | Should-BeLikeString '*3 paths</p>*'
+        $html | Should-BeLikeString "*href='file:////SERVER1/Logs/removed.txt'*"
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             ($Subject -eq '1 removed, 1 error') -and ($Body -ceq $html)
         }
     }
@@ -2301,9 +2301,9 @@ Describe 'save email HTML' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 0
-        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html') | Should -HaveCount 0
-        Should -Not -Invoke Send-MailKitMessageHC -Scope It
+        $LASTEXITCODE | Should-Be 0
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html') | Should-BeCollection -Count 0
+        Should-NotInvoke Send-MailKitMessageHC -Scope It
     }
     It 'does not write HTML when file logging is disabled' {
         $testNewInputFile.Settings.SaveLogFiles.Where.Folder = $null
@@ -2312,9 +2312,9 @@ Describe 'save email HTML' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 0
-        Should -Not -Invoke Set-Content -Scope It -ParameterFilter { $LiteralPath -like '* - Mail.html' }
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        $LASTEXITCODE | Should-Be 0
+        Should-NotInvoke Set-Content -Scope It -ParameterFilter { $LiteralPath -like '* - Mail.html' }
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             $Body -notlike '*If this mail is not visible*'
         }
     }
@@ -2324,9 +2324,9 @@ Describe 'save email HTML' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
-        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html') | Should -HaveCount 1
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike '*Failed sending email: SMTP unavailable*'
+        $LASTEXITCODE | Should-Be 1
+        @(Get-ChildItem -LiteralPath $testLogFolder -Filter '* - Mail.html') | Should-BeCollection -Count 1
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should-BeLikeString '*Failed sending email: SMTP unavailable*'
     }
     It 'still sends email and logs the error when saving HTML fails' {
         Mock Set-Content { throw 'HTML write denied' } -ParameterFilter { $LiteralPath -like '* - Mail.html' }
@@ -2334,11 +2334,11 @@ Describe 'save email HTML' {
 
         & $testScript @testParams
 
-        $LASTEXITCODE | Should -Be 1
-        Should -Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
+        $LASTEXITCODE | Should-Be 1
+        Should-Invoke Send-MailKitMessageHC -Exactly -Times 1 -Scope It -ParameterFilter {
             $Body -notlike '*If this mail is not visible*'
         }
-        ((Get-TestSystemErrorsHC).Message -join "`n") | Should -BeLike '*Failed saving email HTML: HTML write denied*'
+        ((Get-TestSystemErrorsHC).Message -join "`n") | Should-BeLikeString '*Failed saving email HTML: HTML write denied*'
     }
 }
 Describe 'Settings.SaveInEventLog' {
@@ -2350,7 +2350,7 @@ Describe 'Settings.SaveInEventLog' {
 
         .$testScript @testParams
 
-        Should -Invoke Write-EventLog -Scope It -ParameterFilter {
+        Should-Invoke Write-EventLog -Scope It -ParameterFilter {
             ($LogName -eq $testInputFile.Settings.SaveInEventLog.LogName) -and
             ($Source -eq $testInputFile.Settings.ScriptName) -and
             ($EntryType -eq 'Error') -and
@@ -2365,7 +2365,7 @@ Describe 'Settings.SaveInEventLog' {
 
         .$testScript @testParams
 
-        Should -Not -Invoke Write-EventLog -Scope It
+        Should-NotInvoke Write-EventLog -Scope It
     }
 }
 Describe 'Settings.SaveLogFiles.DeleteLogsAfterDays' {
@@ -2379,7 +2379,7 @@ Describe 'Settings.SaveLogFiles.DeleteLogsAfterDays' {
 
         .$testScript @testParams
 
-        $testOldLogFile.FullName | Should -Not -Exist
-        $testNewLogFile.FullName | Should -Exist
+        (Test-Path -LiteralPath $testOldLogFile.FullName) | Should-BeFalse
+        (Test-Path -LiteralPath $testNewLogFile.FullName) | Should-BeTrue
     }
 }

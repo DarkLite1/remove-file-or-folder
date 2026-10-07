@@ -1,5 +1,5 @@
 #Requires -Version 7
-#Requires -Modules Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
 
 BeforeAll {
     . (Join-Path -Path (Split-Path $PSScriptRoot) -ChildPath 'Functions.ps1')
@@ -10,18 +10,18 @@ Describe 'ConvertTo-FileUrlHC' {
         @{ Path = 'C:\Temp'; Expected = 'file://C:/Temp' }
         @{ Path = ''; Expected = '' }
     ) {
-        ConvertTo-FileUrlHC -Path $Path | Should -Be $Expected
+        ConvertTo-FileUrlHC -Path $Path | Should-Be $Expected
     }
 }
 Describe 'New-PillHtmlHC' {
     It 'renders a browser span and an Outlook VML shape' {
         $actual = New-PillHtmlHC -Text 'Error' -Bg '#dc2626'
 
-        $actual | Should -BeLike '*<!--`[if mso`]>*<v:roundrect*fillcolor="#dc2626"*>ERROR</center>*<!`[endif`]-->*'
-        $actual | Should -BeLike '*<!--`[if !mso`]><!-->*background-color:#dc2626*>Error</span>*'
+        $actual | Should-BeLikeString '*<!--`[if mso`]>*<v:roundrect*fillcolor="#dc2626"*>ERROR</center>*<!`[endif`]-->*'
+        $actual | Should-BeLikeString '*<!--`[if !mso`]><!-->*background-color:#dc2626*>Error</span>*'
     }
     It 'renders nothing without text' {
-        New-PillHtmlHC -Text '' -Bg '#dc2626' | Should -BeNullOrEmpty
+        New-PillHtmlHC -Text '' -Bg '#dc2626' | Should-BeEmptyString
     }
 }
 Describe 'Get-TaskDescriptionHC' {
@@ -29,7 +29,7 @@ Describe 'Get-TaskDescriptionHC' {
         Get-TaskDescriptionHC -Task ([pscustomobject]@{
             Type = 'RemoveFilesInFolder'
             ExcludeAttributes = @('Hidden', 'System')
-        }) | Should -Be 'Remove all files, excluding hidden/system items'
+        }) | Should-Be 'Remove all files, excluding hidden/system items'
     }
     It '<Expected>' -ForEach @(
         @{
@@ -57,7 +57,7 @@ Describe 'Get-TaskDescriptionHC' {
             Expected = 'Remove empty folders, excluding 1 folder'
         }
     ) {
-        Get-TaskDescriptionHC -Task ([PSCustomObject]$Task) | Should -Be $Expected
+        Get-TaskDescriptionHC -Task ([PSCustomObject]$Task) | Should-Be $Expected
     }
 }
 Describe 'Get-MailBodyHtmlHC' {
@@ -87,21 +87,21 @@ Describe 'Get-MailBodyHtmlHC' {
         $actual = Get-MailBodyHtmlHC @testParams
     }
     It 'shows the encoded script name as title and the user body as is' {
-        $actual | Should -BeLike '*<h1>Remove &lt;test&gt;</h1>*'
-        $actual | Should -BeLike '*<p>Custom body</p>*'
+        $actual | Should-BeLikeString '*<h1>Remove &lt;test&gt;</h1>*'
+        $actual | Should-BeLikeString '*<p>Custom body</p>*'
     }
     It 'has a fixed width for Outlook' {
-        $actual | Should -BeLike "*<!--``[if mso``]>*width=`"$($testTheme.BodyWidth)`"*"
+        $actual | Should-BeLikeString "*<!--``[if mso``]>*width=`"$($testTheme.BodyWidth)`"*"
     }
     It 'shows the totals as pills' {
-        $actual | Should -BeLike '*>4 Removed</span>*'
-        $actual | Should -BeLike '*>3 Errors</span>*'
+        $actual | Should-BeLikeString '*>4 Removed</span>*'
+        $actual | Should-BeLikeString '*>3 Errors</span>*'
     }
     It 'shows the encoded system errors' {
-        $actual | Should -BeLike '*System Errors (1)*Oops &amp; co*'
+        $actual | Should-BeLikeString '*System Errors (1)*Oops &amp; co*'
     }
     It 'links the log folder and mentions the attachments' {
-        $actual | Should -BeLike "*href='C:\Log folder'*Open log folder*details in the attachments*"
+        $actual | Should-BeLikeString "*href='C:\Log folder'*Open log folder*details in the attachments*"
     }
     It 'uses client-specific folder links for <Path>' -ForEach @(
         @{ Path = '\\server\Logs\Team A & B'; Url = 'file://server/Logs/Team%20A%20&amp;%20B' }
@@ -114,10 +114,10 @@ Describe 'Get-MailBodyHtmlHC' {
 
         $outlookLink = [regex]::Match($html, '<!--\[if mso\]>(<a [^>]+>Open log folder</a>)<!\[endif\]-->').Groups[1].Value
         $browserLink = [regex]::Match($html, '<!--\[if !mso\]><!-->(<a [^>]+>Open log folder</a>)<!--<!\[endif\]-->').Groups[1].Value
-        $outlookLink.Contains("href='$([System.Net.WebUtility]::HtmlEncode($Path))'") | Should -BeTrue
-        $outlookLink | Should -Not -BeLike '*target=*'
-        $outlookLink | Should -Not -BeLike '*file://*'
-        $browserLink.Contains("href='$Url'") | Should -BeTrue
+        $outlookLink.Contains("href='$([System.Net.WebUtility]::HtmlEncode($Path))'") | Should-BeTrue
+        $outlookLink | Should-NotBeLikeString '*target=*'
+        $outlookLink | Should-NotBeLikeString '*file://*'
+        $browserLink.Contains("href='$Url'") | Should-BeTrue
     }
     It 'shows an encoded browser-view link only inside an Outlook conditional row' {
         $testNewParams = $testParams.Clone()
@@ -125,41 +125,41 @@ Describe 'Get-MailBodyHtmlHC' {
 
         $html = Get-MailBodyHtmlHC @testNewParams
 
-        $html | Should -Match '(?s)<!--\[if mso\]>\s*<tr><td[^>]*><p[^>]*>If this mail is not visible, please <a[^>]+>click here to view it in the browser</a>\.</p></td></tr>\s*<!\[endif\]-->'
-        $html | Should -BeLike "*href='file:////server/Logs/Team%20A%20&amp;%20B%20-%20Mail.html'*"
-        $html | Should -BeLike '*title="\\server\Logs\Team A &amp; B - Mail.html"*'
+        $html | Should-MatchString '(?s)<!--\[if mso\]>\s*<tr><td[^>]*><p[^>]*>If this mail is not visible, please <a[^>]+>click here to view it in the browser</a>\.</p></td></tr>\s*<!\[endif\]-->'
+        $html | Should-BeLikeString "*href='file:////server/Logs/Team%20A%20&amp;%20B%20-%20Mail.html'*"
+        $html | Should-BeLikeString '*title="\\server\Logs\Team A &amp; B - Mail.html"*'
     }
     It 'omits the browser-view link without a saved HTML path' {
-        $actual | Should -Not -BeLike '*If this mail is not visible*'
+        $actual | Should-NotBeLikeString '*If this mail is not visible*'
     }
     It 'shows a card per computer, the one with errors first and the idle one last' {
         $errIndex = $actual.IndexOf('>PC-ERR</p>')
         $okIndex = $actual.IndexOf('>PC-OK</p>')
         $idleIndex = $actual.IndexOf('>PC-IDLE</p>')
 
-        $errIndex | Should -BeGreaterThan 0
-        $errIndex | Should -BeLessThan $okIndex
-        $okIndex | Should -BeLessThan $idleIndex
+        $errIndex | Should-BeGreaterThan 0
+        $errIndex | Should-BeLessThan $okIndex
+        $okIndex | Should-BeLessThan $idleIndex
     }
     It 'colors the card headers by result' {
-        $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradError[0])*>PC-ERR</p>*"
-        $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradSuccess[0])*>PC-OK</p>*"
-        $actual | Should -BeLike "*linear-gradient(135deg, $($testTheme.GradIdle[0])*>PC-IDLE</p>*"
+        $actual | Should-BeLikeString "*linear-gradient(135deg, $($testTheme.GradError[0])*>PC-ERR</p>*"
+        $actual | Should-BeLikeString "*linear-gradient(135deg, $($testTheme.GradSuccess[0])*>PC-OK</p>*"
+        $actual | Should-BeLikeString "*linear-gradient(135deg, $($testTheme.GradIdle[0])*>PC-IDLE</p>*"
     }
     It 'shows the totals in the card header' {
-        $actual | Should -BeLike '*>PC-ERR</p>*1&nbsp;removed &middot; 2&nbsp;errors*'
-        $actual | Should -BeLike '*>PC-OK</p>*2 paths*3&nbsp;removed*'
+        $actual | Should-BeLikeString '*>PC-ERR</p>*1&nbsp;removed &middot; 2&nbsp;errors*'
+        $actual | Should-BeLikeString '*>PC-OK</p>*2 paths*3&nbsp;removed*'
     }
     It 'shows the task description above path rows with separate counters' {
-        $actual | Should -BeLike '*Remove all files</caption>*'
-        $actual | Should -BeLike "*href='file:////PC-OK/D$/Logs'*>Logs</a>*D:\Logs*class='removed-count'*>3</td>*"
-        $actual | Should -BeLike "*E:\&lt;Data&gt;*class='removed-count'*>1</td>*class='error-count'*>2</td>*"
+        $actual | Should-BeLikeString '*Remove all files</caption>*'
+        $actual | Should-BeLikeString "*href='file:////PC-OK/D$/Logs'*>Logs</a>*D:\Logs*class='removed-count'*>3</td>*"
+        $actual | Should-BeLikeString "*E:\&lt;Data&gt;*class='removed-count'*>1</td>*class='error-count'*>2</td>*"
     }
     It 'highlights error counters without individual row cards or badges' {
-        $actual | Should -BeLike "*class='error-count'*color:$($testTheme.AccentError)*>2</td>*"
+        $actual | Should-BeLikeString "*class='error-count'*color:$($testTheme.AccentError)*>2</td>*"
         $pathRows = [regex]::Matches($actual, "(?s)<tr class='path-row'>.*?</tr>").Value -join ''
-        $pathRows | Should -Not -BeLike '*border-left:3px solid*'
-        $actual | Should -Not -BeLike '*>Error</span>*'
+        $pathRows | Should-NotBeLikeString '*border-left:3px solid*'
+        $actual | Should-NotBeLikeString '*>Error</span>*'
     }
     It 'renders the description once per task and keeps each path counter' {
         $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job @(
@@ -167,12 +167,12 @@ Describe 'Get-MailBodyHtmlHC' {
             [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Second'; LinkPath = 'C:\Second'; Description = 'Remove files & folders'; Removed = 0; Errors = 2 }
             [pscustomobject]@{ TaskIndex = 1; Path = 'C:\First'; LinkPath = 'C:\First'; Description = 'Remove files & folders'; Removed = 0; Errors = 0 }
         )
-        [regex]::Matches($html, 'Remove files &amp; folders').Count | Should -Be 2
-        [regex]::Matches($html, 'class="task-table"').Count | Should -Be 2
+        [regex]::Matches($html, 'Remove files &amp; folders').Count | Should-Be 2
+        [regex]::Matches($html, 'class="task-table"').Count | Should-Be 2
         $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
-        $pathRows | Should -HaveCount 3
-        $pathRows[0] | Should -BeLike "*C:\Second*class='removed-count'*>0</td>*class='error-count'*>2</td>*"
-        $pathRows[1] | Should -BeLike "*C:\First*class='removed-count'*>5</td>*class='error-count'*>0</td>*"
+        $pathRows | Should-BeCollection -Count 3
+        $pathRows[0] | Should-BeLikeString "*C:\Second*class='removed-count'*>0</td>*class='error-count'*>2</td>*"
+        $pathRows[1] | Should-BeLikeString "*C:\First*class='removed-count'*>5</td>*class='error-count'*>0</td>*"
     }
     It 'colors every cell and path label red only when the row has errors (<Name>)' -ForEach @(
         @{ Name = $null }
@@ -183,20 +183,20 @@ Describe 'Get-MailBodyHtmlHC' {
                 Path = 'C:\Failed'; LinkPath = 'C:\Failed'; Name = $Name; Removed = 3; Errors = $errorCount
             })
             $row = ([xml]"<table>$html</table>").table.tr
-            $row.td | Should -HaveCount 3
+            $row.td | Should-BeCollection -Count 3
             foreach ($cell in $row.td) {
                 if ($errorCount) {
-                    $cell.bgcolor | Should -Be $testTheme.StatusError
-                    $cell.style | Should -BeLike "*background-color:$($testTheme.StatusError)*color:$($testTheme.AccentError)*"
+                    $cell.bgcolor | Should-Be $testTheme.StatusError
+                    $cell.style | Should-BeLikeString "*background-color:$($testTheme.StatusError)*color:$($testTheme.AccentError)*"
                 }
                 else {
-                    $cell.bgcolor | Should -Be $testTheme.BgWhite
-                    $cell.style | Should -Not -BeLike "*color:$($testTheme.AccentError)*"
+                    $cell.bgcolor | Should-Be $testTheme.BgWhite
+                    $cell.style | Should-NotBeLikeString "*color:$($testTheme.AccentError)*"
                 }
             }
             foreach ($label in $row.SelectNodes('.//div | .//a')) {
-                if ($errorCount) { $label.style | Should -BeLike "*color:$($testTheme.AccentError)*" }
-                else { $label.style | Should -Not -BeLike "*color:$($testTheme.AccentError)*" }
+                if ($errorCount) { $label.style | Should-BeLikeString "*color:$($testTheme.AccentError)*" }
+                else { $label.style | Should-NotBeLikeString "*color:$($testTheme.AccentError)*" }
             }
         }
     }
@@ -209,21 +209,21 @@ Describe 'Get-MailBodyHtmlHC' {
             [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Alpha'; LinkPath = 'C:\Alpha'; Description = 'Earlier task'; Removed = 0; Errors = 0 }
         )
         $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
-        $pathRows | Should -HaveCount 5
-        $pathRows[0] | Should -BeLike '*C:\Charlie*'
-        $pathRows[1] | Should -BeLike '*C:\Delta*'
-        $pathRows[2] | Should -BeLike '*C:\Alpha*'
-        $pathRows[3] | Should -BeLike '*C:\Bravo*'
-        $pathRows[4] | Should -BeLike '*C:\Zulu*'
+        $pathRows | Should-BeCollection -Count 5
+        $pathRows[0] | Should-BeLikeString '*C:\Charlie*'
+        $pathRows[1] | Should-BeLikeString '*C:\Delta*'
+        $pathRows[2] | Should-BeLikeString '*C:\Alpha*'
+        $pathRows[3] | Should-BeLikeString '*C:\Bravo*'
+        $pathRows[4] | Should-BeLikeString '*C:\Zulu*'
     }
     It 'shows the run times in the footer' {
-        $actual | Should -BeLike '*Started*02/10/2026 07:00*Ended*02/10/2026 08:30*Duration*01:30:15*'
+        $actual | Should-BeLikeString '*Started*02/10/2026 07:00*Ended*02/10/2026 08:30*Duration*01:30:15*'
     }
     It 'shows a message when there are no jobs' {
         $testNewParams = $testParams.Clone()
         $testNewParams.Job = @()
 
-        Get-MailBodyHtmlHC @testNewParams | Should -BeLike '*No tasks were executed.*'
+        Get-MailBodyHtmlHC @testNewParams | Should-BeLikeString '*No tasks were executed.*'
     }
     It 'shows a grey removed pill and no error pill when nothing happened' {
         $testNewParams = $testParams.Clone()
@@ -232,8 +232,8 @@ Describe 'Get-MailBodyHtmlHC' {
 
         $result = Get-MailBodyHtmlHC @testNewParams
 
-        $result | Should -BeLike "*background-color:$($testTheme.AccentIdle)*>0 Removed</span>*"
-        $result | Should -Not -BeLike '*Errors</span>*'
+        $result | Should-BeLikeString "*background-color:$($testTheme.AccentIdle)*>0 Removed</span>*"
+        $result | Should-NotBeLikeString '*Errors</span>*'
     }
 }
 Describe 'Get-MailPathGroupHC' {
@@ -245,59 +245,59 @@ Describe 'Get-MailPathGroupHC' {
             [pscustomobject]@{ TaskIndex = 1; Path = 'C:\Share\BE\c.txt'; LinkPath = '\\PC1\C$\Share\BE\c.txt'; Description = 'Rule'; Removed = 0; Errors = 0 }
         )
         $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
-        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should -Be 1
-        $html | Should -BeLike '*C:\Share\BE\</td>*'
+        [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be 1
+        $html | Should-BeLikeString '*C:\Share\BE\</td>*'
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
-        $rows | Should -HaveCount 4
-        $rows[0] | Should -BeLike "*title='C:\Share\BE\b.txt'*>b.txt</a>*"
-        $rows[0] | Should -BeLike '*background-color:#fee2e2*'
-        $rows[1] | Should -BeLike "*href='file:////PC1/C$/Share/BE/a.txt'*title='C:\Share\BE\a.txt'*>First &amp; named</a>*`(a.txt`)*"
-        $rows[1] | Should -Not -BeLike '*<br>*'
-        $rows[2] | Should -BeLike '*>C:\Share\Other\only.txt</a>*'
-        $rows[3] | Should -BeLike '*>C:\Share\BE\c.txt</a>*'
-        $jobs[0].Path | Should -Be 'C:\Share\BE\a.txt'
-        $html | Should -BeLike '*2&nbsp;removed &middot; 1&nbsp;error*'
+        $rows | Should-BeCollection -Count 4
+        $rows[0] | Should-BeLikeString "*title='C:\Share\BE\b.txt'*>b.txt</a>*"
+        $rows[0] | Should-BeLikeString '*background-color:#fee2e2*'
+        $rows[1] | Should-BeLikeString "*href='file:////PC1/C$/Share/BE/a.txt'*title='C:\Share\BE\a.txt'*>First &amp; named</a>*`(a.txt`)*"
+        $rows[1] | Should-NotBeLikeString '*<br>*'
+        $rows[2] | Should-BeLikeString '*>C:\Share\Other\only.txt</a>*'
+        $rows[3] | Should-BeLikeString '*>C:\Share\BE\c.txt</a>*'
+        $jobs[0].Path | Should-Be 'C:\Share\BE\a.txt'
+        $html | Should-BeLikeString '*2&nbsp;removed &middot; 1&nbsp;error*'
     }
     It 'encodes shared roots and relative labels without changing UNC destinations' {
         $jobs = @('a & b.txt', "c 'd'.txt") | ForEach-Object {
             [pscustomobject]@{ TaskIndex = 0; Path = "\\server\share\A & B\$_"; LinkPath = "\\server\share\A & B\$_"; Description = 'Files'; Removed = 0; Errors = 0 }
         }
         $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
-        $html | Should -BeLike '*\\server\share\A &amp; B\</td>*'
-        $html | Should -BeLike "*href='file:////server/share/A%20&amp;%20B/a%20&amp;%20b.txt'*"
-        $html | Should -BeLike '*>a &amp; b.txt</a>*'
-        $html | Should -BeLike '*>c &#39;d&#39;.txt</a>*'
+        $html | Should-BeLikeString '*\\server\share\A &amp; B\</td>*'
+        $html | Should-BeLikeString "*href='file:////server/share/A%20&amp;%20B/a%20&amp;%20b.txt'*"
+        $html | Should-BeLikeString '*>a &amp; b.txt</a>*'
+        $html | Should-BeLikeString '*>c &#39;d&#39;.txt</a>*'
     }
     It 'groups repeated branches while leaving a lone unrelated path alone' {
         $jobs = @('C:\Share\BE\a.txt', 'C:\Share\BE\b.txt', 'C:\Share\NL\a.txt', 'C:\Share\NL\b.txt', 'C:\Share\Other\only.txt') | ForEach-Object { [pscustomobject]@{ Path = $_ } }
         $groups = @(Get-MailPathGroupHC -Job $jobs)
-        $groups | Should -HaveCount 3
-        ($groups | Where-Object Root -EQ 'C:\Share\BE').Jobs | Should -HaveCount 2
-        ($groups | Where-Object Root -EQ 'C:\Share\NL').Jobs | Should -HaveCount 2
-        ($groups | Where-Object Root -EQ '').Jobs.Path | Should -Be 'C:\Share\Other\only.txt'
+        $groups | Should-BeCollection -Count 3
+        ($groups | Where-Object Root -EQ 'C:\Share\BE').Jobs | Should-BeCollection -Count 2
+        ($groups | Where-Object Root -EQ 'C:\Share\NL').Jobs | Should-BeCollection -Count 2
+        ($groups | Where-Object Root -EQ '').Jobs.Path | Should-Be 'C:\Share\Other\only.txt'
     }
     It 'keeps single paths and duplicate paths ungrouped' {
         foreach ($paths in @(@('C:\Share\only.txt'), @('C:\Share\only.txt', 'c:\share\ONLY.txt'))) {
             $jobs = @($paths | ForEach-Object { [pscustomobject]@{ Path = $_ } })
             $groups = @(Get-MailPathGroupHC -Job $jobs)
-            @($groups | Where-Object Root) | Should -HaveCount 0
-            @($groups.Jobs) | Should -HaveCount $paths.Count
+            @($groups | Where-Object Root) | Should-BeCollection -Count 0
+            @($groups.Jobs) | Should-BeCollection -Count $paths.Count
         }
     }
     It 'never merges drives or UNC shares' {
         $jobs = @('C:\Logs\a.txt', 'C:\Logs\b.txt', 'D:\Logs\only.txt', '\\server\one\a.txt', '\\server\one\b.txt', '\\server\two\only.txt') | ForEach-Object { [pscustomobject]@{ Path = $_ } }
         $groups = @(Get-MailPathGroupHC -Job $jobs)
-        $groups | Should -HaveCount 4
-        @($groups | Where-Object Root).Root | Should -Contain 'C:\Logs'
-        @($groups | Where-Object Root).Root | Should -Contain '\\server\one'
-        @($groups | Where-Object { -not $_.Root }) | Should -HaveCount 2
+        $groups | Should-BeCollection -Count 4
+        @($groups | Where-Object Root).Root | Should-ContainCollection 'C:\Logs'
+        @($groups | Where-Object Root).Root | Should-ContainCollection '\\server\one'
+        @($groups | Where-Object { -not $_.Root }) | Should-BeCollection -Count 2
     }
     It 'uses directory boundaries and never treats a selected parent as its own child' {
         $jobs = @('C:\Data', 'C:\Database\a.txt', 'C:\Data\b.txt') | ForEach-Object { [pscustomobject]@{ Path = $_ } }
         foreach ($group in (Get-MailPathGroupHC -Job $jobs)) {
             if ($group.Root) {
-                @($group.Jobs.Path | Sort-Object -Unique).Count | Should -BeGreaterOrEqual 2
-                foreach ($row in $group.Jobs) { $row.Path.StartsWith($group.Root + '\', [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue }
+                @($group.Jobs.Path | Sort-Object -Unique).Count | Should-BeGreaterThanOrEqual 2
+                foreach ($row in $group.Jobs) { $row.Path.StartsWith($group.Root + '\', [StringComparison]::OrdinalIgnoreCase) | Should-BeTrue }
             }
         }
     }
@@ -314,13 +314,13 @@ Describe 'Outlook path labels' {
         })
         $outlook = [regex]::Match($html, '<!--\[if mso\]><span title=''([^'']*)''>(.*?)</span><!\[endif\]-->')
         $label = [System.Net.WebUtility]::HtmlDecode($outlook.Groups[2].Value)
-        $label.Length | Should -BeLessOrEqual 55
-        $label | Should -BeLike "...*$Tail"
-        [System.Net.WebUtility]::HtmlDecode($outlook.Groups[1].Value) | Should -Be $Path
+        $label.Length | Should-BeLessThanOrEqual 55
+        $label | Should-BeLikeString "...*$Tail"
+        [System.Net.WebUtility]::HtmlDecode($outlook.Groups[1].Value) | Should-Be $Path
         $browser = [regex]::Match($html, '<!--\[if !mso\]><!-->(.*?)<!--<!\[endif\]-->').Groups[1].Value
-        [System.Net.WebUtility]::HtmlDecode($browser) | Should -Be $Path
-        $html.Contains("href='$([System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $Path)))'") | Should -BeTrue
-        $html | Should -BeLike "*class='removed-count'*>3</td>*class='error-count'*>1</td>*"
+        [System.Net.WebUtility]::HtmlDecode($browser) | Should-Be $Path
+        $html.Contains("href='$([System.Net.WebUtility]::HtmlEncode((ConvertTo-FileUrlHC $Path)))'") | Should-BeTrue
+        $html | Should-BeLikeString "*class='removed-count'*>3</td>*class='error-count'*>1</td>*"
     }
     It 'leaves a path of <Length> characters unchanged' -ForEach @(
         @{ Length = 10 }
@@ -330,8 +330,8 @@ Describe 'Outlook path labels' {
         $html = Build-MailJobRowHC -Job ([pscustomobject]@{
             Path = $path; LinkPath = $path; Removed = 0; Errors = 0
         })
-        $html | Should -Not -BeLike '*<!--`[if mso`]>*'
-        $html | Should -BeLike "*>$path</a>*"
+        $html | Should-NotBeLikeString '*<!--`[if mso`]>*'
+        $html | Should-BeLikeString "*>$path</a>*"
     }
 }
 Describe 'Outlook header count wrapping' {
@@ -355,7 +355,7 @@ Describe 'Outlook header count wrapping' {
         if ($Errors) {
             $expected += " &middot; $Errors&nbsp;error$(if ($Errors -ne 1) { 's' })"
         }
-        $header | Should -Be $expected
+        $header | Should-Be $expected
     }
 }
 Describe 'Get-LogFolderHC' {
@@ -364,21 +364,21 @@ Describe 'Get-LogFolderHC' {
 
         $actual = Get-LogFolderHC -Path $testFolder
 
-        $actual | Should -Be $testFolder
-        $testFolder | Should -Exist
+        $actual | Should-Be $testFolder
+        (Test-Path -LiteralPath $testFolder) | Should-BeTrue
     }
     It 'returns the path of an existing folder' {
         $testFolder = (New-Item 'TestDrive:\existing' -ItemType Directory).FullName
 
-        Get-LogFolderHC -Path $testFolder | Should -Be $testFolder
+        Get-LogFolderHC -Path $testFolder | Should-Be $testFolder
     }
     It 'resolves a relative path against the script folder' {
         $testName = "test_$([guid]::NewGuid())"
         $testExpected = Join-Path (Split-Path $PSScriptRoot) $testName
 
         try {
-            Get-LogFolderHC -Path $testName | Should -Be $testExpected
-            $testExpected | Should -Exist
+            Get-LogFolderHC -Path $testName | Should-Be $testExpected
+            (Test-Path -LiteralPath $testExpected) | Should-BeTrue
         }
         finally {
             Remove-Item -LiteralPath $testExpected -Force -ErrorAction Ignore
@@ -386,24 +386,24 @@ Describe 'Get-LogFolderHC' {
     }
     It 'throws when the folder cannot be created' {
         { Get-LogFolderHC -Path 'x:\notExisting' } |
-        Should -Throw "Failed creating log folder 'x:\notExisting'*"
+        Should-Throw "Failed creating log folder 'x:\notExisting'*"
     }
 }
 Describe 'Get-StringValueHC' {
     It 'returns NULL for an empty value' {
-        Get-StringValueHC -Name '' | Should -BeNullOrEmpty
+        Get-StringValueHC -Name '' | Should-BeNull
     }
     It 'returns a plain value as is' {
-        Get-StringValueHC -Name 'plain' | Should -Be 'plain'
+        Get-StringValueHC -Name 'plain' | Should-Be 'plain'
     }
     It 'returns the value of an environment variable' {
         $env:TEST_GET_STRING_VALUE_HC = 'secret'
 
         try {
             Get-StringValueHC -Name 'ENV:TEST_GET_STRING_VALUE_HC' |
-            Should -Be 'secret'
+            Should-Be 'secret'
             Get-StringValueHC -Name 'env: TEST_GET_STRING_VALUE_HC' |
-            Should -Be 'secret'
+            Should-Be 'secret'
         }
         finally {
             Remove-Item -Path 'Env:\TEST_GET_STRING_VALUE_HC'
@@ -411,7 +411,7 @@ Describe 'Get-StringValueHC' {
     }
     It 'throws when the environment variable does not exist' {
         { Get-StringValueHC -Name 'ENV:NOT_EXISTING_VARIABLE_HC' } |
-        Should -Throw "Environment variable 'NOT_EXISTING_VARIABLE_HC' not found."
+        Should-Throw "Environment variable 'NOT_EXISTING_VARIABLE_HC' not found."
     }
 }
 Describe 'Invoke-WithOptionalParallelismHC' {
@@ -421,9 +421,9 @@ Describe 'Invoke-WithOptionalParallelismHC' {
             [PSCustomObject]@{ Value = $item; Runspace = [runspace]::DefaultRunspace.InstanceId }
         }
 
-        $actual.Value | Should -Be @(1, 2, 3)
+        $actual.Value | Should-BeCollection @(1, 2, 3)
         $actual.Runspace | Sort-Object -Unique |
-        Should -Be ([runspace]::DefaultRunspace.InstanceId)
+        Should-Be ([runspace]::DefaultRunspace.InstanceId)
     }
     It 'runs in parallel runspaces when ThrottleLimit is higher than 1' {
         $actual = Invoke-WithOptionalParallelismHC -InputObject 1, 2, 3 -ThrottleLimit 3 -ScriptBlock {
@@ -431,8 +431,8 @@ Describe 'Invoke-WithOptionalParallelismHC' {
             [PSCustomObject]@{ Value = $item; Runspace = [runspace]::DefaultRunspace.InstanceId }
         }
 
-        $actual.Value | Sort-Object | Should -Be @(1, 2, 3)
-        $actual.Runspace | Should -Not -Contain ([runspace]::DefaultRunspace.InstanceId)
+        $actual.Value | Sort-Object | Should-BeCollection @(1, 2, 3)
+        $actual.Runspace | Should-NotContainCollection ([runspace]::DefaultRunspace.InstanceId)
     }
     It 'passes ArgumentList after the input object when ThrottleLimit is <_>' -ForEach @(1, 2) {
         $actual = Invoke-WithOptionalParallelismHC -InputObject 'a' -ThrottleLimit $_ -ArgumentList 'b', 'c' -ScriptBlock {
@@ -440,11 +440,11 @@ Describe 'Invoke-WithOptionalParallelismHC' {
             "$item$second$third"
         }
 
-        $actual | Should -Be 'abc'
+        $actual | Should-Be 'abc'
     }
     It 'returns nothing for an empty input' {
         Invoke-WithOptionalParallelismHC -InputObject @() -ThrottleLimit 2 -ScriptBlock { 'x' } |
-        Should -BeNullOrEmpty
+        Should-BeCollection -Count 0
     }
 }
 Describe 'Out-LogFileHC' {
@@ -457,9 +457,9 @@ Describe 'Out-LogFileHC' {
     It 'creates a .json file and returns its path' {
         $actual = Out-LogFileHC -DataToExport $testData -PartialPath $testPartialPath -FileExtensions '.json'
 
-        $actual | Should -Be "$testPartialPath.json"
+        $actual | Should-Be "$testPartialPath.json"
         (Get-Content -LiteralPath $actual -Raw | ConvertFrom-Json).Message |
-        Should -Be 'first'
+        Should-Be 'first'
     }
     It 'converts an ErrorRecord message to a string in a .json file' {
         $testError = try { throw 'Oops' } catch { $_ }
@@ -467,7 +467,7 @@ Describe 'Out-LogFileHC' {
         $actual = Out-LogFileHC -DataToExport ([PSCustomObject]@{ DateTime = Get-Date; Message = $testError }) -PartialPath $testPartialPath -FileExtensions '.json'
 
         (Get-Content -LiteralPath $actual -Raw | ConvertFrom-Json).Message |
-        Should -Be 'Oops'
+        Should-Be 'Oops'
     }
     It 'keeps the existing entries of a .json file with Append' {
         $null = Out-LogFileHC -DataToExport $testData -PartialPath $testPartialPath -FileExtensions '.json'
@@ -475,7 +475,7 @@ Describe 'Out-LogFileHC' {
         $actual = Out-LogFileHC -DataToExport ([PSCustomObject]@{ DateTime = Get-Date; Message = 'second' }) -PartialPath $testPartialPath -FileExtensions '.json' -Append
 
         (Get-Content -LiteralPath $actual -Raw | ConvertFrom-Json).Message |
-        Should -Be @('second', 'first')
+        Should-BeCollection @('second', 'first')
     }
     It 'overwrites a .json file without Append' {
         $null = Out-LogFileHC -DataToExport $testData -PartialPath $testPartialPath -FileExtensions '.json'
@@ -483,23 +483,23 @@ Describe 'Out-LogFileHC' {
         $actual = Out-LogFileHC -DataToExport ([PSCustomObject]@{ DateTime = Get-Date; Message = 'second' }) -PartialPath $testPartialPath -FileExtensions '.json'
 
         (Get-Content -LiteralPath $actual -Raw | ConvertFrom-Json).Message |
-        Should -Be 'second'
+        Should-Be 'second'
     }
     It 'creates a .txt file' {
         $actual = Out-LogFileHC -DataToExport $testData -PartialPath $testPartialPath -FileExtensions '.txt'
 
-        $actual | Should -Be "$testPartialPath.txt"
-        Get-Content -LiteralPath $actual -Raw | Should -BeLike '*Message*first*'
+        $actual | Should-Be "$testPartialPath.txt"
+        Get-Content -LiteralPath $actual -Raw | Should-BeLikeString '*Message*first*'
     }
     It 'creates a file for each extension' {
         $actual = Out-LogFileHC -DataToExport $testData -PartialPath $testPartialPath -FileExtensions '.txt', '.json'
 
-        $actual | Should -HaveCount 2
-        $actual | ForEach-Object { $_ | Should -Exist }
+        $actual | Should-BeCollection -Count 2
+        $actual | ForEach-Object { (Test-Path -LiteralPath $_) | Should-BeTrue }
     }
     It 'rejects an unsupported extension' {
         { Out-LogFileHC -DataToExport $testData -PartialPath $testPartialPath -FileExtensions '.csv' } |
-        Should -Throw '*does not belong to the set*'
+        Should-Throw '*does not belong to the set*'
     }
 }
 Describe 'Send-MailKitMessageHC' {
@@ -520,7 +520,7 @@ Describe 'Send-MailKitMessageHC' {
         $testNewParams.Remove('To')
 
         { Send-MailKitMessageHC @testNewParams } |
-        Should -Throw "*Either 'To' to 'Bcc' is required for sending emails*"
+        Should-Throw "*Either 'To' to 'Bcc' is required for sending emails*"
     }
     It 'throws when a <Property> address is not valid' -ForEach @(
         @{ Property = 'To' }
@@ -530,27 +530,27 @@ Describe 'Send-MailKitMessageHC' {
         $testNewParams.$Property = 'notAnEmail'
 
         { Send-MailKitMessageHC @testNewParams } |
-        Should -Throw "*$Property email address 'notAnEmail' not valid.*"
+        Should-Throw "*$Property email address 'notAnEmail' not valid.*"
     }
     It 'rejects an invalid From address' {
         $testNewParams = $testParams.Clone()
         $testNewParams.From = 'notAnEmail'
 
         { Send-MailKitMessageHC @testNewParams } |
-        Should -Throw "*Cannot validate argument on parameter 'From'*"
+        Should-Throw "*Cannot validate argument on parameter 'From'*"
     }
     It 'rejects an unsupported SMTP port' {
         $testNewParams = $testParams.Clone()
         $testNewParams.SmtpPort = 26
 
         { Send-MailKitMessageHC @testNewParams } |
-        Should -Throw "*Cannot validate argument on parameter 'SmtpPort'*"
+        Should-Throw "*Cannot validate argument on parameter 'SmtpPort'*"
     }
     It 'throws when an assembly cannot be loaded' -Skip:(
         [bool]([AppDomain]::CurrentDomain.GetAssemblies().FullName -like 'MimeKit, *')
     ) {
         { Send-MailKitMessageHC @testParams } |
-        Should -Throw "*Failed to load MimeKit assembly 'x:\MimeKit.dll'*"
+        Should-Throw "*Failed to load MimeKit assembly 'x:\MimeKit.dll'*"
     }
 }
 Describe 'Write-EventsToEventLogHC' {
@@ -563,7 +563,7 @@ Describe 'Write-EventsToEventLogHC' {
 
         Write-EventsToEventLogHC -Source $testSource -LogName 'Scripts' -Events @()
 
-        Should -Invoke New-EventLog -Times 1 -Exactly -Scope It -ParameterFilter {
+        Should-Invoke New-EventLog -Times 1 -Exactly -Scope It -ParameterFilter {
             ($Source -eq $testSource) -and ($LogName -eq 'Scripts')
         }
     }
@@ -575,8 +575,8 @@ Describe 'Write-EventsToEventLogHC' {
 
         Write-EventsToEventLogHC -Source "Test source $([guid]::NewGuid())" -LogName 'Scripts' -Events $testEvents
 
-        Should -Invoke Write-EventLog -Times 2 -Exactly -Scope It
-        Should -Invoke Write-EventLog -Times 1 -Exactly -Scope It -ParameterFilter {
+        Should-Invoke Write-EventLog -Times 2 -Exactly -Scope It
+        Should-Invoke Write-EventLog -Times 1 -Exactly -Scope It -ParameterFilter {
             ($EntryType -eq 'Error') -and ($EventId -eq 2) -and
             ($Message -eq "`n- Message 'one'")
         }
@@ -584,15 +584,15 @@ Describe 'Write-EventsToEventLogHC' {
     It 'defaults EntryType to Information and EventID to 4' {
         Write-EventsToEventLogHC -Source "Test source $([guid]::NewGuid())" -LogName 'Scripts' -Events ([PSCustomObject]@{ Message = 'two'; FileName = 'a.txt' })
 
-        Should -Invoke Write-EventLog -Times 1 -Exactly -Scope It -ParameterFilter {
+        Should-Invoke Write-EventLog -Times 1 -Exactly -Scope It -ParameterFilter {
             ($EntryType -eq 'Information') -and ($EventId -eq 4) -and
             ($Message -eq "`n- Message 'two'`n- FileName 'a.txt'")
         }
     }
     It 'throws when the source is registered with another event log' {
         { Write-EventsToEventLogHC -Source 'Application Error' -LogName 'Scripts' -Events @() } |
-        Should -Throw "*already registered with event log name 'Application'*"
+        Should-Throw "*already registered with event log name 'Application'*"
 
-        Should -Not -Invoke New-EventLog -Scope It
+        Should-NotInvoke New-EventLog -Scope It
     }
 }

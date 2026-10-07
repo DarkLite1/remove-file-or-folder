@@ -195,9 +195,10 @@ The email always includes summary counts and task results. `Settings.SendMail.Bo
 
 ## 🧪 Tests
 
-The Pester tests are in the `Tests` folder:
+The tests in the `Tests` folder require Pester 6.2.0 or later and use its dedicated assertion commands (`Should-Be`, `Should-Invoke`, and `Should-BeCollection`):
 
 ```powershell
+Import-Module Pester -MinimumVersion 6.2.0
 Invoke-Pester -Path '.\Tests' -Output Detailed
 ```
 
