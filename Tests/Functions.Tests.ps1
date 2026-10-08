@@ -172,7 +172,16 @@ Describe 'Get-MailBodyHtmlHC' {
         [regex]::Matches($browserHtml, 'Remove files &amp; folders').Count | Should-Be 2
         [regex]::Matches($outlookHtml, 'Remove files &amp; folders').Count | Should-Be 2
         $outlookHtml | Should-NotBeLikeString '*<caption*'
-        $outlookHtml | Should-BeLikeString '*class="task-table"*<tr class=''task-description''><td colspan=''3''*>Remove files &amp; folders</p></td></tr>*'
+        $outlookHtml | Should-BeLikeString '*<table class=''task-description''*>Remove files &amp; folders</p></td></tr>*</table>*class="task-table"*'
+        $browserHtml | Should-NotBeLikeString '*class=''task-description''*'
+        foreach ($taskTable in [regex]::Matches($outlookHtml, '(?s)<table class="task-table".*?</table>')) {
+            $table = ([xml]$taskTable.Value).table
+            $table.tr[0].th | Should-BeCollection -Count 3
+            $table.tr[0].th[1].width | Should-Be '64'
+            $table.tr[0].th[2].width | Should-Be '48'
+            $table.tr[0].th[1].align | Should-Be 'right'
+            $table.tr[0].th[2].align | Should-Be 'right'
+        }
         [regex]::Matches($html, 'class="task-table"').Count | Should-Be 2
         $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $pathRows | Should-BeCollection -Count 3
@@ -282,6 +291,23 @@ Describe 'Get-MailPathGroupHC' {
         $rows[3] | Should-BeLikeString '*>C:\Share\BE\c.txt</a>*'
         $jobs[0].Path | Should-Be 'C:\Share\BE\a.txt'
         $html | Should-BeLikeString '*2&nbsp;removed &middot; 1&nbsp;error*'
+    }
+    It 'emphasizes shared roots while keeping children and both client descriptions regular' {
+        $jobs = @(
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Root\First'; LinkPath = 'C:\Root\First'; Name = 'Named child'; Description = 'Cleanup rule'; Removed = 2; Errors = 0 }
+            [pscustomobject]@{ TaskIndex = 0; Path = 'C:\Root\Second'; LinkPath = 'C:\Root\Second'; Description = 'Cleanup rule'; Removed = 0; Errors = 1 }
+        )
+        $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
+        $root = [xml][regex]::Match($html, "(?s)<tr class='root-breadcrumb'>.*?</tr>").Value
+        $root.tr.td.style | Should-BeLikeString '*font-weight:700;*'
+        foreach ($pathRow in [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>")) {
+            $row = [xml]$pathRow.Value
+            $row.tr.td[0].p.style | Should-BeLikeString '*font-weight:400;*'
+        }
+        $caption = [xml][regex]::Match($html, '(?s)<caption.*?</caption>').Value
+        $caption.caption.style | Should-BeLikeString '*font-weight:400;*'
+        $description = [xml][regex]::Match($html, "(?s)<table class='task-description'.*?</table>").Value
+        $description.table.tr.td.style | Should-BeLikeString '*font-weight:400;*'
     }
     It 'encodes shared roots and relative labels without changing UNC destinations' {
         $jobs = @('a & b.txt', "c 'd'.txt") | ForEach-Object {
