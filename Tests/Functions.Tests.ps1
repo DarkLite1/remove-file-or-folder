@@ -4,6 +4,74 @@
 BeforeAll {
     . (Join-Path -Path (Split-Path $PSScriptRoot) -ChildPath 'Functions.ps1')
 }
+Describe 'Export-ExcelLogHC' {
+    It 'splits <Count> rows without losing or duplicating data' -ForEach @(
+        @{ Count = 0; ExpectedSheets = 0 }
+        @{ Count = 1; ExpectedSheets = 1 }
+        @{ Count = 2; ExpectedSheets = 1 }
+        @{ Count = 3; ExpectedSheets = 2 }
+        @{ Count = 4; ExpectedSheets = 2 }
+        @{ Count = 5; ExpectedSheets = 3 }
+    ) {
+        $path = Join-Path $TestDrive "rows-$Count.xlsx"
+        $rows = @(for ($rowIndex = 0; $rowIndex -lt $Count; $rowIndex++) {
+            [pscustomobject]@{ Id = $rowIndex; Code = '001'; Error = 'Example error' }
+        })
+        Export-ExcelLogHC -Rows $rows -Path $path -WorksheetName Overview -RowsPerSheet 2
+        if ($Count -eq 0) {
+            Test-Path -LiteralPath $path | Should-BeFalse
+            return
+        }
+        $sheets = @(Get-ExcelSheetInfo -Path $path)
+        $sheets | Should-BeCollection -Count $ExpectedSheets
+        $actualRows = @(foreach ($sheet in $sheets) {
+            Import-Excel -Path $path -WorksheetName $sheet.Name
+        })
+        $actualRows.Id | Should-BeCollection @($rows.Id)
+        $package = Open-ExcelPackage -Path $path
+        try {
+            for ($sheetIndex = 0; $sheetIndex -lt $ExpectedSheets; $sheetIndex++) {
+                $expectedName = if ($sheetIndex -eq 0) { 'Overview' } else { 'Overview_{0}' -f ($sheetIndex + 1) }
+                $sheets[$sheetIndex].Name | Should-Be $expectedName
+                $sheet = $package.Workbook.Worksheets[$expectedName]
+                $sheet.Dimension.End.Row | Should-Be ([Math]::Min(2, $Count - 2 * $sheetIndex) + 1)
+                $sheet.Cells[1, 1].Text | Should-Be 'Id'
+                $sheet.Cells[2, 2].Text | Should-Be '001'
+                $sheet.Tables[0].Name | Should-Be $expectedName
+                $pane = $sheet.WorksheetXml.SelectSingleNode("//*[local-name()='pane']")
+                $pane.topLeftCell | Should-Be 'A2'
+                $pane.state | Should-Be 'frozen'
+            }
+        }
+        finally { $package.Dispose() }
+    }
+    It 'keeps Overview sheets when Errors also rolls over in the same workbook' {
+        $path = Join-Path $TestDrive 'combined.xlsx'
+        $rows = @([pscustomobject]@{ Error = 'First' }, [pscustomobject]@{ Error = 'Second' })
+        foreach ($name in @('Overview', 'Errors')) {
+            Export-ExcelLogHC -Rows $rows -Path $path -WorksheetName $name -RowsPerSheet 1
+        }
+        @(Get-ExcelSheetInfo -Path $path).Name | Should-BeCollection @('Overview', 'Overview_2', 'Errors', 'Errors_2')
+        foreach ($name in @('Overview', 'Errors')) {
+            (Import-Excel -Path $path -WorksheetName $name).Error | Should-Be 'First'
+            (Import-Excel -Path $path -WorksheetName "${name}_2").Error | Should-Be 'Second'
+        }
+    }
+    It 'reserves one header row within the Excel maximum by default' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path (Split-Path $PSScriptRoot) 'Functions.ps1'), [ref]$null, [ref]$null
+        )
+        $function = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Export-ExcelLogHC'
+        }, $true)
+        $parameter = $function.Body.ParamBlock.Parameters |
+            Where-Object { $_.Name.VariablePath.UserPath -eq 'RowsPerSheet' }
+        $parameter.DefaultValue.SafeGetValue() | Should-Be 1048575
+        { Export-ExcelLogHC -Rows @() -Path 'unused.xlsx' -WorksheetName Overview -RowsPerSheet 1048576 } | Should-Throw
+        { Export-ExcelLogHC -Rows @() -Path 'unused.xlsx' -WorksheetName Overview -RowsPerSheet 0 } | Should-Throw
+    }
+}
 Describe 'ConvertTo-FileUrlHC' {
     It 'converts <Path>' -ForEach @(
         @{ Path = '\\server\share\my folder'; Expected = 'file:////server/share/my%20folder' }

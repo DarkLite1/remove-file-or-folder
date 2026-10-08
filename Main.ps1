@@ -885,10 +885,7 @@ End {
         $mailParams = @{ }
 
         $excelParams = @{
-            Path               = "$baseLogName - Log.xlsx"
-            NoNumberConversion = '*'
-            AutoSize           = $true
-            FreezeTopRow       = $true
+            Path = "$baseLogName - Log.xlsx"
         }
         $excelSheet = @{
             Overview = @()
@@ -928,9 +925,9 @@ End {
         if ($excelSheet.Overview -and $baseLogName) {
             Write-Verbose "Export $($excelSheet.Overview.Count) rows to Excel"
 
-            $excelParams.WorksheetName = $excelParams.TableName = 'Overview'
+            $excelParams.WorksheetName = 'Overview'
 
-            $excelSheet.Overview | Export-Excel @excelParams
+            Export-ExcelLogHC -Rows $excelSheet.Overview @excelParams
 
             $allLogFilePaths += $excelParams.Path
         }
@@ -1000,7 +997,7 @@ End {
         }
 
         if ($excelSheet.Errors -and $baseLogName) {
-            $excelParams.WorksheetName = $excelParams.TableName = 'Errors'
+            $excelParams.WorksheetName = 'Errors'
 
             Write-Verbose (
                 "Export {0} rows to sheet '{1}' in Excel file '{2}'" -f
@@ -1008,7 +1005,7 @@ End {
                 $excelParams.WorksheetName, $excelParams.Path
             )
 
-            $excelSheet.Errors | Export-Excel @excelParams
+            Export-ExcelLogHC -Rows $excelSheet.Errors @excelParams
 
             $allLogFilePaths += $excelParams.Path
         }

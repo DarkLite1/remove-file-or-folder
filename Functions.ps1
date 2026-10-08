@@ -13,6 +13,52 @@
 #>
 
 
+function Export-ExcelLogHC {
+    <#
+    .SYNOPSIS
+        Exports log rows to numbered worksheets without exceeding Excel's row limit.
+
+    .DESCRIPTION
+        Reserves one row per worksheet for headers. The first worksheet keeps
+        its name; subsequent worksheets and tables use _2, _3 and so on.
+
+    .PARAMETER RowsPerSheet
+        Maximum data rows per worksheet, excluding the header. A smaller value
+        can be used to verify rollover without generating a million-row file.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Rows,
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [ValidateSet('Overview', 'Errors')]
+        [string]$WorksheetName,
+        [ValidateRange(1, 1048575)]
+        [int]$RowsPerSheet = 1048575
+    )
+
+    for ($offset = 0; $offset -lt $Rows.Count; $offset += $RowsPerSheet) {
+        $sheetNumber = [int][Math]::Floor($offset / $RowsPerSheet) + 1
+        $sheetName = if ($sheetNumber -eq 1) { $WorksheetName } else { "${WorksheetName}_$sheetNumber" }
+        $end = [Math]::Min($offset + $RowsPerSheet, $Rows.Count)
+        $exportParams = @{
+            Path               = $Path
+            WorksheetName      = $sheetName
+            TableName          = $sheetName
+            NoNumberConversion = '*'
+            AutoSize           = $true
+            FreezeTopRow       = $true
+        }
+        & {
+            for ($rowIndex = $offset; $rowIndex -lt $end; $rowIndex++) {
+                $Rows[$rowIndex]
+            }
+        } | Export-Excel @exportParams
+    }
+}
+
 function Get-MailThemeHC {
     <#
     .SYNOPSIS
