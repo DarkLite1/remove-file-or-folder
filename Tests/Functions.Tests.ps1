@@ -249,6 +249,11 @@ Describe 'Get-MailBodyHtmlHC' {
             $table.tr[0].th[2].width | Should-Be '48'
             $table.tr[0].th[1].align | Should-Be 'right'
             $table.tr[0].th[2].align | Should-Be 'right'
+            @($table.tr[0].th | ForEach-Object { $_.p.InnerText }) | Should-BeCollection @('Path', 'Removed', 'Errors')
+            foreach ($heading in $table.tr[0].th) {
+                $heading.p.style | Should-BeLikeString '*margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0;*'
+                $heading.p.style | Should-BeLikeString '*font-size:11px;*line-height:15px; mso-line-height-rule:exactly;*'
+            }
         }
         [regex]::Matches($html, 'class="task-table"').Count | Should-Be 2
         $pathRows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
@@ -348,7 +353,7 @@ Describe 'Get-MailPathGroupHC' {
         )
         $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
         [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be 1
-        $html | Should-BeLikeString '*C:\Share\BE\</td>*'
+        $html | Should-BeLikeString '*C:\Share\BE\</strong></p></td>*'
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $rows | Should-BeCollection -Count 4
         $rows[0] | Should-BeLikeString "*title='C:\Share\BE\b.txt'*>b.txt</a>*"
@@ -368,6 +373,10 @@ Describe 'Get-MailPathGroupHC' {
         $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
         $root = [xml][regex]::Match($html, "(?s)<tr class='root-breadcrumb'>.*?</tr>").Value
         $root.tr.td.style | Should-BeLikeString '*font-weight:700;*'
+        $root.tr.td.p.style | Should-BeLikeString '*margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0;*'
+        $root.tr.td.p.style | Should-BeLikeString '*font-size:12px; font-weight:700; line-height:16px; mso-line-height-rule:exactly;*'
+        $root.tr.td.p.strong.style | Should-BeLikeString '*font-weight:700;*'
+        $root.tr.td.p.strong.InnerText | Should-Be 'C:\Root\'
         foreach ($pathRow in [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>")) {
             $row = [xml]$pathRow.Value
             $row.tr.td[0].p.style | Should-BeLikeString '*font-weight:400;*'
@@ -382,7 +391,7 @@ Describe 'Get-MailPathGroupHC' {
             [pscustomobject]@{ TaskIndex = 0; Path = "\\server\share\A & B\$_"; LinkPath = "\\server\share\A & B\$_"; Description = 'Files'; Removed = 0; Errors = 0 }
         }
         $html = Build-MailComputerCardHC -ComputerName 'PC1' -Job $jobs
-        $html | Should-BeLikeString '*\\server\share\A &amp; B\</td>*'
+        $html | Should-BeLikeString '*\\server\share\A &amp; B\</strong></p></td>*'
         $html | Should-BeLikeString "*href='file:////server/share/A%20&amp;%20B/a%20&amp;%20b.txt'*"
         $html | Should-BeLikeString '*>a &amp; b.txt</a>*'
         $html | Should-BeLikeString '*>c &#39;d&#39;.txt</a>*'

@@ -508,7 +508,7 @@ function Build-MailComputerCardHC {
             $pathRows = (@(foreach ($pathGroup in $pathGroups) {
                 if ($pathGroup.Root) {
                     $root = [System.Net.WebUtility]::HtmlEncode($pathGroup.Root + '\')
-                    "<tr class='root-breadcrumb'><td colspan='3' bgcolor='#f3f4f6' style='padding:8px; background-color:#f3f4f6; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextMuted); font-family:$($theme.MonoStack); font-size:11px; font-weight:700; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'>$root</td></tr>"
+                    "<tr class='root-breadcrumb'><td colspan='3' bgcolor='#f3f4f6' style='padding:8px; background-color:#f3f4f6; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextMuted); font-family:$($theme.MonoStack); font-size:12px; font-weight:700; line-height:16px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all;'><p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-family:$($theme.MonoStack); font-size:12px; font-weight:700; line-height:16px; mso-line-height-rule:exactly;'><strong style='font-weight:700;'>$root</strong></p></td></tr>"
                 }
                 foreach ($row in ($pathGroup.Jobs | Sort-Object -Property @{
                     Expression = { if ($_.Errors) { 0 } else { 1 } }
@@ -527,9 +527,9 @@ function Build-MailComputerCardHC {
     <caption style='text-align:left; padding:8px 8px 6px; font-size:12px; font-weight:400; color:$($theme.TextMain); line-height:17px; mso-line-height-rule:exactly;'>$description</caption>
     <!--<![endif]-->
     <tr>
-        <th scope='col' align='left' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Path</th>
-        <th scope='col' align='right' width='64' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Removed</th>
-        <th scope='col' align='right' width='48' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'>Errors</th>
+        <th scope='col' align='left' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'><p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-size:11px; font-weight:700; line-height:15px; mso-line-height-rule:exactly;'>Path</p></th>
+        <th scope='col' align='right' width='64' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'><p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-size:11px; font-weight:700; line-height:15px; mso-line-height-rule:exactly;'>Removed</p></th>
+        <th scope='col' align='right' width='48' style='padding:6px 8px; border-bottom:1px solid $($theme.BorderMain); color:$($theme.TextLight); font-size:11px;'><p style='margin:0; mso-margin-top-alt:0; mso-margin-bottom-alt:0; font-size:11px; font-weight:700; line-height:15px; mso-line-height-rule:exactly;'>Errors</p></th>
     </tr>
     $pathRows
 </table>

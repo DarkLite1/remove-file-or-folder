@@ -2278,8 +2278,8 @@ if ($path -notlike '*\unchanged.txt') {
             [regex]::Matches($clientHtml, 'Remove file older than 1 day').Count | Should-Be 1
         }
         [regex]::Matches($html, "class='root-breadcrumb'").Count | Should-Be 1
-        $html | Should-BeLikeString '*\\SERVER2\Logs\</td>*'
-        $html | Should-NotBeLikeString '*\\SERVER1\Logs\</td>*'
+        $html | Should-BeLikeString '*\\SERVER2\Logs\</strong></p></td>*'
+        $html | Should-NotBeLikeString '*\\SERVER1\Logs\</strong></p></td>*'
         $rows = [regex]::Matches($html, "(?s)<tr class='path-row'>.*?</tr>").Value
         $rows | Should-BeCollection -Count 3
         ($rows | Where-Object { $_ -like '*>Removed file</a>*' }) | Should-BeLikeString "*class='removed-count'*>1</td>*class='error-count'*>0</td>*"
